@@ -267,6 +267,11 @@ const ATADAS: Record<string, string> = {
   'PATCH /v2/chat/labels/:id': 'chat',
   'DELETE /v2/chat/labels/:id': 'chat',
   'PUT /v2/conversations/:id/labels': 'chat',
+  // Asignación automática (8b): el estado propio y el equipo.
+  'GET /v2/me/chat-status': 'chat',
+  'PUT /v2/me/chat-status': 'chat',
+  'GET /v2/chat/agents': 'chat',
+  'PUT /v2/chat/agents/:userId': 'chat',
   'GET /v2/me/conversations/expected-reply': 'chat',
   'GET /v2/me/conversations': 'chat',
   'POST /v2/me/conversations': 'chat',

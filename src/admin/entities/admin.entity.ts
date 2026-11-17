@@ -8,6 +8,7 @@ import {
   Index,
   Check,
   ForeignKey,
+  Unique,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -29,6 +30,10 @@ import { StaffRole } from './staff-role.entity';
   ['staff_role_id', 'distributor_id'],
   { name: 'FK_admin_staff_role_distribuidora', onDelete: 'NO ACTION' },
 )
+// Para las claves compuestas que exigen que una persona sea del personal de
+// esa empresa (la bandeja del chat, 8b). `user_id` ya es único: esto no
+// restringe nada más.
+@Unique('UQ_admin_id_distribuidora', ['userId', 'distributorId'])
 @Entity('admin')
 export class Admin {
   @PrimaryGeneratedColumn('uuid', { name: 'admin_id' })

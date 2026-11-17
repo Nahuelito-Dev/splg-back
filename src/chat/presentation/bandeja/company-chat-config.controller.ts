@@ -99,6 +99,8 @@ function ajustesADto(
     inactivityCloseMinutes: a.inactivityCloseMinutes,
     inactivityWarningMinutes: a.inactivityWarningMinutes,
     inactivityEnabledAt: a.inactivityEnabledAt?.toISOString() ?? null,
+    autoAssignEnabled: a.autoAssignEnabled,
+    autoAssignMaxOpen: a.autoAssignMaxOpen,
     ...estado(a),
   };
 }
@@ -163,12 +165,12 @@ export class CompanyChatConfigController {
   @ApiOperation({
     summary: 'Cambiar los parámetros de la bandeja',
     description:
-      'Lo que no viene queda como estaba; `null` en un texto o en el nombre del asistente vuelve al de omisión. `assistantAiEnabled` prende o apaga el asistente con IA. `inactivityCloseMinutes` y `inactivityWarningMinutes` prenden el cierre por inactividad (`null` lo apaga, y apagar el cierre apaga el aviso); `expectedReplyEnabled` muestra u oculta el tiempo de respuesta esperado a los clientes y choferes. Queda en la auditoría.',
+      'Lo que no viene queda como estaba; `null` en un texto o en el nombre del asistente vuelve al de omisión. `assistantAiEnabled` prende o apaga el asistente con IA. `inactivityCloseMinutes` y `inactivityWarningMinutes` prenden el cierre por inactividad (`null` lo apaga, y apagar el cierre apaga el aviso); `expectedReplyEnabled` muestra u oculta el tiempo de respuesta esperado a los clientes y choferes. `autoAssignEnabled` y `autoAssignMaxOpen` prenden la asignación automática y fijan el tope por persona (prenderla o cambiar el tope reparte enseguida lo que espera). Queda en la auditoría.',
   })
   @ApiOkResponse({ type: ChatSettingsResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Valor fuera de rango, texto vacío o de más de 500, nombre del asistente de menos de 2 o más de 60 caracteres o en más de una línea, variable desconocida o que no corresponde (`TEMPLATE_VARIABLE_UNKNOWN`), cierre por inactividad fuera de 30–10080 minutos, aviso fuera de 5–1440 minutos, aviso sin cierre o no anterior al cierre (contra lo ya guardado)',
+      'Valor fuera de rango, texto vacío o de más de 500, nombre del asistente de menos de 2 o más de 60 caracteres o en más de una línea, variable desconocida o que no corresponde (`TEMPLATE_VARIABLE_UNKNOWN`), cierre por inactividad fuera de 30–10080 minutos, aviso fuera de 5–1440 minutos, aviso sin cierre o no anterior al cierre (contra lo ya guardado), `autoAssignEnabled` nulo o no booleano, `autoAssignMaxOpen` nulo, no entero o fuera de 1–50',
   })
   @ApiForbiddenResponse({
     description:

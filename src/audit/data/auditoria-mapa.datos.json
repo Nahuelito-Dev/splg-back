@@ -290,6 +290,23 @@
       "orderColumn": null
     },
     {
+      "table": "chat_agent_settings",
+      "entity": "ChatAgentSettings",
+      "pk": [
+        "distributor_id",
+        "user_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "chat_company_settings",
       "entity": "ChatCompanySettings",
       "pk": [
@@ -3217,6 +3234,54 @@
       "position": 12
     },
     {
+      "table": "chat_agent_settings",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "chat_agent_settings",
+      "column": "user_id",
+      "property": "userId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "chat_agent_settings",
+      "column": "status",
+      "property": "status",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "chat_agent_settings",
+      "column": "status_changed_at",
+      "property": "statusChangedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 3
+    },
+    {
+      "table": "chat_agent_settings",
+      "column": "max_open_override",
+      "property": "maxOpenOverride",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "chat_agent_settings",
+      "column": "last_assigned_at",
+      "property": "lastAssignedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 5
+    },
+    {
       "table": "chat_company_settings",
       "column": "distributor_id",
       "property": "distributorId",
@@ -3378,11 +3443,27 @@
     },
     {
       "table": "chat_company_settings",
+      "column": "auto_assign_enabled",
+      "property": "autoAssignEnabled",
+      "secret": false,
+      "kind": "text",
+      "position": 20
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "auto_assign_max_open",
+      "property": "autoAssignMaxOpen",
+      "secret": false,
+      "kind": "text",
+      "position": 21
+    },
+    {
+      "table": "chat_company_settings",
       "column": "updated_by_user_id",
       "property": "updatedByUserId",
       "secret": false,
       "kind": "text",
-      "position": 20
+      "position": 22
     },
     {
       "table": "claims",
@@ -3754,11 +3835,27 @@
     },
     {
       "table": "conversation",
+      "column": "awaiting_human_reason",
+      "property": "awaitingHumanReason",
+      "secret": false,
+      "kind": "text",
+      "position": 13
+    },
+    {
+      "table": "conversation",
+      "column": "assigned_automatically",
+      "property": "assignedAutomatically",
+      "secret": false,
+      "kind": "text",
+      "position": 14
+    },
+    {
+      "table": "conversation",
       "column": "closed_at",
       "property": "closedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 13
+      "position": 15
     },
     {
       "table": "conversation",
@@ -3766,7 +3863,7 @@
       "property": "closedByUserId",
       "secret": false,
       "kind": "text",
-      "position": 14
+      "position": 16
     },
     {
       "table": "conversation",
@@ -3774,7 +3871,7 @@
       "property": "closedReason",
       "secret": false,
       "kind": "text",
-      "position": 15
+      "position": 17
     },
     {
       "table": "conversation",
@@ -3782,7 +3879,7 @@
       "property": "createdByUserId",
       "secret": false,
       "kind": "text",
-      "position": 16
+      "position": 18
     },
     {
       "table": "conversation",
@@ -3790,7 +3887,7 @@
       "property": "deletedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 17
+      "position": 19
     },
     {
       "table": "conversation_label",

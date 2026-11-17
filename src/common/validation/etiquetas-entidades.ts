@@ -43,6 +43,7 @@ export const ETIQUETAS_ENTIDADES: Readonly<Record<string, string>> = {
   ConversationLabel: 'Etiqueta de la bandeja',
   ConversationLabelLink: 'Etiqueta puesta en una conversación',
   ChatCompanySettings: 'Configuración de los mensajes de la empresa',
+  ChatAgentSettings: 'Estado en la bandeja de una persona del equipo',
   PlatformSupportSettings: 'Configuración del soporte de la plataforma',
   SupportTicket: 'Ticket de soporte',
   SupportTicketMessageLink: 'Mensaje citado en un ticket',

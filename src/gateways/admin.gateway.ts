@@ -81,6 +81,21 @@ export const EVENTO_ESCRIBIENDO_DEL_PANEL = 'panel.escribiendo';
 export const EVENTO_SOPORTE_CONECTADO = 'panel.soporte.conectado';
 export const EVENTO_SOPORTE_DESCONECTADO = 'panel.soporte.desconectado';
 
+/**
+ * Una conexión del panel de alguien del personal de una empresa que atiende
+ * la bandeja (`mensajes.clientes` o `mensajes.choferes`) entró o salió: el
+ * chat lleva la presencia del equipo para la asignación automática (8b).
+ */
+export const EVENTO_BANDEJA_CONECTADO = 'panel.bandeja.conectado';
+export const EVENTO_BANDEJA_DESCONECTADO = 'panel.bandeja.desconectado';
+
+/** Una conexión del panel del personal de una empresa: de qué empresa, quién y cuál. */
+export interface ConexionDelPersonal {
+  distributorId: string;
+  userId: string;
+  socketId: string;
+}
+
 /** Una conexión del panel del equipo de la plataforma: quién y cuál. */
 export interface ConexionDelSoporte {
   userId: string;
@@ -202,11 +217,23 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
       await client.join(
         AdminGateway.salaDeDistribuidora(identidad.distributorId),
       );
+      const permisos = await this.permisosDelPersonal(identidad.userId);
       for (const sala of AdminGateway.salasDeListas(
         identidad.distributorId,
-        await this.permisosDelPersonal(identidad.userId),
+        permisos,
       )) {
         await client.join(sala);
+      }
+      if (
+        permisos.includes('mensajes.clientes') ||
+        permisos.includes('mensajes.choferes')
+      ) {
+        const conexion: ConexionDelPersonal = {
+          distributorId: identidad.distributorId,
+          userId: identidad.userId,
+          socketId: client.id,
+        };
+        this.events.emit(EVENTO_BANDEJA_CONECTADO, conexion);
       }
     } else {
       // super_admin: la plataforma. Nada de una empresa por el socket.
@@ -232,6 +259,15 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
    */
   handleDisconnect(client: SocketDeSplg): void {
     const identidad = client.data?.identidad;
+    if (identidad?.role === RoleType.ADMIN && identidad.distributorId) {
+      const conexion: ConexionDelPersonal = {
+        distributorId: identidad.distributorId,
+        userId: identidad.userId,
+        socketId: client.id,
+      };
+      this.events.emit(EVENTO_BANDEJA_DESCONECTADO, conexion);
+      return;
+    }
     if (identidad?.role !== RoleType.SUPER_ADMIN) return;
     const conexion: ConexionDelSoporte = {
       userId: identidad.userId,
@@ -258,6 +294,52 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
       if (userId) conexiones.push({ userId, socketId });
     }
     return conexiones;
+  }
+
+  /**
+   * Las conexiones del personal de las empresas que atiende ESTA instancia y
+   * están en alguna lista de la bandeja (8b): cada una renueva las suyas en la
+   * presencia de la bandeja; las de una instancia caída vencen.
+   */
+  conexionesLocalesDeLaBandeja(): ConexionDelPersonal[] {
+    const sockets = this.server?.sockets;
+    if (!sockets) return [];
+    const conexiones: ConexionDelPersonal[] = [];
+    for (const [socketId, socket] of sockets) {
+      const identidad = (socket as SocketDeSplg).data?.identidad;
+      if (identidad?.role !== RoleType.ADMIN || !identidad.distributorId) {
+        continue;
+      }
+      const d = identidad.distributorId;
+      if (
+        socket.rooms.has(AdminGateway.salaDeLaBandeja(d, 'staff_customer')) ||
+        socket.rooms.has(AdminGateway.salaDeLaBandeja(d, 'staff_driver'))
+      ) {
+        conexiones.push({
+          distributorId: d,
+          userId: identidad.userId,
+          socketId,
+        });
+      }
+    }
+    return conexiones;
+  }
+
+  /**
+   * Un evento al equipo de la bandeja de la empresa (8b, `chat:team`): a
+   * quienes atienden algún canal, una sola vez aunque atiendan los dos.
+   */
+  emitirAlEquipoDeLaBandeja(
+    distributorId: string,
+    event: string,
+    payload: unknown,
+  ): void {
+    this.server
+      .to([
+        AdminGateway.salaDeLaBandeja(distributorId, 'staff_customer'),
+        AdminGateway.salaDeLaBandeja(distributorId, 'staff_driver'),
+      ])
+      .emit(event, payload);
   }
 
   /** Un mismo evento a la sala de soporte de cada una de esas empresas, en una sola emisión. */
@@ -475,6 +557,24 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ): void {
     this.server
       .to(AdminGateway.salaDeConversacion(conversationId, punta))
+      .emit(event, payload);
+  }
+
+  /**
+   * Un evento a la mitad de la sala de una conversación, menos a las
+   * conexiones de esa persona (el «está respondiendo» del equipo, 8b: nunca
+   * vuelve a quien escribe, en ninguna de sus pestañas).
+   */
+  emitirAConversacionMenosA(
+    conversationId: string,
+    punta: PuntaDelPanel,
+    userId: string,
+    event: string,
+    payload: unknown,
+  ): void {
+    this.server
+      .to(AdminGateway.salaDeConversacion(conversationId, punta))
+      .except(salaDeUsuario(userId))
       .emit(event, payload);
   }
 

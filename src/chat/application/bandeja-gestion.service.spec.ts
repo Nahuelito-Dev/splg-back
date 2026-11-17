@@ -417,6 +417,65 @@ describe('BandejaGestionService: asignar', () => {
       'CONVERSATION_CLOSED',
     );
   });
+  it('la asignación automática (8b) va por el mismo paso: marcada, sin espera y con el aviso de siempre', async () => {
+    const { servicio, manager, guardados } = armar();
+    const efectos = new Efectos();
+    await servicio.asignarDentro(
+      manager,
+      conversacion({ awaitingHumanSince: new Date() }),
+      'adm-3',
+      efectos,
+      true,
+    );
+    expect(guardados[0]).toMatchObject({
+      assignedToUserId: 'adm-3',
+      assignedAutomatically: true,
+      awaitingHumanSince: null,
+    });
+    expect(efectos.conversaciones).toEqual([
+      expect.objectContaining({
+        change: 'assigned',
+        previousAssignedToUserId: null,
+      }),
+    ]);
+  });
+
+  it('a mano desmarca la automática y dice a quién la tenía (le libera lugar)', async () => {
+    const { servicio, guardados, publicados } = armar({
+      conversacion: conversacion({
+        assignedToUserId: 'adm-3',
+        assignedAutomatically: true,
+      }),
+    });
+    await servicio.asignar(personal, 'conv-1', 'adm-4');
+    expect(guardados[0]).toMatchObject({
+      assignedToUserId: 'adm-4',
+      assignedAutomatically: false,
+    });
+    expect(publicados[0].conversaciones[0].previousAssignedToUserId).toBe(
+      'adm-3',
+    );
+    const cola = armar({
+      conversacion: conversacion({
+        assignedToUserId: 'adm-3',
+        assignedAutomatically: true,
+      }),
+    });
+    await cola.servicio.asignar(personal, 'conv-1', null);
+    expect(cola.guardados[0].assignedAutomatically).toBe(false);
+  });
+
+  it('a la misma persona no cambia nada (ni la marca)', async () => {
+    const { servicio, guardados, publicados } = armar({
+      conversacion: conversacion({
+        assignedToUserId: 'adm-3',
+        assignedAutomatically: true,
+      }),
+    });
+    await servicio.asignar(personal, 'conv-1', 'adm-3');
+    expect(guardados).toEqual([]);
+    expect(publicados[0].conversaciones).toEqual([]);
+  });
 });
 
 describe('BandejaGestionService: mensaje a varios choferes (§4.4)', () => {

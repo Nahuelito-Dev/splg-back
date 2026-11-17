@@ -39,6 +39,12 @@ import {
 } from '../../domain/bandeja';
 import { TOPE_DE_MENCIONES } from '../../domain/notas-internas';
 import {
+  ESTADOS_DEL_AGENTE,
+  type EstadoDelAgente,
+  TOPE_MAXIMO,
+  TOPE_MINIMO,
+} from '../../domain/asignacion-automatica';
+import {
   COLORES_DE_ETIQUETA,
   type ColorDeEtiqueta,
   LARGO_DEL_NOMBRE_DE_ETIQUETA,
@@ -709,6 +715,63 @@ export class UpdateChatSettingsDto {
     message: 'El aviso va de 5 minutos a 24 horas antes del cierre',
   })
   inactivityWarningMinutes?: number | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Asignación automática (8b): la conversación que queda esperando a una persona se le da sola a alguien del equipo en línea con lugar. Prenderla reparte enseguida lo que esté esperando.',
+  })
+  // `null` no es «no cambiar»: es inválido (la columna no admite nulo).
+  @ValidateIf((o: UpdateChatSettingsDto) => o.autoAssignEnabled !== undefined)
+  @IsBoolean()
+  autoAssignEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    minimum: TOPE_MINIMO,
+    maximum: TOPE_MAXIMO,
+    description:
+      'Tope de conversaciones abiertas por persona para la asignación automática (1 a 50); cada persona puede tener el suyo. Subirlo reparte enseguida lo que esté esperando.',
+  })
+  @ValidateIf((o: UpdateChatSettingsDto) => o.autoAssignMaxOpen !== undefined)
+  @IsInt({ message: 'El tope de conversaciones abiertas va en número entero' })
+  @Min(TOPE_MINIMO, {
+    message: 'El tope de conversaciones abiertas por persona va de 1 a 50',
+  })
+  @Max(TOPE_MAXIMO, {
+    message: 'El tope de conversaciones abiertas por persona va de 1 a 50',
+  })
+  autoAssignMaxOpen?: number;
+}
+
+/** Ponerse en línea o ausente en la bandeja (8b). */
+export class UpdateMyChatStatusDto {
+  @ApiProperty({
+    enum: ESTADOS_DEL_AGENTE,
+    description:
+      '`online`: recibe conversaciones por asignación automática (si está conectada al panel y la empresa atiende); `away`: no recibe.',
+  })
+  @IsIn(ESTADOS_DEL_AGENTE)
+  status!: EstadoDelAgente;
+}
+
+/** El tope propio de una persona del equipo (8b). */
+export class UpdateChatAgentDto {
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    minimum: TOPE_MINIMO,
+    maximum: TOPE_MAXIMO,
+    description:
+      'Tope propio de conversaciones abiertas (1 a 50); `null` vuelve al de la empresa. Es obligatorio mandarlo.',
+  })
+  @ValidateIf((o: UpdateChatAgentDto) => o.maxOpenOverride !== null)
+  @IsInt({ message: 'El tope de conversaciones abiertas va en número entero' })
+  @Min(TOPE_MINIMO, {
+    message: 'El tope de conversaciones abiertas por persona va de 1 a 50',
+  })
+  @Max(TOPE_MAXIMO, {
+    message: 'El tope de conversaciones abiertas por persona va de 1 a 50',
+  })
+  maxOpenOverride!: number | null;
 }
 
 /** Un día sin atención (feriado, inventario). */

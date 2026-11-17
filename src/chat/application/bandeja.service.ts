@@ -23,7 +23,10 @@ import {
   PedidoSinChoferError,
 } from '../domain/chat.errors';
 import { vistaPreviaDelMensaje } from '../domain/reglas-del-mensaje';
-import { Conversation } from '../entities/conversation.entity';
+import {
+  Conversation,
+  type MotivoDeEspera,
+} from '../entities/conversation.entity';
 import { MessageEdit } from '../entities/message-edit.entity';
 import { Message } from '../entities/message.entity';
 import type { MessagesQueryDto } from '../presentation/dto/chat-input.dto';
@@ -87,16 +90,71 @@ export async function pedirUnaPersona(
   c: Conversation,
   efectos: Efectos,
   ahora: Date,
+  motivo: MotivoDeEspera = 'handoff',
 ): Promise<void> {
-  if (c.assignedToUserId || c.awaitingHumanSince) return;
+  if (c.assignedToUserId) return;
+  if (c.awaitingHumanSince) {
+    // Ya esperaba porque la marcó la asignación automática (8b): el pedido
+    // explícito («hablar con una persona») manda y pasa a `handoff`, así no
+    // se borra si después se apaga la función. La espera sigue desde cuando
+    // estaba (no pierde el lugar en la cola).
+    if (motivo === 'handoff') {
+      await manager.query(
+        `UPDATE "conversation" SET "awaiting_human_reason" = 'handoff'
+          WHERE "conversation_id" = $1 AND "awaiting_human_reason" = 'auto_assign'`,
+        [c.conversationId],
+      );
+      c.awaitingHumanReason = 'handoff';
+    }
+    return;
+  }
   await manager.query(
-    `UPDATE "conversation" SET "awaiting_human_since" = $2
+    `UPDATE "conversation" SET "awaiting_human_since" = $2, "awaiting_human_reason" = $3
       WHERE "conversation_id" = $1 AND "awaiting_human_since" IS NULL
         AND "assigned_to_user_id" IS NULL`,
-    [c.conversationId, ahora],
+    [c.conversationId, ahora, motivo],
   );
   c.awaitingHumanSince = ahora;
+  c.awaitingHumanReason = motivo;
   efectos.conversacion(c, 'status');
+}
+
+/**
+ * Con la asignación automática prendida (8b): el cliente o el chofer
+ * escribió (texto o adjunto), no la atiende el asistente y nadie la tiene
+ * asignada → queda esperando a una persona (desde ahora, si no esperaba ya,
+ * con motivo `auto_assign`) y el reparto se entera por el aviso de la
+ * conversación. Apagada, nada cambia.
+ */
+export async function esperarPersonaParaAsignar(
+  manager: EntityManager,
+  c: Conversation,
+  efectos: Efectos,
+  ahora: Date,
+): Promise<void> {
+  if (c.assignedToUserId || c.awaitingHumanSince) return;
+  if (!(await asignacionPrendidaParaEscribir(manager, c.distributorId))) {
+    return;
+  }
+  await pedirUnaPersona(manager, c, efectos, ahora, 'auto_assign');
+}
+
+/**
+ * Si la asignación automática está prendida, leído con `FOR SHARE` en la
+ * transacción del mensaje: el `PUT` que la apaga bloquea la fila de ajustes
+ * (`FOR UPDATE`), así que o espera a que termine este mensaje (y su limpieza
+ * borra la marca) o este mensaje ve el apagado y no marca. Sin fila, apagada.
+ */
+export async function asignacionPrendidaParaEscribir(
+  manager: EntityManager,
+  distributorId: string,
+): Promise<boolean> {
+  const [fila]: Array<{ auto_assign_enabled: boolean }> = await manager.query(
+    `SELECT "auto_assign_enabled" FROM "chat_company_settings"
+      WHERE "distributor_id" = $1 FOR SHARE`,
+    [distributorId],
+  );
+  return fila?.auto_assign_enabled === true;
 }
 
 /** Con quién y de qué es la conversación que se abre o se sigue. */
@@ -578,13 +636,24 @@ export class BandejaService {
       if (opciones.pedirPersona) {
         await pedirUnaPersona(manager, r.conversation, efectos, ahora);
       }
-      await this.responderAutomaticamente(
+      const delAsistente = await this.responderAutomaticamente(
         manager,
         r.conversation,
         r.message,
         efectos,
         ahora,
       );
+      if (!delAsistente) {
+        await esperarPersonaParaAsignar(
+          manager,
+          r.conversation,
+          efectos,
+          ahora,
+        );
+      }
+    } else {
+      // El chofer (C2): no hay asistente.
+      await esperarPersonaParaAsignar(manager, r.conversation, efectos, ahora);
     }
     return r;
   }
@@ -647,6 +716,7 @@ export class BandejaService {
    * si el asistente con IA se encarga de este mensaje (corre después del
    * commit y reemplaza a las fijas); si no, las fijas de siempre (fuera de
    * horario, aviso de recibido). La conversación está bloqueada por el envío.
+   * Dice si se encarga el asistente.
    */
   private async responderAutomaticamente(
     manager: EntityManager,
@@ -654,9 +724,10 @@ export class BandejaService {
     m: Message,
     efectos: Efectos,
     ahora: Date,
-  ): Promise<void> {
-    if (await this.asistente.seEncarga(manager, c, m, ahora)) return;
+  ): Promise<boolean> {
+    if (await this.asistente.seEncarga(manager, c, m, ahora)) return true;
     await this.fijas.deLaEmpresa(manager, c, efectos, ahora);
+    return false;
   }
 
   /** El mensaje de ese autor con ese `clientMessageId` en alguna conversación del mismo canal de la empresa. */

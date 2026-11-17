@@ -207,6 +207,7 @@ describe('BandejaPresenter: lo que ve cada punta', () => {
       displayName: 'Florchi Gas',
     });
     expect(c).not.toHaveProperty('assignedTo');
+    expect(c).not.toHaveProperty('assignedAutomatically');
     expect(c).not.toHaveProperty('customer');
     expect(c).not.toHaveProperty('firstResponseBusinessMinutes');
     const m = await p.mensaje(mensaje(), {
@@ -324,9 +325,18 @@ describe('BandejaPresenter: lo que ve cada punta', () => {
     });
     expect(c.customer).toEqual({ id: 'cli-1', displayName: 'Ana Pérez' });
     expect(c.assignedTo).toEqual({ userId: 'adm-1', fullName: 'Lucía Gómez' });
+    expect(c.assignedAutomatically).toBe(false);
     expect(c.firstResponseBusinessMinutes).toBe(5);
     expect(c.unreadCount).toBe(2);
     expect(c.lastReadSeq).toBe(1);
+  });
+
+  it('el personal ve si la asignó la asignación automática (8b)', async () => {
+    const c = await presentador().conversacion(
+      conversacion({ assignedAutomatically: true }),
+      { party: Party.COMPANY, userId: 'adm-1' },
+    );
+    expect(c.assignedAutomatically).toBe(true);
   });
 
   it('respuesta con cita y edición: lo que cita y la marca; el autor puede editar en los 15 minutos', async () => {

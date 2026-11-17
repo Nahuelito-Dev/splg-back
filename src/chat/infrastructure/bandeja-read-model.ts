@@ -2,7 +2,7 @@ import type { Attachment } from '../../attachment/entities/attachment.entity';
 import { adjuntosDeLosMensajes } from './adjuntos-de-los-mensajes';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, In } from 'typeorm';
+import { DataSource, type EntityManager, In } from 'typeorm';
 import { idCortoDePedido } from '../../common/events/aviso-al-admin';
 import { ConversationRating } from '../entities/conversation-rating.entity';
 import { Message } from '../entities/message.entity';
@@ -498,8 +498,14 @@ export class BandejaReadModel {
    * de personal vigente: lo que hace falta para saber quién atiende un canal.
    * Sólo de esa empresa.
    */
+  /**
+   * El personal vigente de la empresa. Dentro de una transacción (el reparto
+   * de la asignación automática, 8b) se pasa su `manager`: así no pide una
+   * segunda conexión del pool mientras tiene el cerrojo.
+   */
   async personalDeLaEmpresa(
     distributorId: string,
+    consulta: Pick<EntityManager, 'query'> = this.dataSource,
   ): Promise<PersonaDelPersonal[]> {
     const filas: Array<{
       user_id: string;
@@ -507,7 +513,7 @@ export class BandejaReadModel {
       photo_key: string | null;
       is_system: boolean;
       permissions: string[] | null;
-    }> = await this.dataSource.query(
+    }> = await consulta.query(
       `SELECT u."user_id", u."full_name", u."photo_key", sr."is_system", sr."permissions"
          FROM "admin" a
          JOIN "user" u ON u."user_id" = a."user_id"

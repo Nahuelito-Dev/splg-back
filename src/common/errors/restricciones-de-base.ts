@@ -708,6 +708,18 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'Sólo se ponen etiquetas vigentes en conversaciones de la bandeja',
   CHK_chat_company_settings_inactividad:
     'El cierre por inactividad va de 30 minutos a 7 días y el aviso, de 5 minutos a 24 horas antes del cierre',
+  // Asignación automática de la bandeja (8b).
+  CHK_chat_company_settings_asignacion:
+    'El tope de conversaciones abiertas por persona va de 1 a 50',
+  CHK_chat_agent_settings_estado: 'El estado es «en línea» o «ausente»',
+  CHK_chat_agent_settings_tope:
+    'El tope propio de conversaciones abiertas va de 1 a 50',
+  CHK_conversation_asignada_sola:
+    'Sólo una conversación de la bandeja asignada a alguien puede figurar como asignada automáticamente',
+  CHK_conversation_motivo_de_espera:
+    'Una conversación que espera a una persona lleva el motivo (derivada o por la asignación automática), y una que no espera, ninguno',
+  UQ_admin_id_distribuidora:
+    'Esa persona ya es del personal de la distribuidora',
 };
 
 /** Las claves foráneas compuestas (id, distribuidora) se nombran `FK_<tabla>_<columna>_distribuidora`. */

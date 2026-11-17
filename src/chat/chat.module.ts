@@ -43,6 +43,16 @@ import { TiempoEsperadoService } from './application/tiempo-esperado.service';
 import { CierrePorInactividad } from './application/cierre-por-inactividad';
 import { CierrePorInactividadCron } from './application/cierre-por-inactividad.cron';
 import { CompanyChatLabelsController } from './presentation/bandeja/company-chat-labels.controller';
+import { ChatAgentSettings } from './entities/chat-agent-settings.entity';
+import { AgentesDeLaBandeja } from './infrastructure/agentes-de-la-bandeja';
+import { PresenciaDeLaBandeja } from './infrastructure/presencia-de-la-bandeja';
+import { EquipoDeLaBandejaService } from './application/equipo-de-la-bandeja.service';
+import { AsignacionAutomaticaService } from './application/asignacion-automatica.service';
+import { AsignacionAutomaticaListener } from './application/asignacion-automatica.listener';
+import { AsignacionAutomaticaCron } from './application/asignacion-automatica.cron';
+import { EstadoDelEquipoService } from './application/estado-del-equipo.service';
+import { MyChatStatusController } from './presentation/bandeja/my-chat-status.controller';
+import { CompanyChatAgentsController } from './presentation/bandeja/company-chat-agents.controller';
 import { MyExpectedReplyController } from './presentation/bandeja/my-expected-reply.controller';
 import { MessageEdit } from './entities/message-edit.entity';
 import { MessageMention } from './entities/message-mention.entity';
@@ -122,6 +132,7 @@ import {
       ChatCompanySettings,
       ConversationLabel,
       ConversationLabelLink,
+      ChatAgentSettings,
     ]),
     GatewaysModule,
     EmailModule,
@@ -143,6 +154,9 @@ import {
     CompanyInboxController,
     CompanyChatConfigController,
     CompanyChatLabelsController,
+    // Asignación automática (8b): el estado propio y el equipo.
+    MyChatStatusController,
+    CompanyChatAgentsController,
     // Antes que `MyConversationsController`: `me/conversations/:id` no tiene
     // que quedarse con `me/conversations/expected-reply`.
     MyExpectedReplyController,
@@ -194,6 +208,14 @@ import {
     TiempoEsperadoService,
     CierrePorInactividad,
     CierrePorInactividadCron,
+    // Asignación automática (8b).
+    PresenciaDeLaBandeja,
+    AgentesDeLaBandeja,
+    EquipoDeLaBandejaService,
+    AsignacionAutomaticaService,
+    EstadoDelEquipoService,
+    AsignacionAutomaticaListener,
+    AsignacionAutomaticaCron,
     BandejaGestionService,
     BandejaEquipoService,
     BandejaNotasService,

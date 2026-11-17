@@ -239,16 +239,38 @@ export class BandejaGestionService {
           c.channel as CanalDeLaBandeja,
         );
       }
-      if (c.assignedToUserId === userId) return c;
-      c.assignedToUserId = userId;
-      // Alguien la tomó: deja de esperar a una persona (el asistente con IA la derivó).
-      if (userId !== null) c.awaitingHumanSince = null;
-      const guardada = await manager.getRepository(Conversation).save(c);
-      efectos.conversacion(guardada, 'assigned');
-      return guardada;
+      return this.asignarDentro(manager, c, userId, efectos);
     });
     this.eventos.publicar(efectos);
     return c;
+  }
+
+  /**
+   * El paso común de la asignación a mano y la automática (8b), dentro de la
+   * transacción de quien llama, con la conversación abierta, bloqueada y la
+   * persona ya validada: queda asignada (o en la cola), deja de esperar a una
+   * persona y sale el mismo aviso (`assigned`). La automática queda marcada
+   * (`assignedAutomatically`); una a mano o devolverla a la cola la desmarca.
+   */
+  async asignarDentro(
+    manager: EntityManager,
+    c: Conversation,
+    userId: string | null,
+    efectos: Efectos,
+    automatica = false,
+  ): Promise<Conversation> {
+    if (c.assignedToUserId === userId) return c;
+    const anterior = c.assignedToUserId;
+    c.assignedToUserId = userId;
+    c.assignedAutomatically = automatica && userId !== null;
+    // Alguien la tomó: deja de esperar a una persona (y su motivo).
+    if (userId !== null) {
+      c.awaitingHumanSince = null;
+      c.awaitingHumanReason = null;
+    }
+    const guardada = await manager.getRepository(Conversation).save(c);
+    efectos.conversacion(guardada, 'assigned', anterior);
+    return guardada;
   }
 
   /**

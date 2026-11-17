@@ -1,6 +1,8 @@
+import type { EventEmitter2 } from '@nestjs/event-emitter';
 import type { DataSource, EntityManager } from 'typeorm';
 import type { AccesoDeLaEmpresa } from '../../platform/access/acceso-de-la-empresa.service';
 import { ChatCompanySettings } from '../entities/chat-company-settings.entity';
+import { Conversation } from '../entities/conversation.entity';
 import { UpdateChatSettingsDto } from '../presentation/dto/bandeja-input.dto';
 import { nombreVisibleDeLaEmpresa } from '../infrastructure/nombre-visible-de-la-empresa';
 import {
@@ -380,5 +382,108 @@ describe('CompanyChatSettingsService: desde cuándo rigen los plazos de inactivi
     const { servicio, acceso } = armar([], true);
     expect(await servicio.chatDisponible(D)).toBe(true);
     expect(acceso.habilitado).toHaveBeenCalledWith(D, 'chat');
+  });
+});
+
+describe('CompanyChatSettingsService: la asignación automática (8b)', () => {
+  const conEventos = (guardado: Partial<ChatCompanySettings> = {}) => {
+    const base = armar([], false, guardado);
+    const events = { emit: jest.fn() };
+    const servicio = new CompanyChatSettingsService(
+      base.dataSource as unknown as DataSource,
+      { habilitado: jest.fn() } as unknown as AccesoDeLaEmpresa,
+      events as unknown as EventEmitter2,
+    );
+    return { ...base, servicio, events };
+  };
+
+  it('por omisión: apagada y con tope 5', () => {
+    expect(ajustesDeLaBandejaPorDefecto(D)).toMatchObject({
+      autoAssignEnabled: false,
+      autoAssignMaxOpen: 5,
+    });
+  });
+
+  it('prenderla o cambiar el tope con la función prendida avisa para repartir la cola', async () => {
+    const prender = conEventos();
+    const a = await prender.servicio.actualizar(D, 'adm-1', {
+      autoAssignEnabled: true,
+      autoAssignMaxOpen: 8,
+    });
+    expect(a).toMatchObject({ autoAssignEnabled: true, autoAssignMaxOpen: 8 });
+    expect(prender.events.emit).toHaveBeenCalledWith(
+      'chat.asignacion.ajustes',
+      { distributorId: D },
+    );
+    const subir = conEventos({ autoAssignEnabled: true });
+    await subir.servicio.actualizar(D, 'adm-1', { autoAssignMaxOpen: 9 });
+    expect(subir.events.emit).toHaveBeenCalledTimes(1);
+  });
+
+  it('apagarla, el tope con la función apagada u otro ajuste no reparten', async () => {
+    for (const [guardado, dto] of [
+      [{ autoAssignEnabled: true }, { autoAssignEnabled: false }],
+      [{}, { autoAssignMaxOpen: 9 }],
+      [{ autoAssignEnabled: true }, { ackEnabled: true }],
+    ] as Array<[Partial<ChatCompanySettings>, UpdateChatSettingsDto]>) {
+      const m = conEventos(guardado);
+      await m.servicio.actualizar(D, 'adm-1', dto);
+      expect(m.events.emit).not.toHaveBeenCalled();
+    }
+  });
+});
+
+describe('CompanyChatSettingsService: al apagar la asignación automática (decisión 17/11)', () => {
+  it('en la misma transacción, las que esperaban por ella y siguen sin asignar dejan de esperar, y la bandeja se entera después del commit', async () => {
+    const base = armar([], false, { autoAssignEnabled: true });
+    const limpia = Object.assign(new Conversation(), {
+      conversationId: 'c1',
+      awaitingHumanSince: null,
+    });
+    const consultas: string[] = [];
+    base.manager.query.mockImplementation((sql: string) => {
+      consultas.push(sql);
+      return Promise.resolve(
+        (sql.includes('RETURNING')
+          ? [[{ conversation_id: 'c1' }], 1]
+          : []) as unknown as Array<{ name: string | null }>,
+      );
+    });
+    const find = jest.fn(() => Promise.resolve([limpia]));
+    const repoDeAjustes = base.manager.getRepository();
+    base.manager.getRepository.mockImplementation(((e: unknown) =>
+      e === Conversation ? { find } : repoDeAjustes) as never);
+    const events = { emit: jest.fn() };
+    const servicio = new CompanyChatSettingsService(
+      base.dataSource as unknown as DataSource,
+      { habilitado: jest.fn() } as unknown as AccesoDeLaEmpresa,
+      events as unknown as EventEmitter2,
+    );
+    await servicio.actualizar(D, 'adm-1', { autoAssignEnabled: false });
+    const limpieza = consultas.find((q) => q.includes('RETURNING'));
+    expect(limpieza).toMatch(/"awaiting_human_reason" = 'auto_assign'/);
+    expect(limpieza).toMatch(/"assigned_to_user_id" IS NULL/);
+    expect(limpieza).toMatch(/SET "awaiting_human_since" = NULL/);
+    expect(base.dataSource.transaction).toHaveBeenCalledTimes(1);
+    expect(events.emit).toHaveBeenCalledWith('chat.conversacion.cambio', {
+      conversation: limpia,
+      change: 'status',
+    });
+  });
+
+  it('si no se apaga (sigue prendida, ya estaba apagada u otro ajuste), no limpia nada', async () => {
+    for (const [guardado, dto] of [
+      [{ autoAssignEnabled: true }, { autoAssignMaxOpen: 3 }],
+      [{ autoAssignEnabled: false }, { autoAssignEnabled: false }],
+      [{}, { ackEnabled: true }],
+    ] as Array<[Partial<ChatCompanySettings>, UpdateChatSettingsDto]>) {
+      const m = armar([], false, guardado);
+      await m.servicio.actualizar(D, 'adm-1', dto);
+      expect(
+        m.manager.query.mock.calls.some(([q]) =>
+          String(q).includes('RETURNING'),
+        ),
+      ).toBe(false);
+    }
   });
 });

@@ -51,6 +51,9 @@ export const CLAVE_DEL_PADRE: Readonly<Record<string, string>> = {
   claims: 'claim_id',
   assistant_knowledge_base: 'knowledge_base_id',
   assistant_faq: 'faq_id',
+  // El perfil de administrador se identifica por la persona (`user_id` es
+  // único): la bandeja del chat (8b) exige que sea del personal de la empresa.
+  admin: 'user_id',
 };
 
 export const CLAVES_CRUZADAS: readonly ClaveForaneaDeDistribuidora[] = [
@@ -185,6 +188,8 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     // Etiquetas de la bandeja (7c)
     ['conversation_label_link', 'conversation_id', 'conversation'],
     ['conversation_label_link', 'label_id', 'conversation_label'],
+    // Asignación automática de la bandeja (8b): la persona es del personal de la empresa
+    ['chat_agent_settings', 'user_id', 'admin'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>

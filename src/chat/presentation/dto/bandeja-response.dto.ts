@@ -258,6 +258,11 @@ export class InboxConversationDto {
   })
   assignedTo?: InboxAssigneeDto | null;
   @ApiPropertyOptional({
+    description:
+      'Sólo para el personal: la asignó la asignación automática (8b) y nadie la cambió desde entonces; una asignación a mano o devolverla a la cola la vuelve a `false`',
+  })
+  assignedAutomatically?: boolean;
+  @ApiPropertyOptional({
     type: String,
     format: 'uuid',
     nullable: true,
@@ -277,7 +282,7 @@ export class InboxConversationDto {
     format: 'date-time',
     nullable: true,
     description:
-      'Sólo para el personal: desde cuándo espera a una persona porque el asistente con IA se la pasó (C3); `null` si no espera. Se limpia cuando alguien la toma.',
+      'Sólo para el personal: desde cuándo espera a una persona (el asistente con IA se la pasó, el cliente pidió una persona o, con la asignación automática prendida, el cliente o el chofer escribió y nadie la atiende); `null` si no espera. Se limpia cuando alguien la toma.',
   })
   awaitingHumanSince?: string | null;
   @ApiPropertyOptional({
@@ -672,6 +677,18 @@ export class ChatSettingsResponseDto {
   })
   inactivityEnabledAt!: string | null;
   @ApiProperty({
+    description:
+      'Asignación automática (8b): la conversación que queda esperando a una persona se le da sola a alguien del equipo en línea con lugar (apagada por omisión)',
+  })
+  autoAssignEnabled!: boolean;
+  @ApiProperty({
+    minimum: 1,
+    maximum: 50,
+    description:
+      'Tope de conversaciones abiertas por persona para la asignación automática (5 por omisión); cada persona puede tener el suyo',
+  })
+  autoAssignMaxOpen!: number;
+  @ApiProperty({
     description: 'Si la empresa atiende ahora (horario y días sin atención)',
   })
   openNow!: boolean;
@@ -742,4 +759,70 @@ export class CompanyTemplateResponseDto {
 export class CompanyTemplateListResponseDto {
   @ApiProperty({ type: [CompanyTemplateResponseDto] })
   items!: CompanyTemplateResponseDto[];
+}
+
+const ESTADOS_DEL_AGENTE = ['online', 'away'];
+
+/** El estado propio en la bandeja (8b). */
+export class ChatStatusResponseDto {
+  @ApiProperty({
+    enum: ESTADOS_DEL_AGENTE,
+    description:
+      'Lo que eligió la persona: `online` (recibe conversaciones) o `away`. Sin elegir nunca, `away`.',
+  })
+  status!: 'online' | 'away';
+  @ApiProperty({
+    description:
+      'Tiene el panel abierto ahora (alguna pestaña conectada al tiempo real)',
+  })
+  connected!: boolean;
+  @ApiProperty({
+    description:
+      'Puede recibir conversaciones ahora: `online`, conectada al panel (o desconectada hace menos de 2 minutos) y dentro del horario de atención de la empresa',
+  })
+  available!: boolean;
+  @ApiProperty({
+    minimum: 1,
+    maximum: 50,
+    description:
+      'El tope que le rige: el propio o, si no tiene, el de la empresa',
+  })
+  maxOpen!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    minimum: 1,
+    maximum: 50,
+    description: 'El tope propio; `null`: el de la empresa',
+  })
+  maxOpenOverride!: number | null;
+  @ApiProperty({
+    description:
+      'Conversaciones abiertas asignadas a la persona, de los dos canales (a mano o solas)',
+  })
+  openAssigned!: number;
+  @ApiProperty({
+    enum: CANALES,
+    isArray: true,
+    description: 'Los canales que atiende (por los permisos de su rol)',
+  })
+  channels!: Array<'staff_customer' | 'staff_driver'>;
+}
+
+/** Una persona del equipo en el tablero de la bandeja (8b). Sin email ni teléfono. */
+export class ChatAgentDto extends ChatStatusResponseDto {
+  @ApiProperty({ format: 'uuid' }) userId!: string;
+  @ApiProperty({ example: 'Ana Pérez' }) name!: string;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'La última vez que recibió una conversación por asignación automática; `null` si nunca',
+  })
+  lastAssignedAt!: string | null;
+}
+
+export class ChatAgentListResponseDto {
+  @ApiProperty({ type: [ChatAgentDto] }) items!: ChatAgentDto[];
 }

@@ -361,6 +361,7 @@ export class BandejaPresenter {
             fullName: ctx.nombres.get(c.assignedToUserId) ?? 'Sin nombre',
           }
         : null;
+      dto.assignedAutomatically = c.assignedAutomatically === true;
       dto.linkedClaimId = c.linkedClaimId;
       dto.firstResponseAt = c.firstResponseAt?.toISOString() ?? null;
       dto.awaitingHumanSince = c.awaitingHumanSince?.toISOString() ?? null;

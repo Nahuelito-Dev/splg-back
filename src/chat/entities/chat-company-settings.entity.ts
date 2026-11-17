@@ -59,6 +59,10 @@ import type { FranjaDeAtencion } from '../domain/horario';
   'CHK_chat_company_settings_inactividad',
   `("inactivity_close_minutes" IS NULL OR "inactivity_close_minutes" BETWEEN 30 AND 10080) AND ("inactivity_warning_minutes" IS NULL OR ("inactivity_close_minutes" IS NOT NULL AND "inactivity_warning_minutes" BETWEEN 5 AND 1440 AND "inactivity_warning_minutes" < "inactivity_close_minutes")) AND ("inactivity_close_minutes" IS NULL) = ("inactivity_enabled_at" IS NULL)`,
 )
+@Check(
+  'CHK_chat_company_settings_asignacion',
+  `"auto_assign_max_open" BETWEEN 1 AND 50`,
+)
 export class ChatCompanySettings {
   @PrimaryColumn({
     name: 'distributor_id',
@@ -227,6 +231,21 @@ export class ChatCompanySettings {
     nullable: true,
   })
   inactivityEnabledAt!: Date | null;
+
+  /**
+   * Asignación automática (tanda 8b): la conversación que queda esperando a
+   * una persona se le da sola a alguien del equipo en línea con lugar.
+   * Apagada por omisión.
+   */
+  @Column({ name: 'auto_assign_enabled', type: 'boolean', default: false })
+  autoAssignEnabled!: boolean;
+
+  /**
+   * Tope de conversaciones abiertas por persona para la asignación
+   * automática (1 a 50); cada persona puede tener el suyo.
+   */
+  @Column({ name: 'auto_assign_max_open', type: 'smallint', default: 5 })
+  autoAssignMaxOpen!: number;
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
