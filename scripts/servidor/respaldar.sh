@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Respaldo diario de la base de producción de SPLG. Guarda los últimos 14 y avisa por Telegram
+# Respaldo diario de la base de SPLG develop (Orix). Guarda los últimos 14 y avisa por Telegram
 # si falla (cuando ~/splg/telegram.conf existe). Lo corre el crontab de labs-wagners.
 set -uo pipefail
 DIR="$HOME/splg/respaldos"
@@ -13,5 +13,5 @@ if docker exec splg-bd pg_dump -U postgres -Fc "$DB" > "$ARCH" && [ -s "$ARCH" ]
 else
   rm -f "$ARCH"
   echo "$(date '+%F %T') FALLÓ" >> "$DIR/respaldos.log"
-  "$HOME/splg/avisar.sh" "🔴 SPLG producción: falló el respaldo diario de la base ($(date '+%d/%m %H:%M'))."
+  "$HOME/splg/avisar.sh" "🔴 SPLG develop: falló el respaldo diario de la base ($(date '+%d/%m %H:%M'))."
 fi
