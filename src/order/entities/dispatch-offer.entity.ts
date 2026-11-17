@@ -115,4 +115,12 @@ export class DispatchOffer {
 
   @CreateDateColumn({ type: 'timestamptz' })
   offeredAt!: Date;
+
+  /**
+   * Cuándo respondió el chofer (aceptó o rechazó). Nula mientras no responde,
+   * en las vencidas y retiradas (no hay respuesta) y en lo anterior a la
+   * columna, que no se puede reconstruir.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  respondedAt!: Date | null;
 }

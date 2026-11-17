@@ -47,6 +47,8 @@ import { DispatchOfferTypeormRepository } from './infrastructure/dispatch-offer.
 import { ConfirmPaymentUseCase } from './application/confirm-payment.use-case';
 import { OrderFraudHoldService } from './application/order-fraud-hold.service';
 import { OrderPaymentV2Controller } from './order-payment-v2.controller';
+import { DispatchMetricsController } from './dispatch-metrics.controller';
+import { DispatchMetricsService } from './application/dispatch-metrics.service';
 import { DeliveryCodeV2Controller } from './delivery-code-v2.controller';
 import { ReservationV2Controller } from './reservation-v2.controller';
 import { ConciliacionMercadoPagoService } from './application/conciliacion-mercadopago.service';
@@ -121,6 +123,7 @@ import { VencimientoSinChoferService } from './application/vencimiento-sin-chofe
     ReservationV2Controller,
     DeliveryCodeV2Controller,
     OrderPaymentV2Controller,
+    DispatchMetricsController,
     CustomerPurchaseStatsController,
   ],
   providers: [
@@ -132,6 +135,7 @@ import { VencimientoSinChoferService } from './application/vencimiento-sin-chofe
     OrderTransferReceiptService,
     DispatchService,
     VencimientoSinChoferService,
+    DispatchMetricsService,
     OrderPricingService,
     CreateOrderUseCase,
     QuoteOrderUseCase,
