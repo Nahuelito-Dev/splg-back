@@ -1,6 +1,7 @@
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { pedirAvisoAlAdmin } from '../common/events/aviso-al-admin';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { FleetTaskBoardNotifier } from './fleet-task-board.notifier';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cron } from '@nestjs/schedule';
 import { Repository } from 'typeorm';
@@ -77,6 +78,8 @@ export class FleetAlertsCron {
     private readonly employees: EmployeeService,
     private readonly documents: EmployeeDocumentsService,
     private readonly events: EventEmitter2,
+    // El tablero del panel (`fleet:task`): las vencidas se marcan `isOverdue`.
+    @Optional() private readonly tablero?: FleetTaskBoardNotifier,
   ) {}
 
   @Cron('0 * * * *', { timeZone: ZONA_ARGENTINA }) // cada hora en punto; cada distribuidora avisa a su hora (Argentina)
@@ -163,6 +166,17 @@ export class FleetAlertsCron {
       const faltantes: FaltanteDeChofer[] =
         await this.documents.faltantesBloqueantesDeChoferes(distributorId);
       this.avisarEnLaBandeja(distributorId, vencimientos, faltantes);
+      await this.tablero?.avisarVarias(
+        distributorId,
+        vencimientos
+          .filter(
+            (t) =>
+              calcularEstadoDeVencimiento(t.dueAt, t.plan.leadTimeDays) ===
+              ExpirationStatus.EXPIRED,
+          )
+          .map((t) => t.taskId),
+        'overdue',
+      );
 
       // Al correo, sólo lo que todavía no se avisó por mail.
       const tareas = vencimientos.filter((t) => t.alertedAt === null);
@@ -196,9 +210,11 @@ export class FleetAlertsCron {
         // leídos al principio. (`alertedAt` está fuera de la auditoría de datos
         // a propósito: es una marca técnica del aviso.)
         const ahora = new Date();
+        // `updated_at` queda como estaba: la marca del aviso no es un cambio de la
+        // tarea y no tiene que invalidar la precondición del tablero (`If-Match`).
         await this.tasks.update(
           tareas.map((t) => t.taskId),
-          { alertedAt: ahora },
+          { alertedAt: ahora, updatedAt: () => '"updated_at"' },
         );
       }
     } catch (error) {

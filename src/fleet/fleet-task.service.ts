@@ -12,11 +12,7 @@ import { Brackets, EntityManager, Repository } from 'typeorm';
 import { CashDocumentPaymentService } from '../cash/application/cash-document-payment.service';
 import { CashReferenceType, CashSystemCode } from '../cash/domain/cash.enums';
 import { instanteValido } from '../cash/domain/instante-del-pago';
-import {
-  diaArgentino,
-  inicioDelDiaArgentino,
-  minutosDelDiaArgentino,
-} from '../common/utils/dias-argentina';
+import { diaArgentino } from '../common/utils/dias-argentina';
 import {
   MaintenanceTask,
   MaintenanceTaskStatus,
@@ -28,7 +24,10 @@ import {
   MaintenanceTrigger,
 } from './entities/maintenance-plan.entity';
 import { JobPositionCategory } from '../employee/entities/job-position.entity';
-import { CreateFleetTaskDto } from './dto/create-task.dto';
+import {
+  CreateFleetTaskDto,
+  CreateFleetTaskV2Dto,
+} from './dto/create-task.dto';
 import { UpdateFleetTaskDto } from './dto/update-task.dto';
 import { CloseFleetTaskDto } from './dto/close-task.dto';
 import { PayFleetTaskDto, PagoAlCerrar } from './dto/pay-task.dto';
@@ -41,6 +40,7 @@ import { EmployeeConPuesto } from '../employee/employee.mapper';
 import { FleetDispatchLockService } from './fleet-dispatch-lock.service';
 import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
+import { withTransactionRetry } from '../common/utils/with-transaction-retry';
 import {
   describirVencimiento,
   estaInhabilitado,
@@ -51,7 +51,16 @@ import { calcularEstadoDeVencimiento } from './domain/expiration-status';
 import { validarDetalle } from './domain/document-details';
 import { PlanningCaseCloser } from './planner/planning-case-closer.service';
 import type { MaintenanceWindowProposal } from './entities/maintenance-window-proposal.entity';
-import { CODIGOS_DE_ERROR, conCodigo } from '../common/errors/con-codigo';
+import {
+  inicioDelDiaOFalla,
+  resolverTurno,
+  turnoPedido,
+} from './fleet-task-turno';
+import {
+  CambioDeTarea,
+  FleetTaskBoardNotifier,
+} from './fleet-task-board.notifier';
+import { assertSinCambiosAjenos } from './fleet-task-board.errors';
 import { valorLegible } from '../common/validation/etiquetas';
 import { Attachment } from '../attachment/entities/attachment.entity';
 import { MaintenanceTaskAttachment } from './entities/maintenance-task-attachment.entity';
@@ -64,51 +73,6 @@ import {
 function fechaDeCalendario(valor: string | null | undefined) {
   if (valor === null) return null;
   return valor ? normalizarFechaCalendario(new Date(valor)) : undefined;
-}
-
-/** Lo que pidió el cuerpo para `scheduledAt`: sólo un día, un instante con hora, o borrarlo. */
-type TurnoPedido =
-  | { tipo: 'borrar' }
-  | { tipo: 'dia'; dia: string }
-  | { tipo: 'instante'; inicio: Date };
-
-const SOLO_FECHA = /^\d{4}-\d{2}-\d{2}$/;
-
-/**
- * `undefined` no se toca. `YYYY-MM-DD` o un instante a medianoche argentina
- * (lo que manda un selector de fecha) es «sólo fecha»; cualquier otro instante
- * trae hora propia.
- */
-function turnoPedido(
-  valor: string | null | undefined,
-): TurnoPedido | undefined {
-  if (valor === undefined) return undefined;
-  if (!valor) return { tipo: 'borrar' };
-  if (SOLO_FECHA.test(valor)) return { tipo: 'dia', dia: valor };
-  const inicio = new Date(valor);
-  const aMedianoche =
-    minutosDelDiaArgentino(inicio) === 0 &&
-    inicio.getUTCSeconds() === 0 &&
-    inicio.getUTCMilliseconds() === 0;
-  return aMedianoche
-    ? { tipo: 'dia', dia: diaArgentino(inicio) }
-    : { tipo: 'instante', inicio };
-}
-
-/** ¿El turno pedido es el que la tarea ya tiene? Un día se compara como lo muestra el panel: 00:00Z exacto = día UTC, otro instante = día argentino. */
-function mismoTurno(pedido: TurnoPedido, guardado: Date | null): boolean {
-  if (pedido.tipo === 'borrar') return guardado === null;
-  if (guardado === null) return false;
-  if (pedido.tipo === 'instante') {
-    return guardado.getTime() === pedido.inicio.getTime();
-  }
-  // Mismo criterio que el panel: 00:00Z exacto es una fila vieja (día de calendario UTC); el resto, día argentino.
-  const filaVieja = guardado.getTime() % 86_400_000 === 0;
-  return (
-    (filaVieja
-      ? guardado.toISOString().slice(0, 10)
-      : diaArgentino(guardado)) === pedido.dia
-  );
 }
 
 /** Las tareas del plan de seguro se pagan por las cuotas de la póliza, nunca por acá. */
@@ -150,15 +114,30 @@ export class FleetTaskService {
     private readonly pagos: CashDocumentPaymentService,
     // El planificador de taller (CU-105): una tarea que se cierra o cancela por fuera cierra su caso.
     @Optional() private readonly casos?: PlanningCaseCloser,
+    // El tablero del panel (`fleet:task`): se avisa después de confirmar.
+    @Optional() private readonly tablero?: FleetTaskBoardNotifier,
   ) {}
 
+  /** Avisa al tablero del panel; nunca rompe la operación que ya se confirmó. */
+  private async avisarAlTablero(
+    distributorId: string,
+    taskId: string,
+    cambio: CambioDeTarea,
+  ): Promise<void> {
+    await this.tablero?.avisar(distributorId, taskId, cambio);
+  }
+
   async create(
-    dto: CreateFleetTaskDto,
+    dto: CreateFleetTaskV2Dto,
     distributorId: string,
   ): Promise<MaintenanceTask> {
     const plan = await this.findPlanOrThrow(dto.planId, distributorId);
     const empleado = await this.assertSujetoCoherente(plan, dto, distributorId);
     this.assertDatosDelDocumento(plan, dto, empleado);
+    if (dto.assigneeEmployeeId) {
+      // 404 si es de otra distribuidora; 409 si está egresado.
+      await this.employees.findActivo(dto.assigneeEmployeeId, distributorId);
+    }
 
     const dueAt = dto.dueAt
       ? normalizarFechaCalendario(new Date(dto.dueAt))
@@ -173,7 +152,7 @@ export class FleetTaskService {
         ? null
         : pedido.tipo === 'instante'
           ? pedido.inicio
-          : this.inicioDelDiaOFalla(pedido.dia);
+          : inicioDelDiaOFalla(pedido.dia);
 
     const task = this.tasks.create({
       planId: plan.planId,
@@ -181,6 +160,7 @@ export class FleetTaskService {
       carId: dto.carId ?? null,
       deliveryId: dto.deliveryId ?? null,
       employeeId: empleado?.employeeId ?? null,
+      assigneeEmployeeId: dto.assigneeEmployeeId ?? null,
       status: MaintenanceTaskStatus.SCHEDULED,
       // Fecha de calendario: si el ISO trae hora (datepicker con hora local,
       // etc.), se normaliza a medianoche UTC para no correr el vencimiento a
@@ -201,13 +181,15 @@ export class FleetTaskService {
       details: this.detalleValidado(plan, dto),
     });
 
+    let saved: MaintenanceTask;
     try {
-      const saved = await this.tasks.save(task);
+      saved = await this.tasks.save(task);
       saved.plan = plan;
-      return saved;
     } catch (error) {
       return traducirErrorDeBase(error, this.logger, 'tareas de flota');
     }
+    await this.avisarAlTablero(distributorId, saved.taskId, 'created');
+    return saved;
   }
 
   async findAll(
@@ -272,6 +254,11 @@ export class FleetTaskService {
     dto: UpdateFleetTaskDto,
     distributorId: string,
     userId: string | null = null,
+    /** Lo propio del tablero (v2): el responsable y la precondición de la edición. */
+    tablero: {
+      assigneeEmployeeId?: string | null;
+      expectedUpdatedAt?: Date;
+    } = {},
   ): Promise<MaintenanceTask> {
     const dueAt = fechaDeCalendario(dto.dueAt);
     const validFrom = fechaDeCalendario(dto.validFrom);
@@ -280,83 +267,78 @@ export class FleetTaskService {
     // Con la fila bloqueada (como `close` y `cancel`): una edición concurrente no
     // reabre ni pisa una tarea que ya se cerró.
     try {
-      await this.tasks.manager.transaction(async (manager) => {
-        const task = await this.bloquear(manager, id, distributorId);
-        this.assertAbierta(task, true);
-        task.plan = await manager
-          .getRepository(MaintenancePlan)
-          .findOneOrFail({ where: { planId: task.planId } });
+      await withTransactionRetry(
+        () =>
+          this.tasks.manager.transaction(async (manager) => {
+            const task = await this.bloquear(manager, id, distributorId);
+            assertSinCambiosAjenos(task.updatedAt, tablero.expectedUpdatedAt);
+            this.assertAbierta(task, true);
+            task.plan = await manager
+              .getRepository(MaintenancePlan)
+              .findOneOrFail({ where: { planId: task.planId } });
 
-        this.assertVigenciaCoherente(
-          task.plan,
-          validFrom === undefined ? task.validFrom : validFrom,
-          dueAt === undefined ? task.dueAt : dueAt,
-        );
+            this.assertVigenciaCoherente(
+              task.plan,
+              validFrom === undefined ? task.validFrom : validFrom,
+              dueAt === undefined ? task.dueAt : dueAt,
+            );
 
-        // El turno agendado y la ventana confirmada del planificador (CU-105) son
-        // lo mismo: si el turno cambia de verdad, la ventana lo sigue (también el
-        // bloqueo del despacho) o se cancela si se borra. Un turno igual al guardado
-        // (el panel lo reenvía en cada edición) no toca nada.
-        let turno: Date | null | undefined;
-        if (pedido && !mismoTurno(pedido, task.scheduledAt)) {
-          const destino =
-            pedido.tipo === 'borrar'
-              ? null
-              : pedido.tipo === 'dia'
-                ? { dia: pedido.dia }
-                : { inicio: pedido.inicio };
-          const ventana = await this.casos?.reprogramarConfirmado(
-            manager,
-            id,
-            destino,
-            userId,
-          );
-          turno =
-            ventana ??
-            (pedido.tipo === 'borrar'
-              ? null
-              : pedido.tipo === 'instante'
-                ? pedido.inicio
-                : this.inicioDelDiaOFalla(pedido.dia));
-        }
+            // El turno agendado y la ventana confirmada del planificador (CU-105) son
+            // lo mismo: si el turno cambia de verdad, la ventana lo sigue (también el
+            // bloqueo del despacho) o se cancela si se borra. Un turno igual al guardado
+            // (el panel lo reenvía en cada edición) no toca nada.
+            const turno = await resolverTurno(
+              manager,
+              this.casos,
+              id,
+              pedido,
+              task.scheduledAt,
+              userId,
+            );
 
-        Object.assign(
-          task,
-          sinIndefinidos({
-            dueAt,
-            validFrom,
-            cost: dto.cost,
-            dueKm: dto.dueKm,
-            provider: dto.provider,
-            referenceNumber: dto.referenceNumber,
-            category: dto.category,
-            notes: dto.notes,
-            scheduledAt: turno,
-            details:
-              dto.details === undefined
-                ? undefined
-                : this.detalleValidado(task.plan, dto),
+            if (
+              tablero.assigneeEmployeeId &&
+              tablero.assigneeEmployeeId !== task.assigneeEmployeeId
+            ) {
+              // Sólo si cambia (reenviar el mismo no vuelve a validar ni a bloquear
+              // el legajo). 404 si es de otra distribuidora; 409 si está egresado.
+              // Orden de locks: tarea → legajo; el egreso toma el legajo y no toca
+              // tareas, así que no se cruzan (y la transacción reintenta un deadlock).
+              await this.employees.findActivo(
+                tablero.assigneeEmployeeId,
+                distributorId,
+                manager,
+              );
+            }
+
+            Object.assign(
+              task,
+              sinIndefinidos({
+                dueAt,
+                validFrom,
+                cost: dto.cost,
+                dueKm: dto.dueKm,
+                provider: dto.provider,
+                referenceNumber: dto.referenceNumber,
+                category: dto.category,
+                notes: dto.notes,
+                scheduledAt: turno,
+                assigneeEmployeeId: tablero.assigneeEmployeeId,
+                details:
+                  dto.details === undefined
+                    ? undefined
+                    : this.detalleValidado(task.plan, dto),
+              }),
+            );
+            await manager.getRepository(MaintenanceTask).save(task);
           }),
-        );
-        await manager.getRepository(MaintenanceTask).save(task);
-      });
+        { context: 'tareas de flota' },
+      );
     } catch (error) {
       return traducirErrorDeBase(error, this.logger, 'tareas de flota');
     }
+    await this.avisarAlTablero(distributorId, id, 'updated');
     return this.findOne(id, distributorId);
-  }
-
-  private inicioDelDiaOFalla(dia: string): Date {
-    const inicio = inicioDelDiaArgentino(dia);
-    if (!inicio) {
-      throw conCodigo(
-        BadRequestException,
-        400,
-        `scheduledAt: día inválido (${dia})`,
-        CODIGOS_DE_ERROR.SCHEDULED_DAY_INVALID,
-      );
-    }
-    return inicio;
   }
 
   /**
@@ -465,6 +447,7 @@ export class FleetTaskService {
       return traducirErrorDeBase(error, this.logger, 'tareas de flota');
     }
     await this.casos?.avisar(propuestasCerradas);
+    await this.avisarAlTablero(distributorId, id, 'closed');
     return this.findOne(id, distributorId);
   }
 
@@ -791,6 +774,7 @@ export class FleetTaskService {
       await manager.getRepository(MaintenanceTask).save(task);
     });
     await this.casos?.avisar(propuestasCerradas);
+    await this.avisarAlTablero(distributorId, id, 'cancelled');
     return this.findOne(id, distributorId);
   }
 

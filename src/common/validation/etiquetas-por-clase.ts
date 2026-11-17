@@ -20,6 +20,7 @@ function paraClases(
 
 export const ETIQUETAS_POR_CLASE: Readonly<Record<string, string>> = {
   ...paraClases(['CreateCarDto', 'UpdateCarDto'], { user_id: 'Chofer' }),
+  ...paraClases(['MoveFleetTaskDto'], { to: 'Columna de destino' }),
   ...paraClases(['CreateAdminDto', 'UpdateAdminDto'], {
     user_id: 'Usuario administrador',
   }),

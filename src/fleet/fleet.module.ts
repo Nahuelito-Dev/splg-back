@@ -27,6 +27,9 @@ import { DeliveryVehicleController } from './delivery-vehicle.controller';
 import { CarAssignmentsController } from './car-assignments.controller';
 import { FleetPlanService } from './fleet-plan.service';
 import { FleetTaskService } from './fleet-task.service';
+import { FleetTaskBoardService } from './fleet-task-board.service';
+import { FleetTaskBoardReader } from './fleet-task-board.reader';
+import { FleetTaskBoardNotifier } from './fleet-task-board.notifier';
 import { FleetDispatchLockService } from './fleet-dispatch-lock.service';
 import { FleetAttachmentService } from './fleet-attachment.service';
 import { FleetExpirationsService } from './fleet-expirations.service';
@@ -105,6 +108,9 @@ import { CarDocumentAttachmentOwnerResolver } from './car-document-attachment-ow
   providers: [
     FleetPlanService,
     FleetTaskService,
+    FleetTaskBoardReader,
+    FleetTaskBoardNotifier,
+    FleetTaskBoardService,
     FleetDispatchLockService,
     FleetAttachmentService,
     FleetExpirationsService,

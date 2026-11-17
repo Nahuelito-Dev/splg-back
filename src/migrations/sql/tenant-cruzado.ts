@@ -190,6 +190,8 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     ['conversation_label_link', 'label_id', 'conversation_label'],
     // Asignación automática de la bandeja (8b): la persona es del personal de la empresa
     ['chat_agent_settings', 'user_id', 'admin'],
+    // Responsable de la tarea de flota en el tablero
+    ['maintenance_task', 'assignee_employee_id', 'employee'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>

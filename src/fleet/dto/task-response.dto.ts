@@ -88,6 +88,20 @@ export class FleetTaskV2ResponseDto extends FleetTaskResponseDto {
       'Por qué no se paga por acá, cuando es por la naturaleza de la tarea (el seguro se paga por sus cuotas)',
   })
   notPayableReason!: string | null;
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description: 'Responsable de la tarea en el tablero',
+  })
+  assigneeEmployeeId!: string | null;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    description:
+      'Última modificación: la precondición para editar o mover (`expectedUpdatedAt` / `If-Match`)',
+  })
+  updatedAt!: Date;
 }
 
 export class FleetTaskV2PageDto {

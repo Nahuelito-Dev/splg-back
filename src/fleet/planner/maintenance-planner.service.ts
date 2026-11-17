@@ -4,8 +4,10 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { FleetTaskBoardNotifier } from '../fleet-task-board.notifier';
 import {
   DataSource,
   EntityManager,
@@ -185,6 +187,8 @@ export class MaintenancePlannerService {
     private readonly contexto: PlannerContextService,
     private readonly notifier: MaintenancePlannerNotifier,
     private readonly feed: VehicleUsageFeedService,
+    // El tablero del panel (`fleet:task`): la tarea programada por el planificador cambia de columna.
+    @Optional() private readonly tablero?: FleetTaskBoardNotifier,
   ) {}
 
   /** Los parámetros vigentes del planificador de la distribuidora. */
@@ -1406,6 +1410,7 @@ export class MaintenancePlannerService {
     }
     const caso = await this.caso(distributorId, caseId);
     await this.avisarConfirmacion(caso);
+    await this.tablero?.avisar(distributorId, caso.taskId, 'moved');
     return caso;
   }
 
@@ -1466,6 +1471,7 @@ export class MaintenancePlannerService {
     }
     const caso = await this.caso(distributorId, caseId);
     await this.avisarConfirmacion(caso);
+    await this.tablero?.avisar(distributorId, caso.taskId, 'moved');
     return caso;
   }
 
