@@ -9,7 +9,12 @@ name: Deploy API
 # la imagen anterior si el health no responde.
 #
 # Secretos: TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET, DEPLOY_SSH_KEY, TELEGRAM_BOT_TOKEN,
-# TELEGRAM_CHAT_ID. Variables: ORIX_HOST, ORIX_KNOWN_HOSTS, API_PUBLICA.
+# TELEGRAM_CHAT_ID y, opcional, SENTRY_AUTH_TOKEN. Variables: ORIX_HOST, ORIX_KNOWN_HOSTS,
+# API_PUBLICA.
+#
+# Sentry: la API desplegada se presenta como splg-server@<versión> en el entorno develop (el Orix es develop desplegado)
+# (lo fijan desplegar.sh y docker-compose.servidor.yaml). Con SENTRY_AUTH_TOKEN, además se
+# registra el release con sus commits y el deploy; sin el secreto ese paso no hace nada.
 on:
   workflow_run:
     workflows: ['Release automatico']
@@ -149,6 +154,23 @@ jobs:
             sleep 6
           done
           echo "La API pública no respondió 200 (último: $c)"; exit 1
+
+      - name: Release y deploy en Sentry
+        # Opcional: sin el secreto no hace nada, y si Sentry falla el deploy sigue bien.
+        continue-on-error: true
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: wagners-labs
+          SENTRY_PROJECT: splg-server
+          SENTRY_RELEASE: splg-server@${{ steps.c.outputs.version }}
+        run: |
+          if [ -z "$SENTRY_AUTH_TOKEN" ]; then
+            echo "Sin SENTRY_AUTH_TOKEN: no se registra el release en Sentry."; exit 0
+          fi
+          npx -y @sentry/cli@2 releases new "$SENTRY_RELEASE"
+          npx -y @sentry/cli@2 releases set-commits "$SENTRY_RELEASE" --auto --ignore-missing
+          npx -y @sentry/cli@2 releases finalize "$SENTRY_RELEASE"
+          npx -y @sentry/cli@2 deploys new --release "$SENTRY_RELEASE" -e develop
 
       - name: Aviso de resultado
         if: always()

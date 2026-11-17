@@ -176,7 +176,7 @@ export class ProcessRunRecorder implements OnModuleInit {
     const cadaMs = (CATALOGO[proceso].recordEverySeconds ?? 0) * 1000;
     const inicio = new Date();
     const ultima = this.ultimaApertura.get(clave);
-    const estado = nuevaCorrida();
+    const estado = nuevaCorrida(proceso, distributorId);
     const heredada = ContextoDeTraza.actual();
     const runId = randomUUID();
     const traza: Traza = {

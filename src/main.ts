@@ -1,3 +1,6 @@
+// Sentry primero: tiene que cargarse antes que Nest para instrumentarlo.
+import './instrument';
+
 import { Logger, VersioningType, VERSION_NEUTRAL } from '@nestjs/common';
 import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -95,6 +98,10 @@ async function bootstrap() {
       // Observabilidad: si el front propaga un request-id propio (ej. para
       // correlacionar con Sentry/logs propios), el preflight debe permitirlo.
       'X-Request-Id',
+      // Sentry: el panel manda la traza en curso para que el SDK del back la
+      // continúe (una sola traza de punta a punta, panel → API).
+      'sentry-trace',
+      'baggage',
     ],
     // El request-id que genera/normaliza el backend viaja en la respuesta;
     // sin exponerlo, el JS del front no puede leerlo en un request cross-site.

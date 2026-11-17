@@ -7,8 +7,9 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
+import { SentryWsExceptionFilter } from '../common/filters/sentry-ws-exception.filter';
 import type { Namespace } from 'socket.io';
-import { Logger, Optional } from '@nestjs/common';
+import { Logger, Optional, UseFilters } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SocketIdentityService } from './socket-identity.service';
 import { salaDeUsuario, type SocketDeSplg } from './socket-data';
@@ -21,6 +22,7 @@ import {
   unirseALaConversacion,
 } from './salas-de-las-apps';
 
+@UseFilters(SentryWsExceptionFilter)
 @WebSocketGateway({
   namespace: 'customers',
 })

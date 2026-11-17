@@ -1,12 +1,27 @@
 import { ConsoleLogger, LogLevel } from '@nestjs/common';
 import { ContextoDeTraza, prefijoDeTraza } from './contexto-de-traza';
+import { logASentry } from '../sentry/log-a-sentry';
 
 /**
  * El logger de la app: el de Nest más la traza en curso. En texto antepone
  * `[t:<8 primeros>]` a cada línea; en JSON (`json: true`) agrega `traceId`.
  * Fuera de una traza (arranque, módulos) la línea sale como siempre.
+ * Las líneas `error` además van a Sentry Logs.
  */
 export class LoggerConTraza extends ConsoleLogger {
+  /** `error` también va a Sentry Logs (el resto, sólo a la consola). */
+  error(message: unknown, ...optionalParams: unknown[]): void {
+    super.error(message, ...optionalParams);
+    if (this.isLevelEnabled('error')) {
+      logASentry(
+        'error',
+        message,
+        optionalParams,
+        ContextoDeTraza.traceIdActual(),
+      );
+    }
+  }
+
   protected formatMessage(
     logLevel: LogLevel,
     message: unknown,

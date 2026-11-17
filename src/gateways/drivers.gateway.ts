@@ -7,9 +7,10 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
+import { SentryWsExceptionFilter } from '../common/filters/sentry-ws-exception.filter';
 import type { Namespace } from 'socket.io';
 import { RedisService } from '../redis/redis.service';
-import { Logger, Optional } from '@nestjs/common';
+import { Logger, Optional, UseFilters } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { RoleType } from '../common/constants/role-type.enum';
 import { SocketIdentityService } from './socket-identity.service';
@@ -38,6 +39,7 @@ export interface PosicionDelChofer {
   lng: number;
 }
 
+@UseFilters(SentryWsExceptionFilter)
 @WebSocketGateway({
   namespace: 'drivers',
 })

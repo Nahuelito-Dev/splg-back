@@ -138,6 +138,7 @@ const PLATAFORMA = [
   'GET /v2/process-runs/summary',
   // Monitor O1: la traza de punta a punta (DISENO-OBSERVABILIDAD §7.5).
   'GET /v2/platform/traces/:traceId',
+  // TEMPORAL: prueba de Sentry, fuera de producción (se borra con observability/debug).
   'PUT /v2/platform/companies/:id/scheduled-tasks',
   'GET /v2/support-sessions',
   'GET /v2/support-sessions/:id',

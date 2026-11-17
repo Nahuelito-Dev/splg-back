@@ -32,6 +32,17 @@ cd "$REPO"
 ANTERIOR=$(git rev-parse HEAD)
 git checkout -q --detach "$COMMIT"
 
+# Versión que ve Sentry (docker-compose.servidor.yaml la pasa a la API): la del tag
+# del commit o, si no tiene, la de package.json (en main son la misma).
+version_para_sentry() {
+  local version
+  version=$(git describe --tags --exact-match HEAD 2>/dev/null | sed 's/^v//' || true)
+  [ -n "$version" ] || version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' package.json | head -1)
+  export SENTRY_RELEASE="splg-server@${version}"
+}
+version_para_sentry
+echo "== Versión $SENTRY_RELEASE"
+
 echo "== Imagen"
 docker tag splg-app-backend-api:latest splg-api:anterior 2>/dev/null || true
 "${COMPOSE[@]}" build -q api
@@ -49,6 +60,7 @@ done
 
 echo "== El health no respondió: vuelvo a ${ANTERIOR:0:8}"
 git checkout -q --detach "$ANTERIOR"
+version_para_sentry
 if docker image inspect splg-api:anterior >/dev/null 2>&1; then
   docker tag splg-api:anterior splg-app-backend-api:latest
   "${COMPOSE[@]}" up -d --no-build api

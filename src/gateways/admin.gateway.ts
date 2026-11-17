@@ -7,8 +7,9 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
+import { SentryWsExceptionFilter } from '../common/filters/sentry-ws-exception.filter';
 import type { Namespace } from 'socket.io';
-import { Logger } from '@nestjs/common';
+import { Logger, UseFilters } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import {
   EVENTO_PERMISOS_CAMBIADOS,
@@ -143,6 +144,7 @@ export interface EscribiendoDelPanel {
   internal: boolean;
 }
 
+@UseFilters(SentryWsExceptionFilter)
 @WebSocketGateway({
   namespace: 'admin',
 })

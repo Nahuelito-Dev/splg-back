@@ -14,6 +14,10 @@ services:
       # Antivirus de los adjuntos del chat (servicio `clamav`, abajo).
       CLAMAV_HOST: clamav
       CLAMAV_PORT: 3310
+      # Sentry: el entorno es siempre producción; la versión la fija
+      # desplegar.sh (splg-server@<versión del tag>). El DSN va en el .env.
+      SENTRY_ENVIRONMENT: develop
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:

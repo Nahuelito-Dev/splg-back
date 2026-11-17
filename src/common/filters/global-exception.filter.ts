@@ -29,6 +29,10 @@ import {
   traducirRestriccionConocida,
 } from '../errors/db-exceptions';
 import { traducirExcepcion } from '../validation/traducir-excepcion';
+import {
+  esErrorParaSentry,
+  reportarErrorDeRequest,
+} from '../sentry/reportar-a-sentry';
 import type { Request } from 'express';
 
 /** `read_only_sql_transaction`: una escritura en una transacción de sólo lectura. */
@@ -74,6 +78,7 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     // cambien.
     const interno = detalleDe(exception);
     const detalle = interno ? ` (${interno})` : '';
+    const original = exception;
     exception = this.mapDomainError(exception);
 
     const ctx = host.switchToHttp();
@@ -106,6 +111,9 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     } else {
       this.logger.warn(line);
     }
+
+    // A Sentry sólo los 5xx, con el error original (no la traducción).
+    if (esErrorParaSentry(status)) reportarErrorDeRequest(original, request);
 
     super.catch(traducida, host);
   }
