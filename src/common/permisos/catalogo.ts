@@ -228,6 +228,11 @@ export const CATALOGO_DE_PERMISOS = [
           'Ver la cola y las conversaciones con los choferes, tomarlas, asignarlas, responder, cerrarlas y mandar un mensaje a varios choferes.',
       },
       {
+        clave: 'mensajes.supervisar',
+        etiqueta: 'supervisar los mensajes',
+        descripcion: 'Ver las métricas de los mensajes.',
+      },
+      {
         clave: 'mensajes.configurar',
         etiqueta: 'configurar los mensajes',
         descripcion:

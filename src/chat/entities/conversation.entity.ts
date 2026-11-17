@@ -69,6 +69,8 @@ import {
   'status',
   'lastMessageAt',
 ])
+// Métricas del chat (B4): las conversaciones de una empresa y un canal en un período.
+@Index('IDX_conversation_metricas', ['distributorId', 'channel', 'createdAt'])
 @Index('IDX_conversation_cola', ['distributorId', 'assignedToUserId'], {
   where: `"status" = 'open'`,
 })

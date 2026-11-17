@@ -103,3 +103,15 @@ export async function limpiarMetadatosDeImagen(
     }
   });
 }
+
+/** Ancho y alto (en píxeles) de una imagen ya limpia; nulos si no se pueden leer. */
+export async function medidasDeImagen(
+  buffer: Buffer,
+): Promise<{ width: number | null; height: number | null }> {
+  try {
+    const { width, height } = await sharp(buffer).metadata();
+    return width && height ? { width, height } : { width: null, height: null };
+  } catch {
+    return { width: null, height: null };
+  }
+}

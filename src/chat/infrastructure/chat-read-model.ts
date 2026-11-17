@@ -8,7 +8,9 @@ import {
   type PartyQueHabla,
 } from '../domain/chat.enums';
 import { numeroDeTicket } from '../domain/support-ticket.machine';
+import type { Attachment } from '../../attachment/entities/attachment.entity';
 import { Message } from '../entities/message.entity';
+import { adjuntosDeLosMensajes } from './adjuntos-de-los-mensajes';
 import { SupportTicket } from '../entities/support-ticket.entity';
 
 /**
@@ -48,6 +50,11 @@ export interface Lector {
 @Injectable()
 export class ChatReadModel {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+
+  /** Los adjuntos de los mensajes de adjunto (CH7), por `messageId`. */
+  adjuntos(mensajes: readonly Message[]): Promise<Map<string, Attachment>> {
+    return adjuntosDeLosMensajes(this.dataSource.manager, mensajes);
+  }
 
   async nombres(userIds: Iterable<string>): Promise<Map<string, string>> {
     const ids = [...new Set(userIds)];

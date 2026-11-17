@@ -65,6 +65,8 @@ import { sentenciasDeMensajeria } from '../../../src/migrations/sql/mensajeria';
 import { sentenciasDeLaBandeja } from '../../../src/migrations/sql/bandeja-de-la-empresa';
 import { sentenciasDeMensajesRetirados } from '../../../src/migrations/sql/mensajes-retirados';
 import { sentenciasDeNotasInternas } from '../../../src/migrations/sql/notas-internas-de-la-bandeja';
+import { sentenciasDeAdjuntosDelChat } from '../../../src/migrations/sql/adjuntos-del-chat';
+import { sentenciasDelReintentoDelEscaneo } from '../../../src/migrations/sql/reintento-del-escaneo';
 import {
   sentenciasDeLaEncuesta,
   sentenciasDeLaEncuestaAnulable,
@@ -340,6 +342,8 @@ async function instalarTriggersDeLaBase(dataSource: DataSource) {
     ...sentenciasDeNotasInternas(),
     ...sentenciasDeLaEncuesta(),
     ...sentenciasDeLaEncuestaAnulable(),
+    ...sentenciasDeAdjuntosDelChat(),
+    ...sentenciasDelReintentoDelEscaneo(),
   ]) {
     await dataSource.query(sql);
   }

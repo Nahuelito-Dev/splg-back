@@ -99,6 +99,12 @@ class AuthDePrueba implements CanActivate {
  * global (los `code`). Los servicios se simulan: sus reglas se prueban en sus
  * propios tests; acá, que cada error llegue con su código HTTP y su `code`.
  */
+const PERMISOS_DE_LA_BANDEJA = [
+  'mensajes.clientes',
+  'mensajes.choferes',
+  'mensajes.configurar',
+];
+
 describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
   let app: INestApplication<Server>;
   let permisos: string[];
@@ -216,11 +222,7 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    permisos = [
-      'mensajes.clientes',
-      'mensajes.choferes',
-      'mensajes.configurar',
-    ];
+    permisos = [...PERMISOS_DE_LA_BANDEJA];
     chatHabilitado = true;
     bandeja.abrirDeLaPersona.mockResolvedValue({
       conversation: {},
@@ -1219,6 +1221,21 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
         200,
         null,
       ]);
+      // Quien sólo supervisa las lee (nombres en las métricas), pero no las crea.
+      permisos = ['mensajes.supervisar'];
+      expect(await resultado(llamar('get', '/chat/templates', ADMIN))).toEqual([
+        200,
+        null,
+      ]);
+      expect(
+        (await resultado(llamar('post', '/chat/templates', ADMIN, nueva)))[0],
+      ).toBe(403);
+      permisos = ['pedidos.ver'];
+      expect(await resultado(llamar('get', '/chat/templates', ADMIN))).toEqual([
+        403,
+        'PERMISSION_DENIED',
+      ]);
+      permisos = [...PERMISOS_DE_LA_BANDEJA];
       expect(
         (await resultado(llamar('get', '/chat/templates?channel=x', ADMIN)))[0],
       ).toBe(400);

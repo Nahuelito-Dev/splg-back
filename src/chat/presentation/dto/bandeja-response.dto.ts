@@ -10,6 +10,7 @@ import {
 } from '../../domain/chat.enums';
 import { CLAVES_DE_ACCION } from '../../domain/acciones-del-cliente';
 import { ChatHoursDto } from './support-settings.dto';
+import { ChatAttachmentDto } from './chat-attachment.dto';
 
 const CANALES = [Channel.STAFF_CUSTOMER, Channel.STAFF_DRIVER];
 
@@ -333,6 +334,13 @@ export class InboxMessageDto {
     description: 'Nulo si se redactó o si lo borró su autor',
   })
   body!: string | null;
+  @ApiProperty({
+    type: ChatAttachmentDto,
+    nullable: true,
+    description:
+      'Sólo `kind = attachment`: el archivo o la foto, sin URL (se pide con `GET …/messages/:messageId/attachment`). `body` es su epígrafe. Nulo si se redactó.',
+  })
+  attachment!: ChatAttachmentDto | null;
   @ApiProperty({
     type: String,
     nullable: true,

@@ -6,6 +6,7 @@ import { Channel, Party } from '../domain/chat.enums';
 import type { Conversation } from '../entities/conversation.entity';
 import type { Message } from '../entities/message.entity';
 import type { SupportTicket } from '../entities/support-ticket.entity';
+import type { Attachment } from '../../attachment/entities/attachment.entity';
 import { ChatReadModel, Observador } from '../infrastructure/chat-read-model';
 
 /** Todo lo que hace falta, además de las entidades, para armar las respuestas de quien mira. */
@@ -23,6 +24,8 @@ export interface ContextoDeVista {
   ticketsDesde: Map<string, SupportTicket[]>;
   ticketDelHilo: Map<string, SupportTicket>;
   sesiones: Map<string, Array<{ id: string; status: string }>>;
+  /** El adjunto de cada mensaje de adjunto (CH7), por `messageId`. */
+  adjuntos: Map<string, Attachment>;
 }
 
 export interface QueMostrar {
@@ -72,6 +75,7 @@ export class ChatViewsService {
       citados,
       ticketsDesde,
       ticketDelHilo,
+      adjuntos,
     ] = await Promise.all([
       this.lectura.noLeidos(convIds, observador),
       this.lectura.lecturaDeLaOtraParte(convIds, otra),
@@ -80,6 +84,7 @@ export class ChatViewsService {
       this.lectura.citadosEn(mensajes.map((m) => m.messageId)),
       this.lectura.ticketsDesde(chats),
       this.lectura.ticketsDeLosHilos(hilos),
+      this.lectura.adjuntos(mensajes),
     ]);
 
     const tickets = [...(que.tickets ?? []), ...ticketDelHilo.values()];
@@ -141,6 +146,7 @@ export class ChatViewsService {
       ticketsDesde,
       ticketDelHilo,
       sesiones,
+      adjuntos,
     };
   }
 

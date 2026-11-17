@@ -22,7 +22,7 @@ import {
   ConversacionCerradaError,
   PedidoSinChoferError,
 } from '../domain/chat.errors';
-import { vistaPrevia } from '../domain/reglas-del-mensaje';
+import { vistaPreviaDelMensaje } from '../domain/reglas-del-mensaje';
 import { Conversation } from '../entities/conversation.entity';
 import { MessageEdit } from '../entities/message-edit.entity';
 import { Message } from '../entities/message.entity';
@@ -635,17 +635,11 @@ export class BandejaService {
    * del cliente o del chofer (si la empresa abrió la conversación, la
    * respuesta cuenta desde que la persona escribió).
    */
-  private async registrarPrimeraRespuesta(
+  private registrarPrimeraRespuesta(
     manager: EntityManager,
     c: Conversation,
   ): Promise<void> {
-    await manager.query(
-      `UPDATE "conversation" SET "first_response_at" = now()
-        WHERE "conversation_id" = $1 AND "first_response_at" IS NULL
-          AND EXISTS (SELECT 1 FROM "message" WHERE "conversation_id" = $1
-                         AND "sender_party" IN ('customer', 'driver'))`,
-      [c.conversationId],
-    );
+    return primeraRespuestaDeLaEmpresa(manager, c);
   }
 
   /**
@@ -823,6 +817,23 @@ export class BandejaService {
   }
 }
 
+/**
+ * La primera respuesta de la empresa en la bandeja: su primer mensaje (texto o
+ * adjunto) después del primero del cliente o del chofer.
+ */
+export async function primeraRespuestaDeLaEmpresa(
+  manager: EntityManager,
+  c: Conversation,
+): Promise<void> {
+  await manager.query(
+    `UPDATE "conversation" SET "first_response_at" = now()
+      WHERE "conversation_id" = $1 AND "first_response_at" IS NULL
+        AND EXISTS (SELECT 1 FROM "message" WHERE "conversation_id" = $1
+                       AND "sender_party" IN ('customer', 'driver'))`,
+    [c.conversationId],
+  );
+}
+
 /** La clave del tema: una conversación abierta por persona (general) o por pedido. */
 export function claveDelTema(d: DestinoDeLaBandeja): string {
   return d.subjectType === SubjectType.ORDER
@@ -880,26 +891,29 @@ async function pedidoDeLaEmpresa(
 }
 
 /**
- * La vista previa de la bandeja sale del último mensaje con texto visible: al
- * editar o borrar, el texto viejo no queda en la lista ni se encuentra con `q`.
+ * La vista previa de la bandeja sale del último mensaje visible con algo que
+ * mostrar (texto, o un adjunto aunque no tenga epígrafe: «📎 Foto»): al editar
+ * o borrar, el texto viejo no queda en la lista ni se encuentra con `q`.
  */
 export async function recalcularVistaPrevia(
   manager: EntityManager,
   conversationId: string,
 ): Promise<void> {
-  const [ultimo]: Array<{ body: string; visibility: MessageVisibility }> =
-    await manager.query(
-      `SELECT "body", "visibility" FROM "message"
-        WHERE "conversation_id" = $1 AND "body" IS NOT NULL AND "visibility" = 'all'
-          AND "withdrawn_at" IS NULL AND "redacted_at" IS NULL AND "deleted_at" IS NULL
-        ORDER BY "seq" DESC LIMIT 1`,
-      [conversationId],
-    );
+  const [ultimo]: Array<{
+    kind: MessageKind;
+    body: string | null;
+    visibility: MessageVisibility;
+    payload: unknown;
+  }> = await manager.query(
+    `SELECT "kind", "body", "visibility", "payload" FROM "message"
+      WHERE "conversation_id" = $1 AND ("body" IS NOT NULL OR "kind" = 'attachment')
+        AND "visibility" = 'all'
+        AND "withdrawn_at" IS NULL AND "redacted_at" IS NULL AND "deleted_at" IS NULL
+      ORDER BY "seq" DESC LIMIT 1`,
+    [conversationId],
+  );
   await manager.query(
     `UPDATE "conversation" SET "last_message_preview" = $2 WHERE "conversation_id" = $1`,
-    [
-      conversationId,
-      ultimo ? vistaPrevia(ultimo.body, ultimo.visibility) : null,
-    ],
+    [conversationId, ultimo ? vistaPreviaDelMensaje(ultimo) : null],
   );
 }

@@ -45,14 +45,22 @@ export function feriadosValidos(feriados: readonly DiaSinAtencion[]): boolean {
   return true;
 }
 
+/** Uno por zona, reusado (crear un `Intl.DateTimeFormat` es caro). */
+const FORMATEADORES_DE_FECHA = new Map<string, Intl.DateTimeFormat>();
+
 /** La fecha local (`YYYY-MM-DD`) de `ahora` en la zona dada. */
 export function fechaLocal(ahora: Date, zona: string): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: zona,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(ahora);
+  let f = FORMATEADORES_DE_FECHA.get(zona);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-CA', {
+      timeZone: zona,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    FORMATEADORES_DE_FECHA.set(zona, f);
+  }
+  return f.format(ahora);
 }
 
 function esDiaSinAtencion(h: HorarioDeLaEmpresa, ahora: Date): boolean {
@@ -109,49 +117,63 @@ export function proximaAtencion(
   return null;
 }
 
-/** Hasta cuándo sigue atendiendo sin cortar (el cierre de la franja o la medianoche sin franjas). */
-function finDeLaAtencion(h: HorarioDeLaEmpresa, t: Date): Date {
-  if (h.franjas.length === 0) return inicioDelDiaSiguiente(t, h.zona);
-  const { weekday, minuto } = horaLocal(t, h.zona);
-  const franja = h.franjas.find(
-    (f) =>
-      f.weekday === weekday &&
-      minutosDe(f.opensAt) <= minuto &&
-      minuto < minutosDe(f.closesAt),
-  );
-  const cierra = franja ? minutosDe(franja.closesAt) : minuto + 1;
-  return new Date(alMinuto(t).getTime() + (cierra - minuto) * MINUTO);
-}
-
 function minutosDe(hora: string): number {
   const [hh, mm] = hora.split(':').map(Number);
   return hh * 60 + mm;
 }
 
+/** Días que recorre como mucho (diez años: ninguna espera real llega). */
+const DIAS_MAXIMOS = 3660;
+
 /**
  * Minutos de atención entre dos momentos (diseño §8.4: el tiempo de primera
  * respuesta se cuenta en horario hábil, no en reloj corrido). Lo que cae fuera
  * de las franjas o en un día sin atención no suma.
+ *
+ * Recorre día por día (local): en cada uno suma lo que las franjas de ese día
+ * de la semana se superponen con `[desde, hasta)`; sin franjas, el día entero.
+ * Con `tope`, deja de contar apenas lo supera (devuelve algo mayor que `tope`):
+ * para saber si una espera pasó el objetivo no hace falta medirla entera.
  */
 export function minutosHabiles(
   h: HorarioDeLaEmpresa,
   desde: Date,
   hasta: Date,
+  tope?: number,
 ): number {
-  if (hasta.getTime() <= desde.getTime()) return 0;
+  const inicio = desde.getTime();
+  const final = hasta.getTime();
+  if (final <= inicio) return 0;
+  const franjasPorDia = new Map<number, Array<[number, number]>>();
+  for (const f of h.franjas) {
+    const del = franjasPorDia.get(f.weekday) ?? [];
+    del.push([minutosDe(f.opensAt), minutosDe(f.closesAt)]);
+    franjasPorDia.set(f.weekday, del);
+  }
+  const feriados = new Set(h.feriados.map((f) => f.date));
+  const topeMs = tope === undefined ? Infinity : tope * MINUTO;
   let t = desde;
   let total = 0;
-  for (let i = 0; i < VUELTAS * 4 && t.getTime() < hasta.getTime(); i++) {
-    if (atiendeLaEmpresa(h, t)) {
-      const fin = finDeLaAtencion(h, t);
-      const corte = fin.getTime() < hasta.getTime() ? fin : hasta;
-      total += corte.getTime() - t.getTime();
-      t = corte;
-      continue;
+  // Lo ya contado: en el día del cambio de hora el siguiente puede arrancar antes.
+  let contadoHasta = inicio;
+  for (let i = 0; i < DIAS_MAXIMOS && t.getTime() < final; i++) {
+    const { weekday, minuto } = horaLocal(t, h.zona);
+    const medianoche = alMinuto(t).getTime() - minuto * MINUTO;
+    const siguiente = medianoche + DIA_EN_MINUTOS * MINUTO;
+    if (feriados.size === 0 || !feriados.has(fechaLocal(t, h.zona))) {
+      const franjas =
+        h.franjas.length === 0
+          ? [[0, DIA_EN_MINUTOS] as [number, number]]
+          : (franjasPorDia.get(weekday) ?? []);
+      for (const [abre, cierra] of franjas) {
+        const a = Math.max(medianoche + abre * MINUTO, contadoHasta);
+        const b = Math.min(medianoche + cierra * MINUTO, final);
+        if (b > a) total += b - a;
+      }
+      if (total > topeMs) break;
     }
-    const abre = proximaAtencion(h, t);
-    if (!abre) break;
-    t = abre;
+    contadoHasta = Math.max(contadoHasta, siguiente);
+    t = new Date(siguiente);
   }
   return Math.round(total / MINUTO);
 }

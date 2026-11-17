@@ -18,6 +18,7 @@ import {
   type ConversacionCambiada,
   EVENTO_CONVERSACION_CAMBIO,
   EVENTO_LECTURA,
+  EVENTO_MENSAJE_ACTUALIZADO,
   EVENTO_MENSAJE_CREADO,
   EVENTO_MENSAJE_BORRADO,
   EVENTO_MENSAJE_EDITADO,
@@ -33,7 +34,7 @@ import {
   MessageVisibility,
   Party,
 } from '../domain/chat.enums';
-import { vistaPrevia } from '../domain/reglas-del-mensaje';
+import { vistaPreviaDelMensaje } from '../domain/reglas-del-mensaje';
 import { Conversation } from '../entities/conversation.entity';
 import type { Message } from '../entities/message.entity';
 import { seqVisibleHasta } from '../infrastructure/bandeja-read-model';
@@ -96,6 +97,18 @@ export class BandejaRealtimeListener {
       await this.mensajeALasSalas(conversation, message, EVENTO_SOCKET_MENSAJE);
       this.avisarALasListas(conversation, 'message', message);
     });
+  }
+
+  /** El escaneo del adjunto terminó: las salas reciben el mensaje de nuevo (las listas, no). */
+  @OnEvent(EVENTO_MENSAJE_ACTUALIZADO, { async: true })
+  async actualizacion({
+    conversation,
+    message,
+  }: MensajeEditado): Promise<void> {
+    if (!esCanalDeLaBandeja(conversation.channel)) return;
+    await this.seguro(EVENTO_SOCKET_MENSAJE, () =>
+      this.mensajeALasSalas(conversation, message, EVENTO_SOCKET_MENSAJE),
+    );
   }
 
   @OnEvent(EVENTO_MENSAJE_EDITADO, { async: true })
@@ -329,7 +342,7 @@ export class BandejaRealtimeListener {
             preview:
               m.kind === MessageKind.SYSTEM || m.redactedAt || m.withdrawnAt
                 ? null
-                : vistaPrevia(m.body, m.visibility),
+                : vistaPreviaDelMensaje(m),
             internal: m.visibility === MessageVisibility.INTERNAL,
           }
         : null,

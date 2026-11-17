@@ -1,4 +1,6 @@
 import { payloadPara } from './payload-del-mensaje';
+import { adjuntoADto } from './adjunto.mapper';
+import { vistaPreviaDelMensaje } from '../domain/reglas-del-mensaje';
 import type { ContextoDeVista } from '../application/chat-views.service';
 import {
   Channel,
@@ -181,6 +183,7 @@ export class ChatMapper {
           ),
       citedInTickets: ctx.citados.get(m.messageId) ?? [],
       body: redactado ? null : m.body,
+      attachment: adjuntoADto(ctx.adjuntos.get(m.messageId), redactado),
       bodyFiltered: m.bodyFiltered,
       templateKey: m.templateKey,
       systemCode: m.systemCode,
@@ -205,7 +208,9 @@ export class ChatMapper {
   }
 
   private static vistaPrevia(m: Message): string | null {
-    if (m.redactedAt !== null || m.body === null) return null;
+    if (m.redactedAt !== null) return null;
+    if (m.kind === MessageKind.ATTACHMENT) return vistaPreviaDelMensaje(m);
+    if (m.body === null) return null;
     if (m.kind === MessageKind.SYSTEM || m.kind === MessageKind.QUOTED_EXCERPT)
       return null;
     const limpio = m.body.replace(/\s+/g, ' ').trim();

@@ -1058,6 +1058,29 @@ describe('recalcularVistaPrevia (4a)', () => {
     expect(consultas[0][0]).toContain(`"visibility" = 'all'`);
     expect(consultas[1][1]).toEqual(['conv-1', 'Hola Ana']);
   });
+  it('si el último visible es un adjunto sin epígrafe, la vista previa es «📎 Foto», no el texto anterior (CH7)', async () => {
+    const consultas: Array<[string, unknown[]]> = [];
+    const manager = {
+      query: jest.fn((sql: string, params: unknown[]) => {
+        consultas.push([sql, params]);
+        return Promise.resolve(
+          sql.startsWith('SELECT')
+            ? [
+                {
+                  kind: MessageKind.ATTACHMENT,
+                  body: null,
+                  visibility: MessageVisibility.ALL,
+                  payload: { media: 'photo' },
+                },
+              ]
+            : [],
+        );
+      }),
+    } as unknown as EntityManager;
+    await recalcularVistaPrevia(manager, 'conv-1');
+    expect(consultas[0][0]).toContain(`"kind" = 'attachment'`);
+    expect(consultas[1][1]).toEqual(['conv-1', '📎 Foto']);
+  });
 });
 
 describe('BandejaService: botones de acción del cliente (4e)', () => {

@@ -118,6 +118,7 @@ function presentador(
     mencionesSinLeer: jest.fn().mockResolvedValue(new Map([['conv-1', 1]])),
     encuestas: jest.fn().mockResolvedValue(new Map()),
     primerMensajeDelAsistente: jest.fn().mockResolvedValue(new Map()),
+    adjuntos: jest.fn().mockResolvedValue(new Map()),
   };
   const ajustes = {
     leer: jest.fn().mockResolvedValue({
@@ -135,6 +136,63 @@ function presentador(
     { base: lectura },
   );
 }
+
+describe('BandejaPresenter: adjuntos (CH7)', () => {
+  const adjunto = {
+    attachmentId: 'adj-1',
+    messageId: 'm-2',
+    originalName: 'casa.jpg',
+    mimeType: 'image/jpeg',
+    sizeBytes: 1234,
+    scanStatus: 'clean',
+    width: 40,
+    height: 20,
+    storageKey: 'd/x/chat/conv-1/a.jpg',
+  };
+  const deAdjunto = (cambios: Partial<Message> = {}) =>
+    mensaje({
+      kind: MessageKind.ATTACHMENT,
+      body: 'La puerta',
+      payload: { media: 'photo' },
+      replyToSeq: null,
+      ...cambios,
+    });
+
+  it('el mensaje trae el adjunto sin URL ni key, y la lista dice «📎 Foto»', async () => {
+    const p = presentador({}, deAdjunto());
+    p.base.adjuntos.mockResolvedValue(new Map([['m-2', adjunto]]));
+    const m = await p.mensaje(deAdjunto(), {
+      party: Party.CUSTOMER,
+      userId: 'cli-1',
+    });
+    expect(m.attachment).toEqual({
+      id: 'adj-1',
+      fileName: 'casa.jpg',
+      mimeType: 'image/jpeg',
+      sizeBytes: 1234,
+      scanStatus: 'clean',
+      width: 40,
+      height: 20,
+    });
+    expect(JSON.stringify(m)).not.toContain('d/x/chat');
+    expect(m.body).toBe('La puerta');
+    const c = await p.conversacion(conversacion(), {
+      party: Party.COMPANY,
+      userId: 'adm-1',
+    });
+    expect(c.lastMessage?.preview).toBe('📎 Foto');
+  });
+
+  it('redactado: sin adjunto ni epígrafe', async () => {
+    const p = presentador();
+    p.base.adjuntos.mockResolvedValue(new Map([['m-2', adjunto]]));
+    const m = await p.mensaje(
+      deAdjunto({ redactedAt: new Date(), body: null }),
+      { party: Party.COMPANY, userId: 'adm-1' },
+    );
+    expect(m.attachment).toBeNull();
+  });
+});
 
 describe('BandejaPresenter: lo que ve cada punta', () => {
   it('el cliente ve la marca de la empresa, nunca al operador (D-C5)', async () => {
@@ -366,6 +424,7 @@ describe('BandejaPresenter: lo que ve cada punta', () => {
       mencionesSinLeer: jest.fn().mockResolvedValue(new Map()),
       encuestas: jest.fn().mockResolvedValue(new Map()),
       primerMensajeDelAsistente: jest.fn().mockResolvedValue(new Map()),
+      adjuntos: jest.fn().mockResolvedValue(new Map()),
     };
     const p = new BandejaPresenter(
       lectura as unknown as BandejaReadModel,

@@ -99,6 +99,59 @@ describe('horario de atención de la empresa (§8.4)', () => {
     ).toBe(150);
   });
 
+  it('minutos hábiles: igual que contar minuto a minuto con `atiendeLaEmpresa` (franjas, feriados, fin de semana)', () => {
+    const conFeriado = h([{ date: '2026-11-18', reason: 'Feriado' }]);
+    /** El oráculo: cuántos minutos enteros atiende entre dos instantes. */
+    const contando = (desde: Date, hasta: Date) => {
+      let n = 0;
+      for (let t = desde.getTime(); t < hasta.getTime(); t += 60_000) {
+        if (atiendeLaEmpresa(conFeriado, new Date(t))) n++;
+      }
+      return n;
+    };
+    // Pseudoazar fijo: rangos de hasta 9 días que arrancan en minutos enteros.
+    let semilla = 7;
+    const azar = () => {
+      semilla = (semilla * 16807) % 2147483647;
+      return semilla / 2147483647;
+    };
+    const base = ba('2026-11-13T00:00:00').getTime();
+    for (let i = 0; i < 40; i++) {
+      const desde = new Date(base + Math.floor(azar() * 9 * 1440) * 60_000);
+      const hasta = new Date(
+        desde.getTime() + Math.floor(azar() * 9 * 1440) * 60_000,
+      );
+      expect(minutosHabiles(conFeriado, desde, hasta)).toBe(
+        contando(desde, hasta),
+      );
+    }
+  });
+
+  it('minutos hábiles con tope: corta apenas lo supera (para saber si pasó un objetivo)', () => {
+    const desde = ba('2026-11-16T09:00:00');
+    const hasta = ba('2027-05-16T09:00:00');
+    const entero = minutosHabiles(h(), desde, hasta);
+    const cortado = minutosHabiles(h(), desde, hasta, 30);
+    expect(cortado).toBeGreaterThan(30);
+    expect(cortado).toBeLessThan(entero);
+    // Si no llega al tope, da lo mismo que sin tope.
+    expect(minutosHabiles(h(), desde, ba('2026-11-16T09:20:00'), 30)).toBe(20);
+  });
+
+  it('minutos hábiles en una zona con cambio de hora: no cuenta dos veces la hora repetida', () => {
+    // Nueva York vuelve a la hora estándar el 01/11/2026 a las 2:00 (se repite la 1:00).
+    const nyc = {
+      franjas: [] as HorarioDeLaEmpresa['franjas'],
+      feriados: [],
+      zona: 'America/New_York',
+    };
+    const desde = new Date('2026-10-31T04:00:00Z'); // 31/10 00:00 local (EDT)
+    const hasta = new Date('2026-11-03T05:00:00Z'); // 03/11 00:00 local (EST)
+    expect(minutosHabiles(nyc, desde, hasta)).toBe(
+      (hasta.getTime() - desde.getTime()) / 60_000,
+    );
+  });
+
   it('el texto de la próxima atención', () => {
     const ahora = ba('2026-11-16T13:30:00');
     expect(

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, type EntityManager } from 'typeorm';
 import { CODIGOS_DE_ERROR, conCodigo } from '../../common/errors/con-codigo';
 import {
   MessageKind,
@@ -87,16 +87,16 @@ export class TicketActivityService {
       if (!escrito.created) return { ...escrito, ticket };
       efectos.mensaje(escrito.conversation, escrito.message);
       if (visibility !== MessageVisibility.ALL) return { ...escrito, ticket };
-
-      if (esPlataforma(actor)) {
-        ticket.firstResponseAt ??= escrito.message.createdAt;
-        ticket.assignedMemberUserId ??= actor.userId;
-      }
-      const nuevo = estadoTrasResponder(ticket.status, actor.party);
-      if (nuevo) await this.estado.cambiar(manager, ticket, nuevo, efectos);
-      const guardado = await manager.getRepository(SupportTicket).save(ticket);
-      efectos.ticket(guardado, 'updated');
-      return { ...escrito, ticket: guardado };
+      return {
+        ...escrito,
+        ticket: await this.alResponder(
+          manager,
+          actor,
+          ticket,
+          escrito,
+          efectos,
+        ),
+      };
     });
     if (
       r.created &&
@@ -107,6 +107,29 @@ export class TicketActivityService {
     }
     this.eventos.publicar(efectos);
     return r;
+  }
+
+  /**
+   * Lo que mueve una respuesta visible en el hilo (texto o adjunto), con el
+   * ticket bloqueado: la primera respuesta y la asignación de la plataforma, y
+   * el estado según la máquina.
+   */
+  async alResponder(
+    manager: EntityManager,
+    actor: ActorDeTicket,
+    ticket: SupportTicket,
+    escrito: MensajeEscrito,
+    efectos: Efectos,
+  ): Promise<SupportTicket> {
+    if (esPlataforma(actor)) {
+      ticket.firstResponseAt ??= escrito.message.createdAt;
+      ticket.assignedMemberUserId ??= actor.userId;
+    }
+    const nuevo = estadoTrasResponder(ticket.status, actor.party);
+    if (nuevo) await this.estado.cambiar(manager, ticket, nuevo, efectos);
+    const guardado = await manager.getRepository(SupportTicket).save(ticket);
+    efectos.ticket(guardado, 'updated');
+    return guardado;
   }
 
   /** Cambios de la plataforma; lo que no viene queda como estaba. */

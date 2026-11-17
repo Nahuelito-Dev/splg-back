@@ -79,6 +79,7 @@ function contexto(observador: Observador): ContextoDeVista {
     citados: new Map(),
     ticketsDesde: new Map(),
     ticketDelHilo: new Map(),
+    adjuntos: new Map(),
     sesiones: new Map(),
   };
 }
@@ -142,6 +143,19 @@ describe('ChatRealtimeListener: cada punta recibe lo suyo (§7.3)', () => {
     });
     expect(aConversacion()).toEqual([['hilo-1', 'platform', 'chat:message']]);
     expect(gateway.emitirAlSoporteDeEmpresa).not.toHaveBeenCalled();
+  });
+
+  it('escaneo del adjunto terminado (CH7): `chat:message` otra vez a las dos mitades de la sala, sin tocar las listas', async () => {
+    await listener.actualizacion({
+      conversation: hilo,
+      message: mensaje(MessageVisibility.ALL),
+    });
+    expect(aConversacion()).toEqual([
+      ['hilo-1', 'platform', 'chat:message'],
+      ['hilo-1', 'company', 'chat:message'],
+    ]);
+    expect(gateway.emitirAlSoporteDeEmpresa).not.toHaveBeenCalled();
+    expect(gateway.emitirAlSoporteDePlataforma).not.toHaveBeenCalled();
   });
 
   it('D-C28: el cuerpo viaja sólo a la sala de la conversación, cada punta con su versión', async () => {

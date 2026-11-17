@@ -1,3 +1,4 @@
+import { ChatAttachmentDto } from './chat-attachment.dto';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   Channel,
@@ -231,6 +232,13 @@ export class MessageDto {
     description: 'Nulo si se redactó',
   })
   body!: string | null;
+  @ApiProperty({
+    type: ChatAttachmentDto,
+    nullable: true,
+    description:
+      'Sólo `kind = attachment`: el archivo o la foto, sin URL (se pide con `GET …/messages/:messageId/attachment`). `body` es su epígrafe. Nulo si se redactó.',
+  })
+  attachment!: ChatAttachmentDto | null;
   @ApiProperty() bodyFiltered!: boolean;
   @ApiProperty({ type: String, nullable: true }) templateKey!: string | null;
   @ApiProperty({ enum: SystemCode, nullable: true })

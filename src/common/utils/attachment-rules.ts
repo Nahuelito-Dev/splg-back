@@ -272,3 +272,33 @@ export function acotarNombreDeArchivo(
   const base = [...nombre.slice(0, punto > 0 ? punto : nombre.length)];
   return base.slice(0, max - [...extension].length).join('') + extension;
 }
+
+/**
+ * El tipo del archivo según su CONTENIDO, sin creer en la extensión ni en el
+ * tipo que declaró el cliente: la firma de PDF, JPG, PNG y WEBP, el paquete de
+ * Office con su documento interno para Word y Excel. El CSV no tiene firma: se
+ * toma como CSV sólo si es texto plano y quien lo manda dice que es un CSV
+ * (por el nombre `.csv` o el tipo declarado). `null` si no es ninguno.
+ */
+export function tipoPorContenido(
+  buffer: Buffer,
+  nombre: string,
+  declarado: string,
+): AllowedDocumentMimeType | null {
+  const conFirma: AllowedDocumentMimeType[] = [
+    'application/pdf',
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    DOCX_MIME_TYPE,
+    XLSX_MIME_TYPE,
+  ];
+  const tipo = conFirma.find((t) => firmaCoincideConMimeType(t, buffer));
+  if (tipo) return tipo;
+  const diceCsv =
+    /\.csv$/i.test(nombre.trim()) ||
+    normalizarMimeDeCsv(declarado, nombre).toLowerCase() === CSV_MIME_TYPE;
+  return diceCsv && firmaCoincideConMimeType(CSV_MIME_TYPE, buffer)
+    ? CSV_MIME_TYPE
+    : null;
+}

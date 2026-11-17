@@ -32,7 +32,7 @@ jobs:
   deploy:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -51,19 +51,56 @@ jobs:
             echo "«$REF» no está en main: a producción sólo va lo que ya se integró a main."; exit 1
           fi
 
-      - name: Datos del commit
-        id: c
+      - name: Script de avisos
         run: |
+          # Lo que se despliega puede ser anterior al script: se toma de develop si falta.
+          if [ ! -f .github/scripts/telegram.sh ]; then
+            git fetch -q origin develop
+            mkdir -p .github/scripts
+            git show origin/develop:.github/scripts/telegram.sh > .github/scripts/telegram.sh
+          fi
+          chmod +x .github/scripts/telegram.sh
+
+      - name: Datos del deploy
+        id: c
+        env:
+          DISPARO: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          echo "inicio=$(date +%s)" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "corto=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          . .github/scripts/telegram.sh --funciones
+          anterior=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
+          rango=${anterior:+$anterior..}HEAD
+          total=$(git log --no-merges --format=%s "$rango" | grep -vc '^chore(release)' || true)
+          {
+            echo "cambios<<FIN"
+            git log --no-merges --format='• %s' "$rango" | grep -v '^• chore(release)' | head -n 10 | cut -c1-90 | escapar
+            [ "$total" -gt 10 ] && echo "… y $((total - 10)) más"
+            echo "FIN"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$DISPARO" = workflow_dispatch ]; then echo "como=lanzado a mano por $ACTOR" >> "$GITHUB_OUTPUT"
+          else echo "como=después del release de main" >> "$GITHUB_OUTPUT"; fi
+          echo "total=$total" >> "$GITHUB_OUTPUT"
+          echo "desde=${anterior:-el inicio}" >> "$GITHUB_OUTPUT"
 
       - name: Aviso de inicio
+        env:
+          CAMBIOS: ${{ steps.c.outputs.cambios }}
+          COMO: ${{ steps.c.outputs.como }}
+          TOTAL: ${{ steps.c.outputs.total }}
+          DESDE: ${{ steps.c.outputs.desde }}
+          VERSION: ${{ steps.c.outputs.version }}
+          CORTO: ${{ steps.c.outputs.corto }}
         run: |
-          [ -n "$TELEGRAM_BOT_TOKEN" ] || exit 0
-          curl -s -o /dev/null "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-            --data-urlencode "text=🚀 Deploy API iniciado · v${{ steps.c.outputs.version }} (${{ steps.c.outputs.corto }}) por ${{ github.actor }}"
+          {
+            printf '🚀 <b>Deploy %s</b> · producción\n' "API"
+            printf 'v%s · <code>%s</code> · %s\n' "$VERSION" "$CORTO" "$COMO"
+            if [ "$TOTAL" -gt 0 ]; then printf '\n<b>%s cambio(s) desde %s:</b>\n%s\n' "$TOTAL" "$DESDE" "$CAMBIOS"; fi
+          } | .github/scripts/telegram.sh
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -71,12 +108,14 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Reglas (el mismo gate que Checks)
+        id: reglas
         env:
           TZ: UTC
           NODE_OPTIONS: --max-old-space-size=4096
         run: npm run verify
 
       - name: Entrar a la tailnet
+        id: tailnet
         uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3.3.0
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
@@ -94,6 +133,7 @@ jobs:
           printf '%s\n' "$ORIX_KNOWN_HOSTS" > ~/.ssh/known_hosts
 
       - name: Desplegar en el servidor
+        id: desplegar
         run: |
           git branch -f desplegar HEAD
           git bundle create /tmp/api.bundle refs/heads/desplegar
@@ -101,6 +141,7 @@ jobs:
             "labs-wagners@${{ vars.ORIX_HOST }}" "desplegar ${{ steps.c.outputs.sha }}" < /tmp/api.bundle
 
       - name: Health público
+        id: health
         run: |
           for _ in $(seq 1 20); do
             c=$(curl -s -o /dev/null -w '%{http_code}' -m 10 "${{ vars.API_PUBLICA }}/api/health" || true)
@@ -111,9 +152,28 @@ jobs:
 
       - name: Aviso de resultado
         if: always()
+        env:
+          ESTADO: ${{ job.status }}
+          INICIO: ${{ steps.c.outputs.inicio }}
+          VERSION: ${{ steps.c.outputs.version }}
+          CORTO: ${{ steps.c.outputs.corto }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          P_0: ${{ steps.reglas.outcome }}
+          P_1: ${{ steps.tailnet.outcome }}
+          P_2: ${{ steps.desplegar.outcome }}
+          P_3: ${{ steps.health.outcome }}
         run: |
-          [ -n "$TELEGRAM_BOT_TOKEN" ] || exit 0
-          if [ "${{ job.status }}" = success ]; then t="✅ Deploy API ok · v${{ steps.c.outputs.version }} (${{ steps.c.outputs.corto }}) en producción"
-          else t="🔴 Deploy API falló · v${{ steps.c.outputs.version }} (${{ steps.c.outputs.corto }}). Ver: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"; fi
-          curl -s -o /dev/null "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" --data-urlencode "text=$t" -d disable_web_page_preview=true
+          min=$(( ( $(date +%s) - ${INICIO:-$(date +%s)} + 59 ) / 60 ))
+          nombres=("Reglas (gate)" "Entrar a la tailnet" "Desplegar en el servidor" "API pública")
+          resultados=("$P_0" "$P_1" "$P_2" "$P_3")
+          fallo=""
+          for i in "${!nombres[@]}"; do [ "${resultados[$i]}" = failure ] && { fallo="${nombres[$i]}"; break; }; done
+          {
+            if [ "$ESTADO" = success ]; then
+              printf '✅ <b>API v%s en producción</b> · %s min\n<code>%s</code> · https://orix-server.tailc2a529.ts.net\n' "$VERSION" "$min" "$CORTO"
+            elif [ "$ESTADO" = cancelled ]; then
+              printf '⚪ <b>Deploy API v%s cancelado</b> · %s min\nProducción sigue con la versión anterior.\n<a href="%s">Ver detalle</a>\n' "$VERSION" "$min" "$RUN_URL"
+            else
+              printf '🔴 <b>Deploy API v%s falló</b>%s · %s min\nProducción sigue con la versión anterior.\n<a href="%s">Ver detalle</a>\n' "$VERSION" "${fallo:+ en «$fallo»}" "$min" "$RUN_URL"
+            fi
+          } | .github/scripts/telegram.sh

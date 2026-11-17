@@ -16,6 +16,7 @@ import {
   type ConversacionCambiada,
   EVENTO_CONVERSACION_CAMBIO,
   EVENTO_LECTURA,
+  EVENTO_MENSAJE_ACTUALIZADO,
   EVENTO_MENSAJE_CREADO,
   EVENTO_TICKET,
   type LecturaRegistrada,
@@ -36,7 +37,7 @@ import {
 import { numeroDeTicket } from '../domain/support-ticket.machine';
 import { Conversation } from '../entities/conversation.entity';
 import type { Message } from '../entities/message.entity';
-import { vistaPrevia } from '../domain/reglas-del-mensaje';
+import { vistaPreviaDelMensaje } from '../domain/reglas-del-mensaje';
 import { seqVisibleHasta } from '../infrastructure/bandeja-read-model';
 import type { Observador } from '../infrastructure/chat-read-model';
 import { ChatMapper } from './chat.mapper';
@@ -105,33 +106,57 @@ export class ChatRealtimeListener {
     // La bandeja de la empresa tiene su propio aviso (`BandejaRealtimeListener`).
     if (esCanalDeLaBandeja(conversation.channel)) return;
     await this.seguro(EVENTO_SOCKET_MENSAJE, async () => {
-      const base = {
-        conversationId: conversation.conversationId,
-        distributorId: conversation.distributorId,
-        seq: message.seq,
-      };
       const interna = message.visibility !== MessageVisibility.ALL;
-      const plataforma = await this.contexto(SALA_DE_LA_PLATAFORMA, {
-        mensajes: [message],
-      });
-      this.gateway.emitirAConversacion(
-        conversation.conversationId,
-        'platform',
-        EVENTO_SOCKET_MENSAJE,
-        { ...base, message: ChatMapper.mensaje(message, plataforma) },
-      );
-      this.avisarALasListas(conversation, 'message', message, interna);
-      if (interna) return;
-      const empresa = await this.contexto(SALA_DE_LA_EMPRESA, {
-        mensajes: [message],
-      });
-      this.gateway.emitirAConversacion(
-        conversation.conversationId,
-        'company',
-        EVENTO_SOCKET_MENSAJE,
-        { ...base, message: ChatMapper.mensaje(message, empresa) },
+      await this.mensajeALasSalas(conversation, message, () =>
+        this.avisarALasListas(conversation, 'message', message, interna),
       );
     });
+  }
+
+  /** El escaneo del adjunto terminó: las salas reciben el mensaje de nuevo (las listas, no). */
+  @OnEvent(EVENTO_MENSAJE_ACTUALIZADO, { async: true })
+  async actualizacion({ conversation, message }: MensajeCreado): Promise<void> {
+    if (esCanalDeLaBandeja(conversation.channel)) return;
+    await this.seguro(EVENTO_SOCKET_MENSAJE, () =>
+      this.mensajeALasSalas(conversation, message),
+    );
+  }
+
+  /**
+   * Cada punta, su versión del mensaje, en la sala de la conversación: la
+   * plataforma siempre; la empresa, si no es una nota interna. `entre` corre
+   * después de la plataforma (el aviso a las listas de un mensaje nuevo).
+   */
+  private async mensajeALasSalas(
+    conversation: Conversation,
+    message: Message,
+    entre?: () => void,
+  ): Promise<void> {
+    const base = {
+      conversationId: conversation.conversationId,
+      distributorId: conversation.distributorId,
+      seq: message.seq,
+    };
+    const plataforma = await this.contexto(SALA_DE_LA_PLATAFORMA, {
+      mensajes: [message],
+    });
+    this.gateway.emitirAConversacion(
+      conversation.conversationId,
+      'platform',
+      EVENTO_SOCKET_MENSAJE,
+      { ...base, message: ChatMapper.mensaje(message, plataforma) },
+    );
+    entre?.();
+    if (message.visibility !== MessageVisibility.ALL) return;
+    const empresa = await this.contexto(SALA_DE_LA_EMPRESA, {
+      mensajes: [message],
+    });
+    this.gateway.emitirAConversacion(
+      conversation.conversationId,
+      'company',
+      EVENTO_SOCKET_MENSAJE,
+      { ...base, message: ChatMapper.mensaje(message, empresa) },
+    );
   }
 
   /** Cambio de la conversación: la ficha completa a su sala; a las listas, el aviso liviano. */
@@ -323,7 +348,7 @@ export class ChatRealtimeListener {
             at: m.createdAt.toISOString(),
             party: m.senderParty,
             kind: m.kind,
-            preview: interna ? null : vistaPrevia(m.body, m.visibility),
+            preview: interna ? null : vistaPreviaDelMensaje(m),
           }
         : null,
     };

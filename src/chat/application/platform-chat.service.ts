@@ -343,16 +343,11 @@ export class PlatformChatService {
   }
 
   /** La plataforma escribió: primera respuesta y deja de esperar a una persona. */
-  private async registrarPrimeraRespuesta(
+  private registrarPrimeraRespuesta(
     manager: EntityManager,
     chat: Conversation,
   ): Promise<void> {
-    await manager.query(
-      `UPDATE "conversation" SET "first_response_at" = now()
-        WHERE "conversation_id" = $1 AND "first_response_at" IS NULL`,
-      [chat.conversationId],
-    );
-    await dejaDeEsperarPersona(manager, chat);
+    return primeraRespuestaDeLaPlataforma(manager, chat);
   }
 
   private async cambiarAsignacion(
@@ -435,6 +430,19 @@ export class PlatformChatService {
     if (!c) throw new NotFoundException('No existe ese chat');
     return c;
   }
+}
+
+/** La plataforma escribió (texto o adjunto): primera respuesta y deja de esperar a una persona. */
+export async function primeraRespuestaDeLaPlataforma(
+  manager: EntityManager,
+  chat: Conversation,
+): Promise<void> {
+  await manager.query(
+    `UPDATE "conversation" SET "first_response_at" = now()
+      WHERE "conversation_id" = $1 AND "first_response_at" IS NULL`,
+    [chat.conversationId],
+  );
+  await dejaDeEsperarPersona(manager, chat);
 }
 
 function texto(

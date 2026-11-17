@@ -1,3 +1,4 @@
+import { medioDelMensaje, vistaPreviaDelAdjunto } from './adjuntos';
 import {
   Channel,
   esCanalDeLaBandeja,
@@ -114,4 +115,22 @@ export function vistaPrevia(
   const limpio = body.replace(/\s+/g, ' ').trim();
   if (limpio.length <= LARGO_DE_LA_VISTA_PREVIA) return limpio;
   return `${limpio.slice(0, LARGO_DE_LA_VISTA_PREVIA - 1)}…`;
+}
+
+/**
+ * Vista previa de un mensaje: la de su texto o, si es un adjunto, «📎 Foto» o
+ * «📎 Archivo» (§9.4: el epígrafe no se muestra en la lista). Nunca de una
+ * nota interna.
+ */
+export function vistaPreviaDelMensaje(m: {
+  kind: MessageKind;
+  body: string | null;
+  visibility: MessageVisibility;
+  payload: unknown;
+}): string | null {
+  const medio = medioDelMensaje(m);
+  if (medio === null) return vistaPrevia(m.body, m.visibility);
+  return m.visibility === MessageVisibility.ALL
+    ? vistaPreviaDelAdjunto(medio)
+    : null;
 }

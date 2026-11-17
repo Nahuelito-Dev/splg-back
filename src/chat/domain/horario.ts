@@ -49,18 +49,30 @@ const DIAS: Readonly<Record<string, number>> = {
   Sat: 6,
 };
 
+const FORMATEADORES_DE_HORA = new Map<string, Intl.DateTimeFormat>();
+
+/** Crear un `Intl.DateTimeFormat` es caro: uno por zona, reusado (las métricas lo llaman miles de veces). */
+function formateadorDeHora(zona: string): Intl.DateTimeFormat {
+  let f = FORMATEADORES_DE_HORA.get(zona);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-US', {
+      timeZone: zona,
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    });
+    FORMATEADORES_DE_HORA.set(zona, f);
+  }
+  return f;
+}
+
 /** Día de la semana y minuto del día de `ahora` en la zona horaria dada. */
 export function horaLocal(
   ahora: Date,
   zona: string,
 ): { weekday: number; minuto: number } {
-  const partes = new Intl.DateTimeFormat('en-US', {
-    timeZone: zona,
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(ahora);
+  const partes = formateadorDeHora(zona).formatToParts(ahora);
   const valor = (tipo: string) =>
     partes.find((p) => p.type === tipo)?.value ?? '';
   return {

@@ -16,7 +16,8 @@ import {
   Party,
 } from '../domain/chat.enums';
 import { minutosHabiles } from '../domain/horario-de-la-empresa';
-import { vistaPrevia } from '../domain/reglas-del-mensaje';
+import { vistaPreviaDelMensaje } from '../domain/reglas-del-mensaje';
+import type { Attachment } from '../../attachment/entities/attachment.entity';
 import type { ChatCompanySettings } from '../entities/chat-company-settings.entity';
 import type { Conversation } from '../entities/conversation.entity';
 import type { ConversationRating } from '../entities/conversation-rating.entity';
@@ -30,6 +31,7 @@ import {
 } from '../infrastructure/bandeja-read-model';
 import type { Lector } from '../infrastructure/chat-read-model';
 import { payloadPara } from './payload-del-mensaje';
+import { adjuntoADto } from './adjunto.mapper';
 
 export { payloadPara };
 import type {
@@ -68,6 +70,8 @@ export interface ContextoDeLaBandeja {
   encuestas: Map<string, ConversationRating>;
   /** Sólo para el cliente: el `seq` del primer mensaje del asistente de cada conversación (4e). */
   primerDelAsistente: Map<string, number>;
+  /** El adjunto de cada mensaje de adjunto (CH7), por `messageId`. */
+  adjuntos: Map<string, Attachment>;
 }
 
 /** La encuesta de un cierre como la ven el personal y el cliente (4b). */
@@ -149,6 +153,7 @@ export class BandejaPresenter {
       mencionesSinLeer,
       encuestas,
       primerDelAsistente,
+      adjuntos,
     ] = await Promise.all([
       this.lectura.noLeidos(ids, quien),
       this.lectura.lecturaPropia(ids, quien.userId),
@@ -189,6 +194,7 @@ export class BandejaPresenter {
             mensajes.filter(esRespuestaAutomatica).map((m) => m.conversationId),
           )
         : Promise.resolve(new Map<string, number>()),
+      this.lectura.adjuntos(mensajes),
     ]);
     const usuarios = new Set<string>();
     for (const c of conversaciones) {
@@ -242,6 +248,7 @@ export class BandejaPresenter {
       mencionesSinLeer,
       encuestas,
       primerDelAsistente,
+      adjuntos,
     };
   }
 
@@ -320,7 +327,7 @@ export class BandejaPresenter {
               (ultimo.kind === MessageKind.SYSTEM &&
                 !esRespuestaAutomatica(ultimo))
                 ? null
-                : vistaPrevia(ultimo.body, ultimo.visibility),
+                : vistaPreviaDelMensaje(ultimo),
             at: ultimo.createdAt.toISOString(),
             party: ultimo.senderParty,
           }
@@ -386,6 +393,7 @@ export class BandejaPresenter {
       kind: m.kind,
       internal: interna,
       body: sinTexto ? null : m.body,
+      attachment: adjuntoADto(ctx.adjuntos.get(m.messageId), sinTexto),
       templateKey: m.templateKey,
       systemCode: m.systemCode,
       automated: automatico,
@@ -409,7 +417,7 @@ export class BandejaPresenter {
             preview:
               respondido.redactedAt || respondido.withdrawnAt
                 ? null
-                : vistaPrevia(respondido.body, respondido.visibility),
+                : vistaPreviaDelMensaje(respondido),
           }
         : null,
       editedAt: m.editedAt?.toISOString() ?? null,

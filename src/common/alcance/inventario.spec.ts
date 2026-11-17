@@ -151,6 +151,8 @@ const PLATAFORMA = [
   'PUT /v2/platform/companies/:id/modules/:key',
   // Mensajería (CH1): chat con las empresas, tickets y configuración del soporte.
   'GET /v2/platform/chats',
+  // Métricas del soporte y del chat por empresa (B4).
+  'GET /v2/platform/chat/metrics',
   'GET /v2/platform/chats/:id',
   'GET /v2/platform/chats/:id/messages',
   'POST /v2/platform/chats',
@@ -168,6 +170,11 @@ const PLATAFORMA = [
   'POST /v2/platform/tickets/:id/excerpts',
   'POST /v2/platform/tickets/:id/messages',
   'POST /v2/platform/tickets/:id/read',
+  // Adjuntos del soporte (CH7).
+  'GET /v2/platform/chats/:id/messages/:messageId/attachment',
+  'GET /v2/platform/tickets/:id/messages/:messageId/attachment',
+  'POST /v2/platform/chats/:id/attachments',
+  'POST /v2/platform/tickets/:id/attachments',
   'GET /v2/platform/support-settings',
   'GET /v2/platform/support/summary',
   'PUT /v2/platform/support-settings',

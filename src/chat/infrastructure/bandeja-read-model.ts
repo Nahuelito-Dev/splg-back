@@ -1,3 +1,5 @@
+import type { Attachment } from '../../attachment/entities/attachment.entity';
+import { adjuntosDeLosMensajes } from './adjuntos-de-los-mensajes';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, In } from 'typeorm';
@@ -228,6 +230,11 @@ export class BandejaReadModel {
    * (ni para el personal: la vista previa de la lista es la de la charla con
    * la persona, y el cliente o el chofer no pueden enterarse de que hubo una).
    */
+  /** Los adjuntos de los mensajes de adjunto (CH7), por `messageId`. */
+  adjuntos(mensajes: readonly Message[]): Promise<Map<string, Attachment>> {
+    return adjuntosDeLosMensajes(this.dataSource.manager, mensajes);
+  }
+
   async ultimos(conversationIds: string[]): Promise<Map<string, Message>> {
     if (conversationIds.length === 0) return new Map();
     const filas = await this.dataSource

@@ -29,6 +29,8 @@ export type PayloadDelMensaje =
   | { ticketId: string; number: string; from: string; to: string }
   | { userId: string | null }
   | { claimId: string }
+  /** Adjunto (CH7): si es una foto o un archivo, para la vista previa sin leer el adjunto. */
+  | { media: 'photo' | 'file' }
   /** Respuesta del asistente (fuera de horario, aviso de recibido): `senderLabel` es su firma al mandarla. */
   | { until: string; senderLabel?: string }
   | { senderLabel: string }
@@ -105,6 +107,8 @@ export interface PayloadDeLaDerivacion {
   { name: 'FK_message_respuesta', onDelete: 'NO ACTION' },
 )
 @Index('IDX_message_distribuidora_fecha', ['distributorId', 'createdAt'])
+// Métricas de la plataforma (B4): los mensajes de un período de todas las empresas.
+@Index('IDX_message_fecha', ['createdAt'])
 @Check(
   'CHK_message_respuesta',
   `"reply_to_seq" IS NULL OR ("reply_to_seq" >= 1 AND "reply_to_seq" < "seq")`,
@@ -132,7 +136,11 @@ export interface PayloadDeLaDerivacion {
 )
 @Check(
   'CHK_message_tipo',
-  `"kind" IN ('text', 'system', 'auto_reply', 'quoted_excerpt') AND ("kind" IN ('system', 'auto_reply')) = ("sender_party" = 'system')`,
+  `"kind" IN ('text', 'system', 'auto_reply', 'quoted_excerpt', 'attachment') AND ("kind" IN ('system', 'auto_reply')) = ("sender_party" = 'system')`,
+)
+@Check(
+  'CHK_message_adjunto',
+  `"kind" <> 'attachment' OR ("client_message_id" IS NOT NULL AND ("body" IS NULL OR char_length("body") <= 500) AND ("redacted_at" IS NOT NULL OR coalesce("payload" ->> 'media', '') IN ('photo', 'file')))`,
 )
 @Check(
   'CHK_message_visibilidad',
