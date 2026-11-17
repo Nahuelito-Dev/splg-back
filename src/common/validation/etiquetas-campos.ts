@@ -84,6 +84,9 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   question: 'Pregunta',
   answer: 'Respuesta',
   useAsTemplate: 'Usar como plantilla',
+  // Lote de regresión del asistente (7b).
+  expected: 'Resultado esperado',
+  mustMention: 'Lo que tiene que mencionar',
   // Parámetros de los procesos automáticos (no son campos de un DTO).
   minOrders: 'Mínimo de pedidos',
   anticipationDays: 'Días de anticipación',

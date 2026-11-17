@@ -2,6 +2,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { CLIENTE_ANTHROPIC } from '../document-reader/claude-document-reader';
 import {
+  CausaDeDerivacion,
+  causaDeDerivacion,
   FORMATO_DE_LA_RESPUESTA,
   type FuenteDeHerramienta,
   importesNoVerificados,
@@ -11,6 +13,7 @@ import {
   MAX_TOKENS_DEL_ASISTENTE,
   MODELO_DEL_ASISTENTE,
   MotivoDeDerivacion,
+  prometeUnaAccion,
   RespuestaDelModelo,
   SIN_USO,
   sumarUso,
@@ -63,7 +66,8 @@ export function motivoDelError(error: unknown): MotivoDeDerivacion {
  * equipo (4c), en la misma consulta: sin una segunda llamada. Cualquier cosa
  * que no sea un texto publicable termina en derivar: `pasar_a_persona`, `refusal`
  * (Haiku no tiene respaldo del servidor), `max_tokens`, sin texto, HTML, un
- * importe que no salió de una herramienta en esta consulta, más de 3 vueltas
+ * importe que no salió de una herramienta en esta consulta, un texto que
+ * dice que registró o derivó algo (`prometeUnaAccion`), más de 3 vueltas
  * de herramientas, timeout o error de la API. Nunca tira.
  */
 @Injectable()
@@ -88,7 +92,11 @@ export class ConsultaAlAsistente {
     const fuentes: FuenteDeHerramienta[] = [];
     const derivar = (
       motivo: MotivoDeDerivacion,
-      dePasar?: { resumen: string | null; detalle: string | null },
+      dePasar?: {
+        resumen: string | null;
+        detalle: string | null;
+        causa: CausaDeDerivacion;
+      },
     ): RespuestaDelModelo => ({
       tipo: 'derivar',
       motivo,
@@ -145,6 +153,7 @@ export class ConsultaAlAsistente {
             return derivar(MotivoDeDerivacion.REQUESTED, {
               resumen: textoParaElEquipo(input.resumen, LARGO_DEL_RESUMEN),
               detalle: textoParaElEquipo(input.motivo, LARGO_DEL_DETALLE),
+              causa: causaDeDerivacion(input.causa),
             });
           }
           if (vuelta >= VUELTAS_DE_HERRAMIENTAS) {
@@ -191,6 +200,12 @@ export class ConsultaAlAsistente {
           }
           const texto = textoPublicable(estructurada.respuesta);
           if (texto === null) return derivar(MotivoDeDerivacion.INVALID_TEXT);
+          if (prometeUnaAccion(texto)) {
+            this.logger.warn(
+              'La respuesta del asistente dice que registró o derivó algo que no hizo: se deriva',
+            );
+            return derivar(MotivoDeDerivacion.INVALID_TEXT);
+          }
           if (importesNoVerificados(texto, datos).length > 0) {
             this.logger.warn(
               'La respuesta del asistente menciona un importe que no salió de una herramienta: se deriva',

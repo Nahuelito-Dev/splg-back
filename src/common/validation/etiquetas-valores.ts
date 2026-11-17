@@ -419,4 +419,7 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   otro: 'Otro',
   poliza: 'Póliza',
   revision_tecnica: 'Revisión técnica',
+  // Lote de regresión del asistente (7b).
+  'expected:answer': 'Que responda',
+  'expected:handoff': 'Que pase a una persona',
 };

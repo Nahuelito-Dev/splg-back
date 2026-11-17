@@ -4,6 +4,7 @@ import { FindOperator } from 'typeorm';
 import type { DataSource } from 'typeorm';
 import {
   AssistantFaqService,
+  esBorrador,
   normalizarPregunta,
 } from './assistant-faq.service';
 import { TOPE_DE_PREGUNTAS } from './assistant.errors';
@@ -917,5 +918,109 @@ describe('AssistantFaqService · corrección 1', () => {
         ['b', 5],
       ]);
     });
+  });
+});
+
+describe('AssistantFaqService · borradores (7b)', () => {
+  it('crea la pregunta sin respuesta, al final, sube la versión y corre lo de después en la misma transacción', async () => {
+    const m = baseEnMemoria();
+    await m.service.crear(A, pregunta(1), 'admin-a');
+    const despues = jest.fn(() => Promise.resolve());
+    const fila = await m.service.crearBorrador(
+      A,
+      { question: '¿Llegan a Garupá?' },
+      'admin-a',
+      despues,
+    );
+    expect(fila).toMatchObject({
+      distributorId: A,
+      question: '¿Llegan a Garupá?',
+      answer: '',
+      position: 2,
+      key: null,
+    });
+    expect(esBorrador(fila)).toBe(true);
+    expect(despues).toHaveBeenCalledWith(expect.anything(), fila);
+    expect((await m.service.listar(A)).version).toBe(2);
+    expect(m.transaction).toHaveBeenCalledTimes(3);
+  });
+
+  it('si lo de después falla, el error sale (la transacción vuelve atrás)', async () => {
+    const m = baseEnMemoria();
+    await expect(
+      m.service.crearBorrador(
+        A,
+        { question: '¿Llegan a Garupá?' },
+        'admin-a',
+        () => Promise.reject(new Error('no se pudo marcar')),
+      ),
+    ).rejects.toThrow('no se pudo marcar');
+  });
+
+  it('mismas reglas que el alta: pregunta repetida (409) y texto inválido (400) antes de tocar la base', async () => {
+    const m = baseEnMemoria();
+    await m.service.crear(A, pregunta(1), 'admin-a');
+    const despues = jest.fn(() => Promise.resolve());
+    expect(
+      await cuerpoDelError(
+        m.service.crearBorrador(
+          A,
+          { question: ' ¿PREGUNTA número 1? ' },
+          'admin-a',
+          despues,
+        ),
+      ),
+    ).toMatchObject({ status: 409, code: 'ASSISTANT_FAQ_DUPLICATE' });
+    const llamadas = m.llamadas.length;
+    expect(
+      await cuerpoDelError(
+        m.service.crearBorrador(A, { question: '¿Ya?' }, 'admin-a', despues),
+      ),
+    ).toMatchObject({ status: 400 });
+    expect(m.llamadas).toHaveLength(llamadas);
+    expect(despues).not.toHaveBeenCalled();
+  });
+
+  it('en la plataforma lleva la clave que se le pasa', async () => {
+    const m = baseEnMemoria();
+    const fila = await m.service.crearBorrador(
+      null,
+      { question: '¿Cómo cargo un chofer?', key: 'sin_respuesta_abc' },
+      'super',
+      () => Promise.resolve(),
+    );
+    expect(fila).toMatchObject({
+      distributorId: null,
+      key: 'sin_respuesta_abc',
+      answer: '',
+    });
+  });
+
+  it('esBorrador: sólo la respuesta vacía o en blanco', () => {
+    expect(esBorrador({ answer: '' })).toBe(true);
+    expect(esBorrador({ answer: '  \n' })).toBe(true);
+    expect(esBorrador({ answer: 'Sí.' })).toBe(false);
+  });
+});
+
+describe('AssistantFaqService · vigente (ronda 1)', () => {
+  it('busca la pregunta en la base del dueño (la plataforma, con distribuidora nula); las dadas de baja no salen', async () => {
+    const findOne = jest.fn((o: { where: Record<string, unknown> }) =>
+      Promise.resolve(
+        o.where.faqId === 'faq-1' ? ({ faqId: 'faq-1' } as AssistantFaq) : null,
+      ),
+    );
+    const servicio = new AssistantFaqService({
+      getRepository: () => ({ findOne }),
+    } as unknown as DataSource);
+    await expect(servicio.vigente(A, 'faq-1')).resolves.toEqual({
+      faqId: 'faq-1',
+    });
+    expect(findOne).toHaveBeenCalledWith({
+      where: { faqId: 'faq-1', distributorId: A },
+    });
+    await expect(servicio.vigente(null, 'otra')).resolves.toBeNull();
+    const [{ where }] = findOne.mock.calls[1];
+    expect(where.distributorId).toBeInstanceOf(FindOperator);
   });
 });

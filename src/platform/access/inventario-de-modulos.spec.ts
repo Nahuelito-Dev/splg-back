@@ -117,6 +117,7 @@ const CARPETAS_DE_MODULOS = [
   'mp-reconciliation/',
   'chat/presentation/bandeja/',
   'assistant/',
+  'assistant-lab/',
 ];
 
 /** Qué ruta va con qué módulo. Cambiarlo es una decisión de producto (§3.5). */
@@ -209,6 +210,17 @@ const ATADAS: Record<string, string> = {
   'PATCH /v2/company/assistant/faqs/:id': 'assistant',
   'DELETE /v2/company/assistant/faqs/:id': 'assistant',
   'GET /v2/company/assistant/templates': 'assistant',
+  // M8: probador, preguntas sin respuesta y lote de regresión (7b).
+  'POST /v2/company/assistant/preview': 'assistant',
+  'GET /v2/company/assistant/unanswered': 'assistant',
+  'POST /v2/company/assistant/unanswered/:id/faq': 'assistant',
+  'POST /v2/company/assistant/unanswered/:id/dismiss': 'assistant',
+  'GET /v2/company/assistant/regression/cases': 'assistant',
+  'POST /v2/company/assistant/regression/cases': 'assistant',
+  'PATCH /v2/company/assistant/regression/cases/:id': 'assistant',
+  'DELETE /v2/company/assistant/regression/cases/:id': 'assistant',
+  'POST /v2/company/assistant/regression/run': 'assistant',
+  'GET /v2/company/assistant/regression/runs/last': 'assistant',
   // Compra express (fuera de las carpetas de módulos).
   'GET /module-config/express_dispatch': 'express',
   'PUT /module-config/express_dispatch': 'express',
@@ -336,6 +348,14 @@ const EXCEPCIONES: Record<string, string> = {
     'El catálogo de preguntas de ejemplo lo administra la plataforma: no depende del módulo de ninguna empresa',
   'DELETE /v2/platform/assistant/templates/:id':
     'El catálogo de preguntas de ejemplo lo administra la plataforma: no depende del módulo de ninguna empresa',
+  'POST /v2/platform/assistant/preview':
+    'El asistente del soporte de OrixTech es de la plataforma: no depende del módulo de ninguna empresa',
+  'GET /v2/platform/assistant/unanswered':
+    'El asistente del soporte de OrixTech es de la plataforma: no depende del módulo de ninguna empresa',
+  'POST /v2/platform/assistant/unanswered/:id/faq':
+    'El asistente del soporte de OrixTech es de la plataforma: no depende del módulo de ninguna empresa',
+  'POST /v2/platform/assistant/unanswered/:id/dismiss':
+    'El asistente del soporte de OrixTech es de la plataforma: no depende del módulo de ninguna empresa',
 };
 
 /** Deciden el módulo en el servicio (el proceso viene en la ruta) y documentan su 403. */

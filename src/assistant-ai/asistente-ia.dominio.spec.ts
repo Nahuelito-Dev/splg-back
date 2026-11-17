@@ -10,6 +10,11 @@ import {
   textoPublicable,
   tokensQueCuentan,
   topeAlcanzado,
+  CAUSAS_DE_DERIVACION,
+  CAUSAS_EN_CASTELLANO,
+  CausaDeDerivacion,
+  causaDeDerivacion,
+  prometeUnaAccion,
 } from './asistente-ia.dominio';
 
 describe('asistente con IA: reglas', () => {
@@ -139,5 +144,40 @@ describe('asistente con IA: reglas', () => {
       ).toEqual(['14000.00']);
       expect(importesNoVerificados('Sin plata de por medio', [])).toEqual([]);
     });
+  });
+});
+
+describe('ronda 1: causa de la derivación y promesas que no se cumplen', () => {
+  it('causaDeDerivacion: las de la lista tal cual; lo demás, other', () => {
+    expect(causaDeDerivacion('no_info')).toBe(CausaDeDerivacion.NO_INFO);
+    expect(causaDeDerivacion('complaint')).toBe(CausaDeDerivacion.COMPLAINT);
+    expect(causaDeDerivacion('NO_INFO')).toBe(CausaDeDerivacion.OTHER);
+    expect(causaDeDerivacion(3)).toBe(CausaDeDerivacion.OTHER);
+    expect(Object.keys(CAUSAS_EN_CASTELLANO).sort()).toEqual(
+      [...CAUSAS_DE_DERIVACION].sort(),
+    );
+  });
+
+  it.each([
+    'Todavía no tengo información, para que alguien del equipo te oriente, quedó registrada tu consulta.',
+    'Tu consulta queda anotada.',
+    'Registré tu pedido de cambio.',
+    'TOMÉ NOTA de lo que necesitás.',
+    'Ya derivamos tu consulta.',
+    'Le avisé a ventas.',
+    'Te paso con alguien del equipo.',
+    'Alguien te va a contactar mañana.',
+  ])('promete una acción: «%s»', (t) => {
+    expect(prometeUnaAccion(t)).toBe(true);
+  });
+
+  it.each([
+    'Abrimos de lunes a sábado de 8 a 20.',
+    'Tu pedido está Reservado (se activa el día agendado).',
+    'Tu pedido fue registrado en la app y está en camino.',
+    'Podés pagar en efectivo o con Mercado Pago.',
+    'Te pasamos el link en la app.',
+  ])('no promete nada: «%s»', (t) => {
+    expect(prometeUnaAccion(t)).toBe(false);
   });
 });

@@ -98,10 +98,74 @@
       "orderColumn": null
     },
     {
+      "table": "assistant_regression_case",
+      "entity": "AssistantRegressionCase",
+      "pk": [
+        "case_id"
+      ],
+      "deleteColumn": "deleted_at",
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "assistant_regression_run",
+      "entity": "AssistantRegressionRun",
+      "pk": [
+        "run_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "assistant_test_usage",
+      "entity": "AssistantTestUsage",
+      "pk": [
+        "usage_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "assistant_trace",
       "entity": "AssistantTrace",
       "pk": [
         "trace_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "assistant_unanswered_resolution",
+      "entity": "AssistantUnansweredResolution",
+      "pk": [
+        "resolution_id"
       ],
       "deleteColumn": null,
       "distributorMode": "column",
@@ -2041,6 +2105,238 @@
       "position": 3
     },
     {
+      "table": "assistant_regression_case",
+      "column": "case_id",
+      "property": "caseId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "assistant_regression_case",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "assistant_regression_case",
+      "column": "question",
+      "property": "question",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "assistant_regression_case",
+      "column": "expected",
+      "property": "expected",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "assistant_regression_case",
+      "column": "must_mention",
+      "property": "mustMention",
+      "secret": false,
+      "kind": "json",
+      "position": 4
+    },
+    {
+      "table": "assistant_regression_case",
+      "column": "created_by",
+      "property": "createdBy",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "assistant_regression_case",
+      "column": "updated_by",
+      "property": "updatedBy",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "assistant_regression_case",
+      "column": "deleted_at",
+      "property": "deletedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 7
+    },
+    {
+      "table": "assistant_regression_run",
+      "column": "run_id",
+      "property": "runId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "assistant_regression_run",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "assistant_regression_run",
+      "column": "status",
+      "property": "status",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "assistant_regression_run",
+      "column": "total",
+      "property": "total",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "assistant_regression_run",
+      "column": "started_by",
+      "property": "startedBy",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "assistant_regression_run",
+      "column": "started_at",
+      "property": "startedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 5
+    },
+    {
+      "table": "assistant_regression_run",
+      "column": "finished_at",
+      "property": "finishedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 6
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "usage_id",
+      "property": "usageId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "channel",
+      "property": "channel",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "kind",
+      "property": "kind",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "model",
+      "property": "model",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "outcome",
+      "property": "outcome",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "reason",
+      "property": "reason",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "input_tokens",
+      "property": "inputTokens",
+      "secret": true,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "output_tokens",
+      "property": "outputTokens",
+      "secret": true,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "cache_read_tokens",
+      "property": "cacheReadTokens",
+      "secret": true,
+      "kind": "text",
+      "position": 9
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "cache_creation_tokens",
+      "property": "cacheCreationTokens",
+      "secret": true,
+      "kind": "text",
+      "position": 10
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "tools_used",
+      "property": "toolsUsed",
+      "secret": false,
+      "kind": "json",
+      "position": 11
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "latency_ms",
+      "property": "latencyMs",
+      "secret": false,
+      "kind": "text",
+      "position": 12
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "created_by",
+      "property": "createdBy",
+      "secret": false,
+      "kind": "text",
+      "position": 13
+    },
+    {
       "table": "assistant_trace",
       "column": "trace_id",
       "property": "traceId",
@@ -2106,11 +2402,19 @@
     },
     {
       "table": "assistant_trace",
+      "column": "handoff_cause",
+      "property": "handoffCause",
+      "secret": false,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "assistant_trace",
       "column": "model",
       "property": "model",
       "secret": false,
       "kind": "text",
-      "position": 8
+      "position": 9
     },
     {
       "table": "assistant_trace",
@@ -2118,7 +2422,7 @@
       "property": "inputTokens",
       "secret": true,
       "kind": "text",
-      "position": 9
+      "position": 10
     },
     {
       "table": "assistant_trace",
@@ -2126,7 +2430,7 @@
       "property": "outputTokens",
       "secret": true,
       "kind": "text",
-      "position": 10
+      "position": 11
     },
     {
       "table": "assistant_trace",
@@ -2134,7 +2438,7 @@
       "property": "cacheReadTokens",
       "secret": true,
       "kind": "text",
-      "position": 11
+      "position": 12
     },
     {
       "table": "assistant_trace",
@@ -2142,7 +2446,7 @@
       "property": "cacheCreationTokens",
       "secret": true,
       "kind": "text",
-      "position": 12
+      "position": 13
     },
     {
       "table": "assistant_trace",
@@ -2150,7 +2454,7 @@
       "property": "toolsUsed",
       "secret": false,
       "kind": "json",
-      "position": 13
+      "position": 14
     },
     {
       "table": "assistant_trace",
@@ -2158,7 +2462,71 @@
       "property": "latencyMs",
       "secret": false,
       "kind": "text",
-      "position": 14
+      "position": 15
+    },
+    {
+      "table": "assistant_unanswered_resolution",
+      "column": "resolution_id",
+      "property": "resolutionId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "assistant_unanswered_resolution",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "assistant_unanswered_resolution",
+      "column": "channel",
+      "property": "channel",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "assistant_unanswered_resolution",
+      "column": "question_key",
+      "property": "questionKey",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "assistant_unanswered_resolution",
+      "column": "status",
+      "property": "status",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "assistant_unanswered_resolution",
+      "column": "faq_id",
+      "property": "faqId",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "assistant_unanswered_resolution",
+      "column": "resolved_by",
+      "property": "resolvedBy",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "assistant_unanswered_resolution",
+      "column": "resolved_at",
+      "property": "resolvedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 7
     },
     {
       "table": "attachment",

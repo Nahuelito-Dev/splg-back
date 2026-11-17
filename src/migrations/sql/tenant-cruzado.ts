@@ -49,6 +49,7 @@ export const CLAVE_DEL_PADRE: Readonly<Record<string, string>> = {
   staff_role: 'staff_role_id',
   claims: 'claim_id',
   assistant_knowledge_base: 'knowledge_base_id',
+  assistant_faq: 'faq_id',
 };
 
 export const CLAVES_CRUZADAS: readonly ClaveForaneaDeDistribuidora[] = [
@@ -176,6 +177,10 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     ['conversation_rating', 'request_message_id', 'message'],
     // Adjuntos del chat (CH7)
     ['attachment', 'message_id', 'message'],
+    // Preguntas sin respuesta del asistente (7b): la pregunta en borrador es
+    // de la misma base. Las de la plataforma (`distributor_id` nulo) las
+    // cubre la FK simple.
+    ['assistant_unanswered_resolution', 'faq_id', 'assistant_faq'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>

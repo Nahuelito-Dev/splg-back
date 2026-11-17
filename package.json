@@ -186,6 +186,12 @@
         "functions": 98,
         "lines": 99
       },
+      "./src/assistant-lab/": {
+        "statements": 99,
+        "branches": 86,
+        "functions": 96,
+        "lines": 99
+      },
       "./src/attachment/": {
         "statements": 58,
         "branches": 53,

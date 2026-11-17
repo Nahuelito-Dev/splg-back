@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import {
+  CausaDeDerivacion,
   FORMATO_DE_LA_RESPUESTA,
   MotivoDeDerivacion,
 } from './asistente-ia.dominio';
@@ -343,8 +344,64 @@ describe('ConsultaAlAsistente (cliente de Anthropic simulado)', () => {
       (create.mock.calls[0] as Llamada)[0].tools as Anthropic.Tool[]
     ).find((t) => t.name === 'pasar_a_persona');
     expect(pasar?.strict).toBe(true);
-    expect(pasar?.input_schema.required).toEqual(['motivo', 'resumen']);
+    expect(pasar?.input_schema.required).toEqual([
+      'causa',
+      'motivo',
+      'resumen',
+    ]);
+    const causa = (
+      pasar?.input_schema.properties as Record<string, { enum?: string[] }>
+    ).causa;
+    expect(causa.enum).toEqual([
+      'no_info',
+      'low_confidence',
+      'customer_asked',
+      'complaint',
+      'other',
+    ]);
   });
+
+  it.each([
+    ['no_info', CausaDeDerivacion.NO_INFO],
+    ['low_confidence', CausaDeDerivacion.LOW_CONFIDENCE],
+    ['complaint', CausaDeDerivacion.COMPLAINT],
+    ['cualquier_cosa', CausaDeDerivacion.OTHER],
+    [undefined, CausaDeDerivacion.OTHER],
+  ])(
+    'pasar_a_persona con causa %s: la trae (lo que no es de la lista es other)',
+    async (crudo, causa) => {
+      const { servicio, consulta } = armar(
+        respuesta('tool_use', [
+          herramienta('tu_1', 'pasar_a_persona', {
+            causa: crudo,
+            motivo: 'x',
+            resumen: 'y',
+          }),
+        ]),
+      );
+      expect(await servicio.consultar(consulta)).toMatchObject({
+        tipo: 'derivar',
+        motivo: MotivoDeDerivacion.REQUESTED,
+        causa,
+      });
+    },
+  );
+
+  it.each([
+    'Todavía no tengo información sobre eso, pero quedó registrada tu consulta.',
+    'Tomé nota y alguien del equipo te va a contactar.',
+    'Ya le avisé al equipo.',
+    'Te paso con alguien de ventas.',
+  ])(
+    'una respuesta que dice que registró o derivó algo («%s») no se publica: deriva',
+    async (t) => {
+      const { servicio, consulta } = armar(respuesta('end_turn', [final(t)]));
+      expect(await servicio.consultar(consulta)).toMatchObject({
+        tipo: 'derivar',
+        motivo: MotivoDeDerivacion.INVALID_TEXT,
+      });
+    },
+  );
 
   it('pasar_a_persona con un resumen con HTML o vacío: deriva sin resumen (la nota lleva el motivo)', async () => {
     const { servicio, consulta } = armar(

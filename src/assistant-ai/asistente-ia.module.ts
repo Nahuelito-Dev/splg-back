@@ -7,6 +7,7 @@ import { AsistenteIaRescateCron } from './asistente-ia-rescate.cron';
 import { AsistenteIaListener } from './asistente-ia.listener';
 import { AsistenteIaService } from './asistente-ia.service';
 import { ConsultaAlAsistente } from './consulta-al-modelo';
+import { AssistantTestUsage } from './entities/assistant-test-usage.entity';
 import { AssistantTrace } from './entities/assistant-trace.entity';
 import { HerramientasDelAsistente } from './herramientas';
 
@@ -16,11 +17,13 @@ import { HerramientasDelAsistente } from './herramientas';
  * pedidos) y en C1 (soporte de la plataforma, con la base de OrixTech) con
  * Claude Haiku 5.5, o pasa la conversación a una persona. Usa el cliente de
  * Anthropic del lector de documentos (`CLIENTE_ANTHROPIC`, global): sin
- * `ANTHROPIC_API_KEY`, deriva sin consultar.
+ * `ANTHROPIC_API_KEY`, deriva sin consultar. Exporta el servicio para el
+ * probador y el lote de regresión (`assistant-lab`), que contestan por el
+ * mismo camino.
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AssistantTrace]),
+    TypeOrmModule.forFeature([AssistantTrace, AssistantTestUsage]),
     ChatModule,
     AssistantModule,
     GasCylinderModule,
@@ -32,5 +35,6 @@ import { HerramientasDelAsistente } from './herramientas';
     ConsultaAlAsistente,
     HerramientasDelAsistente,
   ],
+  exports: [AsistenteIaService],
 })
 export class AsistenteIaModule {}

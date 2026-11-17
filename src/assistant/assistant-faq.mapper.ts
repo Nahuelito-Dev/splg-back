@@ -8,7 +8,7 @@ import type {
   PlatformAssistantFaqTemplateResponseDto,
 } from './dto/assistant-faq.dto';
 import type { EjemploParaLaEmpresa } from './assistant-faq-template.service';
-import type { BaseDeConocimiento } from './assistant-faq.service';
+import { type BaseDeConocimiento, esBorrador } from './assistant-faq.service';
 import type { AssistantFaqTemplate } from './entities/assistant-faq-template.entity';
 import { TOPE_DE_PREGUNTAS } from './assistant.errors';
 import type { AssistantFaq } from './entities/assistant-faq.entity';
@@ -21,6 +21,7 @@ export const AssistantFaqMapper = {
       key: fila.key,
       question: fila.question,
       answer: fila.answer,
+      isDraft: esBorrador(fila),
       position: fila.position,
       createdAt: fila.createdAt.toISOString(),
       updatedAt: fila.updatedAt.toISOString(),
@@ -34,6 +35,7 @@ export const AssistantFaqMapper = {
       key: fila.key ?? '',
       question: fila.question,
       answer: fila.answer,
+      isDraft: esBorrador(fila),
       position: fila.position,
       createdAt: fila.createdAt.toISOString(),
       updatedAt: fila.updatedAt.toISOString(),

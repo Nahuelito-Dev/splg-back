@@ -109,6 +109,11 @@ const PLATAFORMA = [
   'POST /v2/platform/assistant/templates',
   'PATCH /v2/platform/assistant/templates/:id',
   'DELETE /v2/platform/assistant/templates/:id',
+  // Probador y preguntas sin respuesta del asistente del soporte (7b).
+  'POST /v2/platform/assistant/preview',
+  'GET /v2/platform/assistant/unanswered',
+  'POST /v2/platform/assistant/unanswered/:id/faq',
+  'POST /v2/platform/assistant/unanswered/:id/dismiss',
   'DELETE /distributor/:id',
   'DELETE /role/:id',
   'DELETE /v2/support-sessions/:id',

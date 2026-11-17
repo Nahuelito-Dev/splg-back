@@ -9,6 +9,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -35,6 +36,13 @@ import { AssistantKnowledgeBase } from './assistant-knowledge-base.entity';
  * `position`: el orden en la base (la lista y el contexto del asistente salen
  * ordenados por ella). Una pregunta nueva va al final; las preguntas de
  * ejemplo copiadas conservan el orden que tienen en el catálogo.
+ *
+ * Borrador: la respuesta vacía. Lo crea «preguntas sin respuesta» con lo que
+ * preguntó un cliente; la persona escribe la respuesta después (el alta y la
+ * edición la piden). El asistente no usa los borradores.
+ *
+ * `UQ_assistant_faq_id_distribuidora`: para las claves cruzadas por empresa
+ * de quien la referencia (`assistant_unanswered_resolution`).
  */
 @Entity('assistant_faq')
 @ForeignKey(
@@ -46,6 +54,7 @@ import { AssistantKnowledgeBase } from './assistant-knowledge-base.entity';
     onDelete: 'NO ACTION',
   },
 )
+@Unique('UQ_assistant_faq_id_distribuidora', ['faqId', 'distributorId'])
 @Index('UQ_assistant_faq_clave_vigente', { synchronize: false })
 @Index('UQ_assistant_faq_pregunta_vigente', { synchronize: false })
 @Index('IDX_assistant_faq_distribuidora', ['distributorId', 'position'])
@@ -53,10 +62,7 @@ import { AssistantKnowledgeBase } from './assistant-knowledge-base.entity';
   'CHK_assistant_faq_pregunta',
   `char_length(btrim("question")) BETWEEN 5 AND 200`,
 )
-@Check(
-  'CHK_assistant_faq_respuesta',
-  `char_length(btrim("answer")) BETWEEN 1 AND 1500`,
-)
+@Check('CHK_assistant_faq_respuesta', `char_length(btrim("answer")) <= 1500`)
 @Check(
   'CHK_assistant_faq_sin_html',
   `${sinHtml('question')} AND ${sinHtml('answer')}`,

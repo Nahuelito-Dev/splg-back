@@ -263,6 +263,7 @@ describe('Base de conocimiento del asistente: /v2/company/assistant/faqs y /v2/p
             key: null,
             question: '¿Hasta qué hora abren?',
             answer: 'Hasta las 20.',
+            isDraft: false,
             position: 1,
             createdAt: '2026-11-15T12:00:00.000Z',
             updatedAt: '2026-11-15T12:30:00.000Z',
@@ -272,6 +273,19 @@ describe('Base de conocimiento del asistente: /v2/company/assistant/faqs y /v2/p
         limit: 200,
       });
       expect(servicio.listar).toHaveBeenCalledWith(EMPRESA_A);
+    });
+
+    it('200 GET: un borrador (sin respuesta) sale marcado, con la respuesta vacía', async () => {
+      servicio.listar.mockResolvedValue({
+        items: [fila({ answer: '' }), fila({ answer: '   ', position: 2 })],
+        version: 4,
+      });
+      const r = await pedir('get', EMPRESA).expect(200);
+      const items = (r.body as { items: Array<Record<string, unknown>> }).items;
+      expect(items.map((i) => [i.answer, i.isDraft])).toEqual([
+        ['', true],
+        ['   ', true],
+      ]);
     });
 
     it('201 POST: crea en la empresa del contexto con el usuario que la carga (texto recortado)', async () => {
@@ -562,6 +576,7 @@ describe('Base de conocimiento del asistente: /v2/company/assistant/faqs y /v2/p
             key: 'horario',
             question: '¿Hasta qué hora abren?',
             answer: 'Hasta las 20.',
+            isDraft: false,
             position: 1,
             createdAt: '2026-11-15T12:00:00.000Z',
             updatedAt: '2026-11-15T12:30:00.000Z',

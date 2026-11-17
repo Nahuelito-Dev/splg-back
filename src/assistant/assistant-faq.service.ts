@@ -52,6 +52,13 @@ interface BaseBloqueada {
 const ultimaPosicion = (filas: ReadonlyArray<{ position: number }>): number =>
   filas.reduce((max, f) => Math.max(max, f.position), 0);
 
+/**
+ * Una pregunta en borrador: sin respuesta todavía (la crea «preguntas sin
+ * respuesta»). El asistente no la usa hasta que alguien escriba la respuesta.
+ */
+export const esBorrador = (fila: Pick<AssistantFaq, 'answer'>): boolean =>
+  fila.answer.trim().length === 0;
+
 /** Igual que el único `UQ_assistant_faq_pregunta_vigente`: sin mayúsculas ni espacios de los bordes. */
 export const normalizarPregunta = (texto: string): string =>
   texto.trim().toLowerCase();
@@ -113,39 +120,82 @@ export class AssistantFaqService {
     });
   }
 
+  /** La pregunta vigente de esa base (sin las dadas de baja ni las de otra base), o `null`. */
+  vigente(duenio: DuenioDeLaBase, faqId: string): Promise<AssistantFaq | null> {
+    return this.dataSource.getRepository(AssistantFaq).findOne({
+      where: { faqId, distributorId: duenio ?? IsNull() },
+    });
+  }
+
   async crear(
     duenio: DuenioDeLaBase,
     datos: DatosDePregunta,
     actorUserId: string | null,
   ): Promise<AssistantFaq> {
     assertTextoValido(datos);
+    return this.escribir((manager) =>
+      this.insertar(manager, duenio, datos, actorUserId),
+    );
+  }
+
+  /**
+   * Alta de una pregunta en borrador, sin respuesta: la crea «preguntas sin
+   * respuesta» con lo que preguntó un cliente, y la respuesta la escribe la
+   * persona después (al cargarla deja de ser borrador). El asistente no usa
+   * los borradores. Mismas reglas que el alta (tope, repetidas, clave).
+   * `despues` corre en la misma transacción, con la base bloqueada: si
+   * falla, no queda la pregunta.
+   */
+  async crearBorrador(
+    duenio: DuenioDeLaBase,
+    datos: Omit<DatosDePregunta, 'answer'>,
+    actorUserId: string | null,
+    despues: (manager: EntityManager, fila: AssistantFaq) => Promise<void>,
+  ): Promise<AssistantFaq> {
+    assertTextoValido({ question: datos.question });
     return this.escribir(async (manager) => {
-      const base = await this.bloquearBase(manager, duenio);
-      const vigentes = await this.vigentes(manager, base.id);
-      if (vigentes.length >= TOPE_DE_PREGUNTAS) throw topeAlcanzado();
-      const pregunta = normalizarPregunta(datos.question);
-      if (vigentes.some((v) => normalizarPregunta(v.question) === pregunta)) {
-        throw preguntaRepetida();
-      }
-      if (datos.key && vigentes.some((v) => v.key === datos.key)) {
-        throw claveOcupada();
-      }
-      const repo = manager.getRepository(AssistantFaq);
-      const fila = await repo.save(
-        repo.create({
-          knowledgeBaseId: base.id,
-          distributorId: duenio,
-          key: datos.key ?? null,
-          question: datos.question,
-          answer: datos.answer,
-          position: ultimaPosicion(vigentes) + 1,
-          createdBy: actorUserId,
-          updatedBy: actorUserId,
-        }),
+      const fila = await this.insertar(
+        manager,
+        duenio,
+        { ...datos, answer: '' },
+        actorUserId,
       );
-      await this.subirVersion(manager, base, actorUserId);
+      await despues(manager, fila);
       return fila;
     });
+  }
+
+  private async insertar(
+    manager: EntityManager,
+    duenio: DuenioDeLaBase,
+    datos: DatosDePregunta,
+    actorUserId: string | null,
+  ): Promise<AssistantFaq> {
+    const base = await this.bloquearBase(manager, duenio);
+    const vigentes = await this.vigentes(manager, base.id);
+    if (vigentes.length >= TOPE_DE_PREGUNTAS) throw topeAlcanzado();
+    const pregunta = normalizarPregunta(datos.question);
+    if (vigentes.some((v) => normalizarPregunta(v.question) === pregunta)) {
+      throw preguntaRepetida();
+    }
+    if (datos.key && vigentes.some((v) => v.key === datos.key)) {
+      throw claveOcupada();
+    }
+    const repo = manager.getRepository(AssistantFaq);
+    const fila = await repo.save(
+      repo.create({
+        knowledgeBaseId: base.id,
+        distributorId: duenio,
+        key: datos.key ?? null,
+        question: datos.question,
+        answer: datos.answer,
+        position: ultimaPosicion(vigentes) + 1,
+        createdBy: actorUserId,
+        updatedBy: actorUserId,
+      }),
+    );
+    await this.subirVersion(manager, base, actorUserId);
+    return fila;
   }
 
   /** Edita lo que viene. Si no cambia nada no escribe ni sube la versión. */
