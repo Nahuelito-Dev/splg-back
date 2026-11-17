@@ -59,7 +59,7 @@ describe('PaymentsService', () => {
         transaction: jest.fn((trabajo: (m: unknown) => unknown) =>
           trabajo({ getRepository: () => paymentRepository }),
         ),
-        findOne: jest.fn().mockResolvedValue({ name: 'Garrafas Jeny' }),
+        findOne: jest.fn().mockResolvedValue({ name: 'Gas del Litoral' }),
       },
     };
     paymentGateway = {
@@ -623,7 +623,7 @@ describe('PaymentsService', () => {
           { id: 'gc-1', title: 'Garrafa 10kg', quantity: 2, unitPrice: 1000 },
         ],
         payer: { email: 'cliente@test.com' },
-        statementDescriptor: 'GARRAFAS JENY',
+        statementDescriptor: 'GAS DEL LITOR',
         distributorId: 'dist-1',
         expiresAt: expect.any(Date) as Date,
       });

@@ -3,7 +3,9 @@ import { descriptorDeResumen } from './statement-descriptor';
 describe('descriptorDeResumen', () => {
   it('pasa a mayúsculas, sin tildes ni símbolos', () => {
     expect(descriptorDeResumen('Gas Ñandú')).toBe('GAS NANDU');
-    expect(descriptorDeResumen('Jeny & Gas, S.R.L.')).toBe('JENY GAS S R');
+    expect(descriptorDeResumen('Gas del Litoral, S.R.L.')).toBe(
+      'GAS DEL LITOR',
+    );
   });
 
   it('corta en 13 caracteres sin dejar un espacio al final', () => {

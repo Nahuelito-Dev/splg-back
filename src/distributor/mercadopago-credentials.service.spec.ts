@@ -331,7 +331,7 @@ describe('tipoDeCuentaDe', () => {
 
   it('una cuenta sin esas marcas es real', () => {
     expect(
-      tipoDeCuentaDe({ nickname: 'JENYGAS', tags: ['normal', 'mshops'] }),
+      tipoDeCuentaDe({ nickname: 'GASDELLITORAL', tags: ['normal', 'mshops'] }),
     ).toBe('real');
     expect(tipoDeCuentaDe({})).toBe('real');
   });
@@ -377,7 +377,7 @@ describe('MercadoPagoCredentialsService: cuenta de prueba o real', () => {
   });
 
   it('el estado con cuenta propia consulta con el token propio y dice que es real', async () => {
-    const f = respuesta({ nickname: 'JENYGAS', tags: ['normal'] });
+    const f = respuesta({ nickname: 'GASDELLITORAL', tags: ['normal'] });
     const { servicio } = armar({ MP_ACCESS_TOKEN: 'otro-token-del-entorno' });
     await servicio.save('d1', 'u1', DTO);
 
@@ -415,7 +415,7 @@ describe('MercadoPagoCredentialsService: cuenta de prueba o real', () => {
   });
 
   it('cuenta real fuera de producción: advierte una sola vez y sin imprimir el token', async () => {
-    respuesta({ nickname: 'JENYGAS', tags: [] });
+    respuesta({ nickname: 'GASDELLITORAL', tags: [] });
     const { servicio } = armar({
       MP_ACCESS_TOKEN: TOKEN,
       NODE_ENV: 'development',
@@ -445,7 +445,7 @@ describe('MercadoPagoCredentialsService: cuenta de prueba o real', () => {
   it('cuenta de prueba fuera de producción y real en producción no advierten', async () => {
     respuesta({ nickname: 'TESTUSER9', tags: ['test_user'] });
     await armar({ NODE_ENV: 'development' }).servicio.tipoDeCuenta(TOKEN, 'x');
-    respuesta({ nickname: 'JENYGAS', tags: [] });
+    respuesta({ nickname: 'GASDELLITORAL', tags: [] });
     await armar({ NODE_ENV: 'production' }).servicio.tipoDeCuenta(TOKEN, 'x');
 
     expect(avisos).not.toHaveBeenCalled();

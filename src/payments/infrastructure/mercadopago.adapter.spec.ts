@@ -235,8 +235,9 @@ describe('MercadoPagoAdapter (SDK simulado)', () => {
 
     it('statement_descriptor sólo sale si se lo da', async () => {
       expect(
-        (await crear({ statementDescriptor: 'JENY GAS' })).statement_descriptor,
-      ).toBe('JENY GAS');
+        (await crear({ statementDescriptor: 'GAS DEL LITORAL' }))
+          .statement_descriptor,
+      ).toBe('GAS DEL LITORAL');
     });
 
     it('no ofrece ticket ni atm, una sola cuota y modo binario', async () => {
