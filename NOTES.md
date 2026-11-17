@@ -1,19 +1,19 @@
-## v2.1.0 - 2026-11-17
+## v2.2.0 - 2026-11-17
 
 ### Funcionalidades
 
-- **chat:** ✨ métricas del chat y del asistente para la empresa y la plataforma (B4) (bde56c0)
-- **chat:** ✨ adjuntos en el chat con escaneo antivirus (CH7) (99a2fd5)
+- **chat:** ✨ asignación automática por carga y turno, con aviso de colisión (8b) (a547f80)
+- **observabilidad:** ✨ errores, trazas y logs de la API en Sentry (258a6b6)
+- **chat:** ✨ etiquetas de la bandeja, tiempo de respuesta esperado y cierre por inactividad (7c) (f4187ea)
+- **assistant:** ✨ probador del asistente, preguntas sin respuesta y lote de regresión (7b) (dcbec91)
 
 ### Correcciones
 
-- **chat:** 🐛 quien supervisa puede leer las respuestas guardadas (7ad9292)
-- **deploy:** 🐛 la API no espera a que el antivirus esté sano para arrancar (0adb12a)
-- **route-batch:** 🐛 leer bien los UPDATE con RETURNING en el seguimiento de las hojas en curso (86d881e)
+- **procesos:** 🐛 recompra, recupero de envases y planificador de taller no pierden la corrida del día (23f2bb9)
+- **seguridad:** 🐛 nadie sube ni baja a quien tiene más permisos en las cuentas de admins (d28cf80)
 
 ### Mantenimiento
 
-- 👷 más tiempo para el deploy (el gate en GitHub tarda ~20 min) (15c13f3)
-- 👷 avisos de Telegram con versión, cambios, paso que falló y duración (e70730b)
-- 👷 release nocturno automático de develop a main (1679db0)
+- **servidor:** 🔧 aviso por Telegram al arrancar el Orix y textos de develop (b1097cc)
+- **release:** 👷 el release nocturno despacha el deploy y corre fuera de la hora en punto (8d8a5d9)
 
