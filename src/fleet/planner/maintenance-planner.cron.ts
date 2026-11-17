@@ -2,11 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { RedisService } from '../../redis/redis.service';
 import { errorMessage } from '../../common/errors/error-message';
-import {
-  minutosDelDiaArgentino,
-  ZONA_ARGENTINA,
-} from '../../common/utils/dias-argentina';
+import { ZONA_ARGENTINA } from '../../common/utils/dias-argentina';
 import { MaintenancePlannerService } from './maintenance-planner.service';
+import {
+  marcarCorridaDeHoy,
+  tocaCorrerHoy,
+  ultimaCorridaDeLaEmpresa,
+} from '../../common/utils/corrida-diaria';
 import { ConRegistro } from '../../process-run/process-run.recorder';
 import {
   marcarSaltada,
@@ -69,7 +71,6 @@ export class MaintenancePlannerCron {
    * las pendientes vencen solas (`vencerPropuestas`).
    */
   async planificarLasQueTocan(ahora: Date): Promise<number> {
-    const hora = Math.floor(minutosDelDiaArgentino(ahora) / 60);
     const { empresas } = await this.empresas.recorrer(
       {
         proceso: ProcessName.FLEET_PLANNER_DAILY,
@@ -79,10 +80,27 @@ export class MaintenancePlannerCron {
       },
       async (distributorId, empresa) => {
         const params = await this.planner.parametros(distributorId);
-        if (params.cronHour !== hora) return false;
+        if (
+          !tocaCorrerHoy(
+            ahora,
+            params.cronHour,
+            await ultimaCorridaDeLaEmpresa(
+              this.redis,
+              ProcessName.FLEET_PLANNER_DAILY,
+              distributorId,
+            ),
+          )
+        )
+          return false;
         // Sin caché, justo antes de proponer (§6.3).
         if (!(await empresa.sigueHabilitada())) return false;
         const r = await this.planner.ejecutar(distributorId, ahora);
+        await marcarCorridaDeHoy(
+          this.redis,
+          ProcessName.FLEET_PLANNER_DAILY,
+          distributorId,
+          ahora,
+        );
         this.logger.log(
           `Planificador ${distributorId}: ${r.propuestas} propuesta(s), ${r.escaladas} escalada(s), ${r.vehiculosFueraDeServicio} fuera de servicio`,
         );

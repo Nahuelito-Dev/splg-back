@@ -9,6 +9,17 @@ import { empresasDePrueba } from '../process-run/testing/empresas-de-prueba';
 // 09:00 en Argentina.
 const A_LAS_9 = new Date('2026-10-31T12:00:00Z');
 
+const memoriaRedis = () => {
+  const m = new Map<string, string>();
+  return {
+    get: jest.fn((k: string) => Promise.resolve(m.get(k) ?? null)),
+    setex: jest.fn((k: string, _t: number, v: string) => {
+      m.set(k, v);
+      return Promise.resolve();
+    }),
+  };
+};
+
 describe('RepurchaseCron', () => {
   let forecast: {
     ejecutar: jest.Mock;
@@ -50,7 +61,7 @@ describe('RepurchaseCron', () => {
       forecast as unknown as RepurchaseForecastService,
       estimator as unknown as RepurchaseEstimatorService,
       distributors as unknown as DistributorService,
-      { withLock } as unknown as RedisService,
+      { withLock, ...memoriaRedis() } as unknown as RedisService,
       empresasDePrueba({
         distribuidoras: distributors as never,
         habilitado: (id, modulo) =>
@@ -83,7 +94,7 @@ describe('RepurchaseCron', () => {
 
   it('a otra hora no corre ninguna', async () => {
     expect(
-      await cron.anticiparLasQueTocan(new Date('2026-10-31T20:00:00Z')),
+      await cron.anticiparLasQueTocan(new Date('2026-10-31T11:00:00Z')),
     ).toBe(0);
     expect(forecast.ejecutar).not.toHaveBeenCalled();
   });
@@ -168,5 +179,41 @@ describe('RepurchaseCron', () => {
     expect(await cron.anticiparLasQueTocan(A_LAS_9)).toBe(1);
     expect(forecast.ejecutar).toHaveBeenCalledTimes(1);
     expect(forecast.ejecutar).toHaveBeenCalledWith('d2', A_LAS_9);
+  });
+
+  describe('corrida diaria recuperable', () => {
+    const exacta = A_LAS_9;
+    const unaHoraDespues = new Date(exacta.getTime() + 3_600_000);
+    const unaHoraAntes = new Date(exacta.getTime() - 3_600_000);
+    const diaSiguiente = new Date(exacta.getTime() + 24 * 3_600_000);
+
+    it('a la hora exacta corre', async () => {
+      estimator.parametros.mockResolvedValue({ enabled: true, runHour: 9 });
+      expect(await cron.anticiparLasQueTocan(exacta)).toBe(2);
+    });
+
+    it('una hora después sin corrida previa hoy recupera', async () => {
+      estimator.parametros.mockResolvedValue({ enabled: true, runHour: 9 });
+      expect(await cron.anticiparLasQueTocan(unaHoraDespues)).toBe(2);
+    });
+
+    it('una hora después con corrida hoy no corre', async () => {
+      estimator.parametros.mockResolvedValue({ enabled: true, runHour: 9 });
+      await cron.anticiparLasQueTocan(exacta);
+      forecast.ejecutar.mockClear();
+      expect(await cron.anticiparLasQueTocan(unaHoraDespues)).toBe(0);
+      expect(forecast.ejecutar).not.toHaveBeenCalled();
+    });
+
+    it('antes de la hora no corre', async () => {
+      estimator.parametros.mockResolvedValue({ enabled: true, runHour: 9 });
+      expect(await cron.anticiparLasQueTocan(unaHoraAntes)).toBe(0);
+    });
+
+    it('al día siguiente vuelve a correr', async () => {
+      estimator.parametros.mockResolvedValue({ enabled: true, runHour: 9 });
+      await cron.anticiparLasQueTocan(exacta);
+      expect(await cron.anticiparLasQueTocan(diaSiguiente)).toBe(2);
+    });
   });
 });
