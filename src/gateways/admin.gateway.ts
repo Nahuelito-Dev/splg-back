@@ -611,6 +611,7 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
           'soporte.ver',
           'mensajes.clientes',
           'mensajes.choferes',
+          'flota.ver',
         ])) {
           if (debe.has(sala)) conexion.join(sala);
           else conexion.leave(sala);
@@ -651,7 +652,22 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (permisos.includes('mensajes.choferes')) {
       salas.push(AdminGateway.salaDeLaBandeja(distributorId, 'staff_driver'));
     }
+    if (permisos.includes('flota.ver')) {
+      salas.push(AdminGateway.salaDeFlota(distributorId));
+    }
     return salas;
+  }
+
+  /** Sala de la flota de la empresa: sólo quien tiene `flota.ver` (tablero de tareas). */
+  static salaDeFlota(distributorId: string): string {
+    return `flota:${distributorId}`;
+  }
+
+  /** Un aviso de la flota a quienes pueden verla en esa empresa. */
+  emitirALaFlota(distributorId: string, event: string, payload: unknown): void {
+    this.server
+      .to(AdminGateway.salaDeFlota(distributorId))
+      .emit(event, payload);
   }
 
   /** Sala de lista de la bandeja de la empresa, por canal. */

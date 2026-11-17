@@ -137,22 +137,24 @@ describe('FleetTaskBoardNotifier', () => {
     const lector = {
       tarjetas: jest.fn().mockResolvedValue([leida(), leida({ taskId: 't2' })]),
     };
-    const gateway = { notifyAdmins: jest.fn() };
+    const gateway = { emitirALaFlota: jest.fn(), notifyAdmins: jest.fn() };
     const avisos = new FleetTaskBoardNotifier(
       lector as unknown as FleetTaskBoardReader,
       gateway as unknown as AdminGateway,
     );
     await avisos.avisarVarias('d1', ['t1', 't2'], 'overdue');
     expect(lector.tarjetas).toHaveBeenCalledWith(['t1', 't2'], 'd1');
-    expect(gateway.notifyAdmins).toHaveBeenCalledTimes(2);
-    expect(gateway.notifyAdmins).toHaveBeenCalledWith(
+    // Sólo a la sala de la flota (quien tiene `flota.ver`), nunca a todo el personal.
+    expect(gateway.notifyAdmins).not.toHaveBeenCalled();
+    expect(gateway.emitirALaFlota).toHaveBeenCalledTimes(2);
+    expect(gateway.emitirALaFlota).toHaveBeenCalledWith(
+      'd1',
       EVENTO_TAREA_DE_FLOTA,
       {
         id: 't2',
         change: 'overdue',
         card: expect.objectContaining({ id: 't2', title: 'VTV' }) as unknown,
       },
-      'd1',
     );
   });
 
@@ -160,12 +162,12 @@ describe('FleetTaskBoardNotifier', () => {
     const lector = {
       tarjetas: jest.fn().mockRejectedValue(new Error('caída')),
     };
-    const gateway = { notifyAdmins: jest.fn() };
+    const gateway = { emitirALaFlota: jest.fn(), notifyAdmins: jest.fn() };
     const avisos = new FleetTaskBoardNotifier(
       lector as unknown as FleetTaskBoardReader,
       gateway as unknown as AdminGateway,
     );
     await expect(avisos.avisar('d1', 't1', 'moved')).resolves.toBeUndefined();
-    expect(gateway.notifyAdmins).not.toHaveBeenCalled();
+    expect(gateway.emitirALaFlota).not.toHaveBeenCalled();
   });
 });

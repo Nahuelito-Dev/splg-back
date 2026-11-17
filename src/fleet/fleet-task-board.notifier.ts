@@ -47,7 +47,11 @@ export class FleetTaskBoardNotifier {
           change: cambio as FleetTaskChange,
           card: FleetTaskBoardMapper.toCard(tarjeta, ahora),
         };
-        this.gateway.notifyAdmins(EVENTO_TAREA_DE_FLOTA, evento, distributorId);
+        this.gateway.emitirALaFlota(
+          distributorId,
+          EVENTO_TAREA_DE_FLOTA,
+          evento,
+        );
       }
     } catch (error) {
       this.logger.warn(
