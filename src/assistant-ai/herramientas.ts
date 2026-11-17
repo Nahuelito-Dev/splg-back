@@ -19,6 +19,7 @@ import { GasCylinder } from '../gascylinder/entities/gascylinder.entity';
 import { GasCylinderMapper } from '../gascylinder/gascylinder.mapper';
 import { GasCylinderService } from '../gascylinder/gascylinder.service';
 import { Order, OrderStatus } from '../order/entities/order.entity';
+import { SeguimientoDelPedido } from '../route-batch/seguimiento-del-cliente/seguimiento-del-pedido.service';
 import { TimeSlot } from '../time-slot/entities/time-slot.entity';
 import { CAUSAS_DE_DERIVACION } from './asistente-ia.dominio';
 import type { CanalDelAsistente } from './prompt';
@@ -69,7 +70,7 @@ const DE_LOS_CLIENTES: Anthropic.Tool[] = [
   {
     name: ESTADO_DE_MI_PEDIDO,
     description:
-      'Estado de los pedidos de quien escribe (sólo los suyos): estado, franja de entrega, chofer asignado (nombre de pila) y total. Sin número de pedido, devuelve los últimos.',
+      'Estado de los pedidos de quien escribe (sólo los suyos): estado, franja de entrega, chofer asignado (nombre de pila), total y reparto (hoja de ruta: si va en una, si el viaje arrancó, cuántas entregas hay antes que la suya, la llegada estimada redondeada, si pasó al final del recorrido o si se reprogramó y para cuándo). Usala para «¿cuánto falta?», «¿dónde está mi pedido?» o «¿ya salió?». Sin número de pedido, devuelve los últimos.',
     strict: true,
     input_schema: {
       type: 'object',
@@ -187,6 +188,7 @@ export class HerramientasDelAsistente {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly garrafas: GasCylinderService,
+    private readonly seguimiento: SeguimientoDelPedido,
   ) {}
 
   async ejecutar(
@@ -273,6 +275,13 @@ export class HerramientasDelAsistente {
         error: buscado !== null,
       };
     }
+    // El reparto, con el mismo filtro de empresa y cliente (nunca de otras paradas).
+    const reparto = await this.seguimiento.deLosPedidos(
+      ctx.distributorId,
+      ctx.customerUserId,
+      filas.map((o) => o.orderId),
+      ctx.ahora,
+    );
     return {
       datos: filas.map((o) => ({
         pedido: idCortoDePedido(o.orderId),
@@ -289,6 +298,7 @@ export class HerramientasDelAsistente {
               null
             : null,
         total: pesos(o.totalAmount),
+        reparto: reparto.get(o.orderId) ?? null,
       })),
       error: false,
       pedidos: filas.map((o) => idCortoDePedido(o.orderId)),

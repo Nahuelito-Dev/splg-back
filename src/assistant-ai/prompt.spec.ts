@@ -61,8 +61,20 @@ describe('prompt del asistente', () => {
     expect(c).toContain('Nunca prometas montos');
     expect(c).toContain('estado_de_mi_pedido');
     const s = instrucciones(SOPORTE);
+    expect(s).not.toContain('reparto');
     expect(s).toContain('soporte de OrixTech');
     expect(s).not.toContain('estado_de_mi_pedido');
+  });
+
+  it('«¿cuánto falta?»: usa el reparto, como estimación y sin horas en el ejemplo (la red de horas no las toma del prompt)', () => {
+    const c = instrucciones(CLIENTES);
+    expect(c).toContain('cuánto falta');
+    expect(c).toContain('bloque reparto');
+    expect(c).toContain('nunca como una hora exacta ni como una promesa');
+    expect(c).toContain('el viaje todavía no arrancó');
+    expect(c).toContain('se reprogramó para');
+    expect(c).toContain('Nunca digas dónde está el chofer');
+    expect(c).not.toMatch(/\d:\d\d/);
   });
 
   describe('armarMensajes', () => {

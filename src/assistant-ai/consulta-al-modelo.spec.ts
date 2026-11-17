@@ -286,6 +286,96 @@ describe('ConsultaAlAsistente (cliente de Anthropic simulado)', () => {
     });
   });
 
+  describe('defensa contra inventar horarios («¿cuánto falta?»)', () => {
+    const conReparto = {
+      datos: [
+        {
+          pedido: '0ABC01',
+          franja: 'Tarde (14:00 a 18:00)',
+          reparto: {
+            situacion: 'en_viaje',
+            entregasAntes: 2,
+            llegadaEstimada: 'entre las 15:05 y las 15:40, aprox.',
+          },
+        },
+      ],
+      error: false,
+      pedidos: ['0ABC01'],
+    };
+
+    it('la franja estimada que dio estado_de_mi_pedido se publica', async () => {
+      const { servicio, ejecutar, consulta } = armar(
+        respuesta('tool_use', [herramienta('tu_1', 'estado_de_mi_pedido')]),
+        respuesta('end_turn', [
+          final(
+            'Ya salió: llega entre las 15:05 y las 15:40, aprox. Hay 2 entregas antes que la tuya.',
+          ),
+        ]),
+      );
+      ejecutar.mockResolvedValueOnce(conReparto);
+      expect(await servicio.consultar(consulta)).toMatchObject({
+        tipo: 'respuesta',
+        texto:
+          'Ya salió: llega entre las 15:05 y las 15:40, aprox. Hay 2 entregas antes que la tuya.',
+      });
+    });
+
+    it('una hora puntual que ninguna herramienta dio: deriva', async () => {
+      const { servicio, ejecutar, consulta } = armar(
+        respuesta('tool_use', [herramienta('tu_1', 'estado_de_mi_pedido')]),
+        respuesta('end_turn', [final('Llega a las 15:22 en punto.')]),
+      );
+      ejecutar.mockResolvedValueOnce(conReparto);
+      expect(await servicio.consultar(consulta)).toMatchObject({
+        tipo: 'derivar',
+        motivo: MotivoDeDerivacion.INVALID_TEXT,
+      });
+    });
+
+    it('una hora sin herramienta, inventada: deriva; la que dijo la persona o la base, no', async () => {
+      const inventada = armar(
+        respuesta('end_turn', [final('Te llega a las 16:30.')]),
+      );
+      expect(
+        await inventada.servicio.consultar(inventada.consulta),
+      ).toMatchObject({
+        tipo: 'derivar',
+        motivo: MotivoDeDerivacion.INVALID_TEXT,
+      });
+      const repetida = armar(
+        respuesta('end_turn', [
+          final('No puedo asegurarte que llegue antes de las 16:30.'),
+        ]),
+      );
+      repetida.consulta.mensajes = [
+        { role: 'user', content: '¿Llega antes de las 16:30?' },
+      ];
+      expect(
+        await repetida.servicio.consultar(repetida.consulta),
+      ).toMatchObject({ tipo: 'respuesta' });
+      const deLaBase = armar(
+        respuesta('end_turn', [final('Atendemos de 8:00 a 20:00.')]),
+      );
+      deLaBase.consulta.system = armarSystem(
+        {
+          canal: 'clientes',
+          nombreDelAsistente: 'Asistente de Gas',
+          nombreDeQuienAtiende: 'Gas',
+        },
+        [
+          {
+            question: '¿Qué horario tienen?',
+            answer: 'Atendemos de 08:00 a 20:00.',
+            position: 1,
+          },
+        ],
+      );
+      expect(
+        await deLaBase.servicio.consultar(deLaBase.consulta),
+      ).toMatchObject({ tipo: 'respuesta' });
+    });
+  });
+
   it('una herramienta que tira vuelve al modelo como error y la respuesta sigue', async () => {
     const { servicio, ejecutar, create, consulta } = armar(
       respuesta('tool_use', [herramienta('tu_1', 'medios_de_pago')]),

@@ -1,5 +1,7 @@
 import {
   correspondeAtender,
+  horasDelTexto,
+  horasNoVerificadas,
   importeCanonico,
   importesDelTexto,
   importesNoVerificados,
@@ -179,5 +181,46 @@ describe('ronda 1: causa de la derivación y promesas que no se cumplen', () => 
     'Te pasamos el link en la app.',
   ])('no promete nada: «%s»', (t) => {
     expect(prometeUnaAccion(t)).toBe(false);
+  });
+});
+
+describe('«¿cuánto falta?»: la hoja de ruta pasa la red, los inventos no', () => {
+  it.each([
+    'Tu pedido ya salió: llega entre las 15:05 y las 15:40, aprox. Hay 2 entregas antes que la tuya.',
+    'Tu pedido va en la hoja de ruta de hoy, pero el viaje todavía no arrancó. Tu franja es Tarde (14:00 a 18:00).',
+    'No se pudo entregar en el primer intento: el chofer vuelve a pasar más tarde, entre las 18:00 y las 18:30, aprox.',
+    'No se pudo entregar y se reprogramó para el jueves 19/11.',
+    'Tu pedido no se pudo entregar; la fecha nueva la define el equipo.',
+  ])('la respuesta con el reparto no promete una acción: «%s»', (t) => {
+    expect(prometeUnaAccion(t)).toBe(false);
+  });
+
+  it('horasDelTexto: horas de reloj canónicas; no importes, fechas ni porcentajes', () => {
+    expect(
+      horasDelTexto(
+        'Entre las 15:05 y las 15:40, franja 08:00 a 9:30; $ 1.500,00; el 19/11; 10 %; 1:2:3; 24:00',
+      ),
+    ).toEqual(['15:05', '15:40', '8:00', '9:30']);
+  });
+
+  it('horasNoVerificadas: sólo las que no vio el modelo', () => {
+    const herramienta = JSON.stringify({
+      reparto: { llegadaEstimada: 'entre las 15:05 y las 15:40, aprox.' },
+      franja: 'Tarde (14:00 a 18:00)',
+    });
+    expect(
+      horasNoVerificadas('Llega entre las 15:05 y las 15:40, aprox.', [
+        herramienta,
+      ]),
+    ).toEqual([]);
+    expect(
+      horasNoVerificadas('Tu franja es de 14:00 a 18:00.', [herramienta]),
+    ).toEqual([]);
+    // La hora puntual (inventada) no salió de ninguna herramienta.
+    expect(
+      horasNoVerificadas('Llega a las 15:22 en punto.', [herramienta]),
+    ).toEqual(['15:22']);
+    expect(horasNoVerificadas('Llega a las 15:22.', [])).toEqual(['15:22']);
+    expect(horasNoVerificadas('Sin horarios de por medio', [])).toEqual([]);
   });
 });
