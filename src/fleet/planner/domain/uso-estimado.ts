@@ -33,13 +33,16 @@ const FACTOR_MAXIMO = 1.3;
 const MUESTRAS_MINIMAS_POR_MES = 7;
 
 /**
- * Kilómetros por día de uso del vehículo: media de los días CON registro (un
- * día sin registro, o con 0 km, no es un día sin uso: es un día sin dato, el sábado sin
- * entregas o un hueco del registro), con más peso en las semanas recientes
- * (cada semana pesa `decay` veces la siguiente). `null` si hay menos días con
- * registro que `minSampleDays`. Si el último registro es más viejo que
- * `staleDays` devuelve la estimación marcada `desactualizado`: quien proyecta
- * no tiene que usarla (un vehículo parado no es un vehículo que anda poco).
+ * Kilómetros por DÍA DE CALENDARIO del vehículo: la proyección del service se
+ * hace sobre días corridos, así que el ritmo tiene que estar en la misma
+ * unidad (dividir por los días con uso lo sobreestimaba y adelantaba los
+ * vencimientos). Es la media ponderada de todos los días de la ventana
+ * (13 semanas hasta `hoy`; si el vehículo es más nuevo, desde su primer
+ * registro): un día sin registro o con 0 km cuenta como 0 km. Las semanas
+ * recientes pesan más (cada semana pesa `decay` veces la siguiente). `null` si
+ * hay menos días con registro que `minSampleDays`. Si el último registro es
+ * más viejo que `staleDays` devuelve la estimación marcada `desactualizado`:
+ * quien proyecta no tiene que usarla (un vehículo parado no es uno que anda poco).
  */
 export function estimarKmPorDia(
   muestras: readonly MuestraDeUso[],
@@ -52,14 +55,21 @@ export function estimarKmPorDia(
   );
   if (validas.length < Math.max(1, minSampleDays)) return null;
 
+  const kmPorFecha = new Map<string, number>();
+  let ultimoDia = validas[0].day;
+  let primerDia = validas[0].day;
+  for (const m of validas) {
+    kmPorFecha.set(m.day, (kmPorFecha.get(m.day) ?? 0) + m.km);
+    if (m.day > ultimoDia) ultimoDia = m.day;
+    if (m.day < primerDia) primerDia = m.day;
+  }
+
   let suma = 0;
   let pesos = 0;
-  let ultimoDia = validas[0].day;
-  for (const m of validas) {
-    const peso = Math.pow(decay, Math.floor(diasEntre(m.day, hoy) / 7));
-    suma += peso * m.km;
+  for (let dia = primerDia; dia <= hoy; dia = sumarDias(dia, 1)) {
+    const peso = Math.pow(decay, Math.floor(diasEntre(dia, hoy) / 7));
+    suma += peso * (kmPorFecha.get(dia) ?? 0);
     pesos += peso;
-    if (m.day > ultimoDia) ultimoDia = m.day;
   }
   if (pesos === 0) return null;
   return {

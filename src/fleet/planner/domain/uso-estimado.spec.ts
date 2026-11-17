@@ -28,12 +28,47 @@ describe('estimarKmPorDia', () => {
     ).toBeCloseTo(5, 5);
   });
 
-  it('un día sin registro NO es un día sin uso: sólo promedian los días con registro', () => {
-    // Un registro cada 3 días de 45 km: 45 km/día, no 15.
+  it('un día sin registro cuenta como 0 km: un registro cada 3 días de 45 km dan ~15 km/día de calendario', () => {
     const muestras = todosLosDias(60, 45).filter((_, i) => i % 3 === 0);
-    const r = estimarKmPorDia(muestras, HOY, { ...PARAMS, minSampleDays: 15 });
-    expect(r?.kmPorDia).toBeCloseTo(45, 5);
+    const r = estimarKmPorDia(muestras, HOY, {
+      ...PARAMS,
+      decay: 1,
+      minSampleDays: 15,
+    });
+    expect(r?.kmPorDia).toBeCloseTo(15.5, 0);
     expect(r?.diasConDato).toBe(20);
+  });
+
+  it('usa 3 de cada 7 días con 100 km: ~43 km/día de calendario, no 100', () => {
+    const muestras = todosLosDias(91, 100).filter((_, i) => i % 7 < 3);
+    const r = estimarKmPorDia(muestras, HOY, { ...PARAMS, decay: 1 });
+    expect(r?.kmPorDia).toBeGreaterThan(40);
+    expect(r?.kmPorDia).toBeLessThan(46);
+  });
+
+  it('con ese ritmo el umbral se alcanza más tarde que con 100 km/día', () => {
+    const muestras = todosLosDias(91, 100).filter((_, i) => i % 7 < 3);
+    const kmDia = estimarKmPorDia(muestras, HOY, {
+      ...PARAMS,
+      decay: 1,
+    })!.kmPorDia;
+    const diasAlUmbral = 4300 / kmDia;
+    expect(diasAlUmbral).toBeGreaterThan(90);
+    expect(4300 / 100).toBeLessThan(45);
+  });
+
+  it('vehículo nuevo: cuenta desde su primer registro, no desde el inicio de la ventana', () => {
+    const r = estimarKmPorDia(todosLosDias(10, 60), HOY, {
+      ...PARAMS,
+      minSampleDays: 5,
+    });
+    expect(r?.kmPorDia).toBeCloseTo(60, 5);
+  });
+
+  it('uso diario: coincide con el promedio por día con uso', () => {
+    expect(
+      estimarKmPorDia(todosLosDias(91, 70), HOY, PARAMS)?.kmPorDia,
+    ).toBeCloseTo(70, 5);
   });
 
   it('las semanas recientes pesan más que las viejas', () => {
@@ -106,15 +141,15 @@ describe('estimarKmPorDia', () => {
     expect(r?.diasConDato).toBe(20);
   });
 
-  it('el caso de la demo: AF218KT con recorridos de 10 a 20 km en días con entregas da ~14-15 km/día, no 5,9', () => {
+  it('el caso de la demo: recorridos de 12 a 17 km un día por medio dan ~7 km/día de calendario', () => {
     const km = [12, 17, 14, 15, 13, 16, 14, 15];
     const muestras = Array.from({ length: 40 }, (_, i) => ({
       day: sumarDias(HOY, -(i * 2)),
       km: km[i % km.length],
     }));
     const r = estimarKmPorDia(muestras, HOY, PARAMS);
-    expect(r?.kmPorDia).toBeGreaterThan(13.5);
-    expect(r?.kmPorDia).toBeLessThan(15.5);
+    expect(r?.kmPorDia).toBeGreaterThan(6.5);
+    expect(r?.kmPorDia).toBeLessThan(8);
   });
 });
 
