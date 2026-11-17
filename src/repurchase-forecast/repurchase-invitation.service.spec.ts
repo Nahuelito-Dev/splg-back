@@ -70,6 +70,7 @@ describe('RepurchaseInvitationService', () => {
     findOne: jest.Mock;
     findOneOrFail: jest.Mock;
     createQueryBuilder: jest.Mock;
+    query: jest.Mock;
   };
   let service: RepurchaseInvitationService;
 
@@ -81,6 +82,7 @@ describe('RepurchaseInvitationService', () => {
       findOne: jest.fn(),
       findOneOrFail: jest.fn(),
       createQueryBuilder: jest.fn(),
+      query: jest.fn(),
     };
     service = new RepurchaseInvitationService(
       repo as unknown as Repository<RepurchaseInvitation>,
@@ -95,6 +97,8 @@ describe('RepurchaseInvitationService', () => {
       timeSlotId: null,
       paymentMethod: PaymentMethod.CASH,
       projectedDepletionAt: AHORA,
+      estimateKgPerDay: 0.25,
+      estimateOrdersUsed: 4,
       estimateSource: RepurchaseEstimateSource.HISTORY,
       suggestedItems: [{ gasCylinderId: 'g', quantity: 1 }],
       expiresAt: AHORA,
@@ -368,6 +372,26 @@ describe('RepurchaseInvitationService', () => {
       repo.createQueryBuilder.mockReturnValue(qb);
       await service.listar('d1', { limit: 10, offset: 0 });
       expect(llamadas.filter(([m]) => m === 'andWhere')).toHaveLength(0);
+    });
+  });
+
+  describe('comprasPosteriores', () => {
+    it('devuelve predicha y real de las que tuvieron una compra posterior y descarta las demás', async () => {
+      repo.query = jest.fn().mockResolvedValue([
+        { predicha: '2026-10-10T15:00:00Z', real: '2026-10-12T15:00:00Z' },
+        { predicha: '2026-10-10T15:00:00Z', real: null },
+      ]);
+      const r = await service.comprasPosteriores('d1', AHORA, AHORA);
+      expect(r).toEqual([
+        {
+          predicha: new Date('2026-10-10T15:00:00Z'),
+          real: new Date('2026-10-12T15:00:00Z'),
+        },
+      ]);
+      expect(repo.query).toHaveBeenCalledWith(
+        expect.stringContaining(`inv."status" <> 'pending'`),
+        ['d1', AHORA, AHORA],
+      );
     });
   });
 

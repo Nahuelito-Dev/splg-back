@@ -21,6 +21,8 @@ import { traducirErrorDeBase } from '../../common/errors/db-exceptions';
 import {
   diaArgentino,
   minutosDelDiaArgentino,
+  rangoDeDiasArgentinos,
+  sumarDias,
 } from '../../common/utils/dias-argentina';
 import { DeliveryService } from '../../delivery/delivery.service';
 import { Delivery } from '../../delivery/entities/delivery.entity';
@@ -69,6 +71,15 @@ import { diasDeLaMascara, FERIADOS_AR } from './domain/dias-de-taller';
 import { ProyeccionDeVencimiento } from './domain/proyeccion-de-vencimiento';
 import { enumerarVentanas, evaluarVentanas } from './domain/ventanas-de-taller';
 import { CODIGOS_DE_ERROR, conCodigo } from '../../common/errors/con-codigo';
+import {
+  AciertoDePrediccion,
+  errorEnDias,
+  resumirAcierto,
+} from '../../common/utils/acierto-de-prediccion';
+
+/** Una tarea hecha dentro de estos días de la fecha proyectada cuenta como acierto. */
+export const MARGEN_DE_ACIERTO_TALLER_DIAS = 7;
+const DIAS_DE_ACIERTO_POR_OMISION = 180;
 
 const MS_POR_DIA = 86_400_000;
 const ESTADOS_CERRADOS = [
@@ -1192,6 +1203,49 @@ export class MaintenancePlannerService {
       (a, b) => a.rank - b.rank,
     );
     return caso as CasoCompleto;
+  }
+
+  /**
+   * Cuánto acertó la fecha proyectada del vencimiento por kilometraje: de las
+   * tareas cerradas en el período, la primera proyección contra la fecha en que
+   * se hizo el trabajo.
+   */
+  async acierto(
+    distributorId: string,
+    from: string | undefined,
+    to: string | undefined,
+    ahora: Date,
+  ): Promise<{ accuracy: AciertoDePrediccion; desde: Date; hasta: Date }> {
+    const hoy = diaArgentino(ahora);
+    const diaDesde = from ?? sumarDias(hoy, -DIAS_DE_ACIERTO_POR_OMISION);
+    const diaHasta = to ?? hoy;
+    const rango = rangoDeDiasArgentinos(diaDesde, diaHasta);
+    if (!rango || diaDesde > diaHasta) {
+      throw new BadRequestException(
+        'from y to tienen que ser YYYY-MM-DD y from no puede ser posterior a to',
+      );
+    }
+    const { desde, hasta } = rango;
+    const hechas = await this.tasks
+      .createQueryBuilder('t')
+      .select(['t.firstPredictedDueAt', 't.performedAt'])
+      .where('t.distributorId = :distributorId', { distributorId })
+      .andWhere('t.status = :hecha', { hecha: MaintenanceTaskStatus.DONE })
+      .andWhere('t.firstPredictedDueAt IS NOT NULL')
+      .andWhere('t.performedAt >= :desde AND t.performedAt < :hasta', {
+        desde,
+        hasta,
+      })
+      .getMany();
+    const accuracy = resumirAcierto(
+      hechas.flatMap((t) =>
+        t.firstPredictedDueAt && t.performedAt
+          ? [errorEnDias(t.firstPredictedDueAt, t.performedAt)]
+          : [],
+      ),
+      MARGEN_DE_ACIERTO_TALLER_DIAS,
+    );
+    return { accuracy, desde, hasta };
   }
 
   /** Cuántos casos hay en cada estado (el resumen de arriba de la pantalla). */

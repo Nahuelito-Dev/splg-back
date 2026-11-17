@@ -29,10 +29,12 @@ import {
   ConfirmPlanningCaseDto,
   ForceWindowDto,
   PatchPlannerSettingsDto,
+  QueryPlannerAccuracyDto,
   QueryPlannerForecastDto,
   QueryPlanningCasesDto,
 } from './dto/planner-request.dto';
 import {
+  PlannerAccuracyResponseDto,
   PlannerForecastResponseDto,
   PlannerRunResponseDto,
   PlanningCaseDetailResponseDto,
@@ -112,6 +114,30 @@ export class MaintenancePlannerController {
         MaintenancePlannerMapper.vehiculo(v, ahora),
       ),
     };
+  }
+
+  @Permiso('flota.ver')
+  @Get('accuracy')
+  @ApiOperation({
+    summary: 'Cuánto acierta la fecha proyectada de los vencimientos',
+    description:
+      'De las tareas cerradas en el período que tenían fecha proyectada por kilometraje: cuántas se pudieron comparar, el error medio en días, el porcentaje hecho a ±7 días de lo proyectado y si tienden a hacerse antes o después. Por omisión, los últimos 180 días.',
+  })
+  @ApiOkResponse({ type: PlannerAccuracyResponseDto })
+  @ApiBadRequestResponse({
+    description: `from o to inválidos, o from posterior a to. ${FALTA_DISTRIBUIDORA}`,
+  })
+  async acierto(
+    @Query() query: QueryPlannerAccuracyDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<PlannerAccuracyResponseDto> {
+    const { accuracy, desde, hasta } = await this.planner.acierto(
+      distributorId,
+      query.from,
+      query.to,
+      new Date(),
+    );
+    return { from: desde, to: hasta, accuracy };
   }
 
   @Permiso('flota.ver')

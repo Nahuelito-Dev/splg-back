@@ -7667,11 +7667,19 @@
     },
     {
       "table": "maintenance_task",
+      "column": "first_predicted_due_at",
+      "property": "firstPredictedDueAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 11
+    },
+    {
+      "table": "maintenance_task",
       "column": "scheduled_at",
       "property": "scheduledAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 11
+      "position": 12
     },
     {
       "table": "maintenance_task",
@@ -7679,7 +7687,7 @@
       "property": "performedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 12
+      "position": 13
     },
     {
       "table": "maintenance_task",
@@ -7687,7 +7695,7 @@
       "property": "odometerKm",
       "secret": false,
       "kind": "text",
-      "position": 13
+      "position": 14
     },
     {
       "table": "maintenance_task",
@@ -7695,7 +7703,7 @@
       "property": "cost",
       "secret": false,
       "kind": "text",
-      "position": 14
+      "position": 15
     },
     {
       "table": "maintenance_task",
@@ -7703,7 +7711,7 @@
       "property": "cashMovementId",
       "secret": false,
       "kind": "text",
-      "position": 15
+      "position": 16
     },
     {
       "table": "maintenance_task",
@@ -7711,7 +7719,7 @@
       "property": "paidAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 16
+      "position": 17
     },
     {
       "table": "maintenance_task",
@@ -7719,7 +7727,7 @@
       "property": "paidAmount",
       "secret": false,
       "kind": "text",
-      "position": 17
+      "position": 18
     },
     {
       "table": "maintenance_task",
@@ -7727,7 +7735,7 @@
       "property": "provider",
       "secret": false,
       "kind": "text",
-      "position": 18
+      "position": 19
     },
     {
       "table": "maintenance_task",
@@ -7735,7 +7743,7 @@
       "property": "referenceNumber",
       "secret": false,
       "kind": "text",
-      "position": 19
+      "position": 20
     },
     {
       "table": "maintenance_task",
@@ -7743,7 +7751,7 @@
       "property": "category",
       "secret": false,
       "kind": "text",
-      "position": 20
+      "position": 21
     },
     {
       "table": "maintenance_task",
@@ -7751,7 +7759,7 @@
       "property": "notes",
       "secret": false,
       "kind": "text",
-      "position": 21
+      "position": 22
     },
     {
       "table": "maintenance_task_attachment",
@@ -10179,11 +10187,27 @@
     },
     {
       "table": "repurchase_invitation",
+      "column": "estimate_kg_per_day",
+      "property": "estimateKgPerDay",
+      "secret": false,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "repurchase_invitation",
+      "column": "estimate_orders_used",
+      "property": "estimateOrdersUsed",
+      "secret": false,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "repurchase_invitation",
       "column": "estimate_source",
       "property": "estimateSource",
       "secret": false,
       "kind": "text",
-      "position": 7
+      "position": 9
     },
     {
       "table": "repurchase_invitation",
@@ -10191,7 +10215,7 @@
       "property": "suggestedItems",
       "secret": false,
       "kind": "json",
-      "position": 8
+      "position": 10
     },
     {
       "table": "repurchase_invitation",
@@ -10199,7 +10223,7 @@
       "property": "status",
       "secret": false,
       "kind": "text",
-      "position": 9
+      "position": 11
     },
     {
       "table": "repurchase_invitation",
@@ -10207,7 +10231,7 @@
       "property": "expiresAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 10
+      "position": 12
     },
     {
       "table": "repurchase_invitation",
@@ -10215,7 +10239,7 @@
       "property": "respondedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 11
+      "position": 13
     },
     {
       "table": "repurchase_invitation",
@@ -10223,7 +10247,7 @@
       "property": "orderId",
       "secret": false,
       "kind": "text",
-      "position": 12
+      "position": 14
     },
     {
       "table": "role",

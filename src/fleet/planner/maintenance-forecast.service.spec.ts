@@ -139,8 +139,21 @@ describe('MaintenanceForecastService', () => {
       expect(n).toBe(1);
       expect(update).toHaveBeenCalledWith(
         { taskId: 't1' },
+        { predictedDueAt: nueva, firstPredictedDueAt: nueva },
+      );
+    });
+
+    it('conserva la primera proyección cuando la fecha se corre', async () => {
+      const primera = new Date('2026-12-01T15:00:00Z');
+      const nueva = new Date('2026-12-10T15:00:00Z');
+      const tarea = proy(primera, nueva);
+      tarea.task.firstPredictedDueAt = primera;
+      await servicio.guardarPredicciones([tarea]);
+      expect(update).toHaveBeenCalledWith(
+        { taskId: 't1' },
         { predictedDueAt: nueva },
       );
+      expect(tarea.task.firstPredictedDueAt).toEqual(primera);
     });
 
     it('no vuelve a escribir la que no se movió más de un día', async () => {

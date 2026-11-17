@@ -148,7 +148,7 @@ export class RepurchaseAdminController {
   @ApiOperation({
     summary: 'Cómo le va a la recompra anticipada',
     description:
-      'Invitaciones del período por resultado y la tasa de conversión: aceptadas sobre las que ya tuvieron resolución (aceptadas, descartadas y vencidas; las abiertas y las canceladas por compra propia no cuentan). Por omisión, los últimos 90 días.',
+      'Invitaciones del período por resultado y la tasa de conversión: aceptadas sobre las que ya tuvieron resolución (aceptadas, descartadas y vencidas; las abiertas y las canceladas por compra propia no cuentan). `accuracy` mide cuánto acertó la fecha proyectada contra la primera compra entregada después de cada invitación. Por omisión, los últimos 90 días.',
   })
   @ApiOkResponse({ type: RepurchaseStatsResponseDto })
   @ApiBadRequestResponse({
@@ -158,13 +158,13 @@ export class RepurchaseAdminController {
     @Query() query: QueryRepurchaseStatsDto,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<RepurchaseStatsResponseDto> {
-    const { resumen, desde, hasta } = await this.report.resumen(
+    const { resumen, accuracy, desde, hasta } = await this.report.resumen(
       distributorId,
       query.from,
       query.to,
       new Date(),
     );
-    return RepurchaseMapper.stats(resumen, desde, hasta);
+    return RepurchaseMapper.stats(resumen, desde, hasta, accuracy);
   }
 
   @Permiso('reportes.ver')

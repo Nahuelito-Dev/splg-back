@@ -279,6 +279,8 @@ export class RepurchaseForecastService {
       timeSlotId: sugerencia.timeSlotId,
       paymentMethod: sugerencia.paymentMethod,
       projectedDepletionAt: cliente.estimate.estimatedAt,
+      estimateKgPerDay: cliente.estimate.kgPerDay,
+      estimateOrdersUsed: cliente.estimate.ordersUsed,
       estimateSource: cliente.estimate.source,
       suggestedItems: sugerencia.items,
       expiresAt: new Date(

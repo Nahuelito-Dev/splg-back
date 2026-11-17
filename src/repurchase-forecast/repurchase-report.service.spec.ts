@@ -29,6 +29,7 @@ describe('RepurchaseReportService', () => {
     abiertasDe: jest.Mock;
     listar: jest.Mock;
     resumen: jest.Mock;
+    comprasPosteriores: jest.Mock;
   };
   let service: RepurchaseReportService;
 
@@ -42,6 +43,7 @@ describe('RepurchaseReportService', () => {
       abiertasDe: jest.fn().mockResolvedValue(new Map()),
       listar: jest.fn().mockResolvedValue([[], 0]),
       resumen: jest.fn().mockResolvedValue({ counts: {}, acceptedRevenue: 0 }),
+      comprasPosteriores: jest.fn().mockResolvedValue([]),
     };
     service = new RepurchaseReportService(
       estimator as unknown as RepurchaseEstimatorService,
@@ -179,6 +181,41 @@ describe('RepurchaseReportService', () => {
       );
       expect(r.desde).toEqual(new Date('2026-08-02T03:00:00Z'));
       expect(r.hasta).toEqual(new Date('2026-11-01T03:00:00Z'));
+    });
+
+    it('sin compras posteriores el acierto no tiene medidas', async () => {
+      const r = await service.resumen('d1', undefined, undefined, AHORA);
+      expect(r.accuracy).toMatchObject({
+        measured: 0,
+        meanAbsoluteErrorDays: null,
+        marginDays: 3,
+      });
+    });
+
+    it('mide el error de cada invitación contra su primera compra posterior', async () => {
+      invitaciones.comprasPosteriores.mockResolvedValue([
+        // compró 2 días después, 5 antes y el mismo día
+        {
+          predicha: new Date('2026-10-10T15:00:00Z'),
+          real: new Date('2026-10-12T15:00:00Z'),
+        },
+        {
+          predicha: new Date('2026-10-10T15:00:00Z'),
+          real: new Date('2026-10-05T15:00:00Z'),
+        },
+        {
+          predicha: new Date('2026-10-10T15:00:00Z'),
+          real: new Date('2026-10-10T18:00:00Z'),
+        },
+      ]);
+      const r = await service.resumen('d1', undefined, undefined, AHORA);
+      expect(r.accuracy).toEqual({
+        measured: 3,
+        meanAbsoluteErrorDays: 2.33,
+        withinMarginRate: 0.67,
+        marginDays: 3,
+        meanBiasDays: -1,
+      });
     });
 
     it('rechaza un día inválido', async () => {
