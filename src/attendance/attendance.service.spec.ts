@@ -94,6 +94,9 @@ describe('AttendanceService', () => {
     }) as EmployeeAttendance;
 
   beforeEach(() => {
+    // Mediodía argentino para que "hoy", ayer y las marcas de entrada/salida
+    // no cambien si la suite corre cerca de medianoche.
+    jest.useFakeTimers({ now: new Date('2026-10-15T15:00:00Z') });
     guardadas = [];
     superposicion = crearQb({});
     repoTx = {
@@ -128,6 +131,8 @@ describe('AttendanceService', () => {
       employees as unknown as EmployeeService,
     );
   });
+
+  afterEach(() => jest.useRealTimers());
 
   describe('register (CU-189)', () => {
     it('crea la jornada con el día argentino del ingreso y origen panel', async () => {

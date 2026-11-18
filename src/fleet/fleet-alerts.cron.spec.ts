@@ -32,6 +32,8 @@ describe('FleetAlertsCron', () => {
     }) as unknown as MaintenanceTask;
 
   beforeEach(() => {
+    // Los vencimientos y las claves de deduplicación se calculan por día.
+    jest.useFakeTimers({ now: new Date('2026-10-15T15:00:00Z') });
     getMany = jest.fn();
     update = jest.fn().mockResolvedValue(undefined);
     events = { emit: jest.fn() };
@@ -65,6 +67,8 @@ describe('FleetAlertsCron', () => {
       events as unknown as EventEmitter2,
     );
   });
+
+  afterEach(() => jest.useRealTimers());
 
   /** Las tareas marcadas como avisadas: sólo esa columna, con `update`. */
   const marcadas = (): string[] =>
