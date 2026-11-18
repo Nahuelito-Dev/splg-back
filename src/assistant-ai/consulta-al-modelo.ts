@@ -6,6 +6,7 @@ import {
   causaDeDerivacion,
   FORMATO_DE_LA_RESPUESTA,
   type FuenteDeHerramienta,
+  horasNoVerificadas,
   importesNoVerificados,
   LARGO_DEL_DETALLE,
   LARGO_DEL_RESUMEN,
@@ -46,6 +47,18 @@ function usoDe(u: Anthropic.Usage): UsoDelModelo {
   };
 }
 
+/** Todo el texto que vio el modelo antes de contestar: el `system` (con la base) y los mensajes. */
+export function textosDe(consulta: ConsultaAlModelo): string[] {
+  const textos = consulta.system.map((b) => b.text);
+  for (const m of consulta.mensajes) {
+    if (typeof m.content === 'string') textos.push(m.content);
+    else {
+      for (const b of m.content) if (b.type === 'text') textos.push(b.text);
+    }
+  }
+  return textos;
+}
+
 /** Por qué falló la llamada, por la clase del error (nunca por el texto). */
 export function motivoDelError(error: unknown): MotivoDeDerivacion {
   if (error instanceof Anthropic.APIConnectionTimeoutError) {
@@ -66,7 +79,8 @@ export function motivoDelError(error: unknown): MotivoDeDerivacion {
  * equipo (4c), en la misma consulta: sin una segunda llamada. Cualquier cosa
  * que no sea un texto publicable termina en derivar: `pasar_a_persona`, `refusal`
  * (Haiku no tiene respaldo del servidor), `max_tokens`, sin texto, HTML, un
- * importe que no salió de una herramienta en esta consulta, un texto que
+ * importe que no salió de una herramienta en esta consulta, una hora de
+ * reloj que no salió de una herramienta, la base ni la conversación, un texto que
  * dice que registró o derivó algo (`prometeUnaAccion`), más de 3 vueltas
  * de herramientas, timeout o error de la API. Nunca tira.
  */
@@ -211,6 +225,15 @@ export class ConsultaAlAsistente {
               'La respuesta del asistente menciona un importe que no salió de una herramienta: se deriva',
             );
             return derivar(MotivoDeDerivacion.UNVERIFIED_AMOUNT);
+          }
+          if (
+            horasNoVerificadas(texto, [...datos, ...textosDe(consulta)])
+              .length > 0
+          ) {
+            this.logger.warn(
+              'La respuesta del asistente menciona una hora que no salió de una herramienta, de la base ni de la conversación: se deriva',
+            );
+            return derivar(MotivoDeDerivacion.INVALID_TEXT);
           }
           return {
             tipo: 'respuesta',

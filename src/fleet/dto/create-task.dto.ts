@@ -145,3 +145,15 @@ export class CreateFleetTaskDto {
   @IsDateString()
   scheduledAt?: string;
 }
+
+/** Alta desde el tablero (API v2): lo de la v1 más el responsable. */
+export class CreateFleetTaskV2Dto extends CreateFleetTaskDto {
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Responsable de la tarea: un empleado activo de la distribuidora (404 si no es de ella, 409 si está egresado)',
+  })
+  @IsOptional()
+  @IsUUID()
+  assigneeEmployeeId?: string;
+}

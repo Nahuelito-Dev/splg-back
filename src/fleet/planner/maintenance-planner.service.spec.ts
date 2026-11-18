@@ -951,6 +951,16 @@ describe('MaintenancePlannerService', () => {
       expect(notifier.ventanaConfirmada).toHaveBeenCalled();
     });
 
+    it('confirmar avisa `moved` al tablero del panel, ya confirmado', async () => {
+      const tablero = { avisar: jest.fn().mockResolvedValue(undefined) };
+      Object.assign(servicio, { tablero });
+      const c = await acordado();
+
+      await servicio.confirmar(D1, c.caseId, {}, 'admin-1', AHORA);
+
+      expect(tablero.avisar).toHaveBeenCalledWith(D1, c.taskId, 'moved');
+    });
+
     it('una tarea confirmada no se vuelve a planificar', async () => {
       const c = await acordado();
       await servicio.confirmar(D1, c.caseId, {}, 'admin-1', AHORA);
@@ -1059,6 +1069,17 @@ describe('MaintenancePlannerService', () => {
         status: MaintenanceTaskStatus.SCHEDULED,
         scheduledAt: ventana.windowStart,
       });
+    });
+
+    it('la tarea que programa el planificador avisa `moved` al tablero del panel', async () => {
+      const tablero = { avisar: jest.fn().mockResolvedValue(undefined) };
+      Object.assign(servicio, { tablero });
+      const t = tarea();
+      const ventana = { windowStart: dias(4), windowEnd: dias(4.2) };
+
+      await servicio.forzar(D1, t.taskId, ventana, 'admin-1', AHORA);
+
+      expect(tablero.avisar).toHaveBeenCalledWith(D1, t.taskId, 'moved');
     });
 
     it('forzar sobre un caso abierto lo resuelve en lugar de abrir otro', async () => {

@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AssistantModule } from '../assistant/assistant.module';
 import { ChatModule } from '../chat/chat.module';
 import { GasCylinderModule } from '../gascylinder/gascylinder.module';
+import { SeguimientoDelClienteModule } from '../route-batch/seguimiento-del-cliente/seguimiento-del-cliente.module';
 import { AsistenteIaRescateCron } from './asistente-ia-rescate.cron';
 import { AsistenteIaListener } from './asistente-ia.listener';
 import { AsistenteIaService } from './asistente-ia.service';
@@ -27,6 +28,7 @@ import { HerramientasDelAsistente } from './herramientas';
     ChatModule,
     AssistantModule,
     GasCylinderModule,
+    SeguimientoDelClienteModule, // el reparto de los pedidos del cliente (hoja de ruta)
   ],
   providers: [
     AsistenteIaService,

@@ -488,3 +488,27 @@ export function importesNoVerificados(
   const permitidos = new Set(datosDeLasHerramientas.flatMap(importesDelTexto));
   return importesDelTexto(respuesta).filter((i) => !permitidos.has(i));
 }
+
+/** Una hora de reloj («15:05», «9:30»), sin confundirla con un importe ni una fecha. */
+const HORA_DEL_RELOJ = /(?<![\d:.,/])([01]?\d|2[0-3]):([0-5]\d)(?![\d:])/g;
+
+/** Las horas de reloj que menciona un texto, canónicas («08:00» → «8:00»). */
+export function horasDelTexto(texto: string): string[] {
+  return [...texto.matchAll(HORA_DEL_RELOJ)].map(
+    (m) => `${Number(m[1])}:${m[2]}`,
+  );
+}
+
+/**
+ * Las horas que menciona la respuesta y que NO salieron de lo que vio el
+ * modelo en esa consulta (herramientas, base de conocimiento o la propia
+ * conversación). Si hay alguna, no se publica: es un horario inventado (una
+ * «hora exacta» de llegada que ninguna herramienta dio), y se deriva.
+ */
+export function horasNoVerificadas(
+  respuesta: string,
+  fuentes: readonly string[],
+): string[] {
+  const permitidas = new Set(fuentes.flatMap(horasDelTexto));
+  return horasDelTexto(respuesta).filter((h) => !permitidas.has(h));
+}

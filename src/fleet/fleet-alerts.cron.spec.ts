@@ -70,8 +70,10 @@ describe('FleetAlertsCron', () => {
   const marcadas = (): string[] =>
     (update.mock.calls as [string[], Record<string, unknown>][]).flatMap(
       ([ids, cambios]) => {
-        expect(Object.keys(cambios)).toEqual(['alertedAt']);
+        expect(Object.keys(cambios)).toEqual(['alertedAt', 'updatedAt']);
         expect(cambios.alertedAt).toBeInstanceOf(Date);
+        // La marca del aviso no mueve `updated_at` (la precondición del tablero).
+        expect((cambios.updatedAt as () => string)()).toBe('"updated_at"');
         return ids;
       },
     );
@@ -167,6 +169,24 @@ describe('FleetAlertsCron', () => {
       await cron.avisarVencimientosPendientes();
       expect(avisos()).toEqual([]);
     });
+  });
+
+  it('las vencidas avisan `overdue` al tablero del panel; las por vencer, no', async () => {
+    const tablero = { avisarVarias: jest.fn().mockResolvedValue(undefined) };
+    Object.assign(cron, { tablero });
+    getMany.mockResolvedValue([
+      tareaPorVencer({ taskId: 'por-vencer' }),
+      tareaPorVencer({
+        taskId: 'vencida',
+        dueAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      }),
+    ]);
+    await cron.avisarVencimientosPendientes();
+    expect(tablero.avisarVarias).toHaveBeenCalledWith(
+      'd1',
+      ['vencida'],
+      'overdue',
+    );
   });
 
   it('si falla el envío, NO marca alertedAt (se reintenta al día siguiente)', async () => {

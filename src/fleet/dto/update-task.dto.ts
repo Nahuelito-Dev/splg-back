@@ -1,5 +1,5 @@
 import { ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
-import { IsDateString, IsOptional } from 'class-validator';
+import { IsDateString, IsOptional, IsUUID } from 'class-validator';
 import { CreateFleetTaskDto } from './create-task.dto';
 
 /**
@@ -30,4 +30,32 @@ export class UpdateFleetTaskDto extends PartialType(
   @IsOptional()
   @IsDateString()
   scheduledAt?: string | null;
+}
+
+/**
+ * Edición desde el tablero (API v2): lo de la v1, el responsable y la
+ * precondición. El vehículo, el chofer, el empleado del legajo y el plan
+ * siguen sin editarse (se cancela la tarea y se crea otra).
+ */
+export class UpdateFleetTaskV2Dto extends UpdateFleetTaskDto {
+  @ApiPropertyOptional({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description:
+      'Responsable de la tarea: un empleado activo de la distribuidora (404 si no es de ella, 409 si está egresado). `null` lo quita',
+  })
+  @IsOptional()
+  @IsUUID()
+  assigneeEmployeeId?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date-time',
+    description:
+      'Precondición: el `updatedAt` que tiene el panel. Si la tarea cambió, 409 `FLEET_TASK_STALE`. También se acepta en el header `If-Match`',
+  })
+  @IsOptional()
+  @IsDateString()
+  expectedUpdatedAt?: string;
 }

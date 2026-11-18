@@ -8,10 +8,13 @@
 export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   // Mensajería: chat con la plataforma y tickets (CH1).
   active: 'Activa',
+  afterId: 'Tarjeta anterior',
   afterSeq: 'Desde el mensaje',
+  assigneeEmployeeId: 'Responsable',
   assignToMe: 'Asignármelo',
   assigned: 'Asignado a',
   assignedTo: 'Asignado a',
+  beforeId: 'Tarjeta siguiente',
   beforeSeq: 'Hasta el mensaje',
   caption: 'Epígrafe',
   chatAckEnabled: 'Aviso automático de recibido',
@@ -20,6 +23,9 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   chatInactivityHours: 'Horas sin mensajes para cerrar el chat',
   clientMessageId: 'Identificador del mensaje',
   closesAt: 'Hora de cierre',
+  doneSince: 'Hechas desde',
+  dueBefore: 'Vence hasta el',
+  expectedUpdatedAt: 'Última modificación conocida',
   firstMessage: 'Primer mensaje',
   firstAction: 'Opción para empezar el chat',
   ratingId: 'Encuesta',

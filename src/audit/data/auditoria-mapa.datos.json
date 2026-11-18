@@ -7762,6 +7762,22 @@
       "position": 22
     },
     {
+      "table": "maintenance_task",
+      "column": "assignee_employee_id",
+      "property": "assigneeEmployeeId",
+      "secret": false,
+      "kind": "text",
+      "position": 23
+    },
+    {
+      "table": "maintenance_task",
+      "column": "board_position",
+      "property": "boardPosition",
+      "secret": false,
+      "kind": "text",
+      "position": 24
+    },
+    {
       "table": "maintenance_task_attachment",
       "column": "attachment_id",
       "property": "attachmentId",

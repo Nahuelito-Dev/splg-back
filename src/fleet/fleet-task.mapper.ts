@@ -81,6 +81,8 @@ export class FleetTaskMapper {
     dto.isPaid = task.cashMovementId !== null;
     const seguro = esDeSeguro(task.plan);
     dto.notPayableReason = seguro ? MOTIVO_SEGURO : null;
+    dto.assigneeEmployeeId = task.assigneeEmployeeId;
+    dto.updatedAt = task.updatedAt;
     dto.payable =
       task.status === MaintenanceTaskStatus.DONE &&
       (task.cost ?? 0) > 0 &&

@@ -8,6 +8,7 @@ import {
   Index,
   Check,
   ForeignKey,
+  UpdateDateColumn,
 } from 'typeorm';
 import { CashMovement } from '../../cash/entities/cash-movement.entity';
 import { MaintenancePlan } from './maintenance-plan.entity';
@@ -57,6 +58,20 @@ export enum MaintenanceTaskStatus {
     onDelete: 'NO ACTION',
   },
 )
+@ForeignKey(
+  () => Employee,
+  ['assignee_employee_id', 'distributor_id'],
+  ['employee_id', 'distributor_id'],
+  {
+    name: 'FK_maintenance_task_assignee_employee_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@Index('IDX_maintenance_task_tablero', [
+  'distributorId',
+  'status',
+  'boardPosition',
+])
 @Entity('maintenance_task')
 export class MaintenanceTask {
   @PrimaryGeneratedColumn('uuid', { name: 'task_id' })
@@ -201,6 +216,30 @@ export class MaintenanceTask {
    */
   @Column({ name: 'details', type: 'jsonb', nullable: true })
   details!: Record<string, string> | null;
+
+  /**
+   * Responsable de la tarea en el tablero (no es el sujeto: el empleado de un
+   * plan de personal va en `employeeId`). Empleado de la misma distribuidora.
+   */
+  @Index('IDX_maintenance_task_assignee')
+  @ManyToOne(() => Employee, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'assignee_employee_id' })
+  assignee?: Employee | null;
+
+  @Column({ name: 'assignee_employee_id', type: 'uuid', nullable: true })
+  assigneeEmployeeId!: string | null;
+
+  /**
+   * Orden de la tarjeta dentro de su columna del tablero (orden fraccional:
+   * mover una tarjeta reescribe sólo la suya). Una tarea nueva la recibe al
+   * final de su columna por `TRG_maintenance_task_posicion_al_final`.
+   */
+  @Column({ name: 'board_position', type: 'double precision' })
+  boardPosition!: number;
+
+  /** Precondición del tablero: el panel la manda para no pisar un cambio ajeno. */
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt!: Date;
 
   @OneToMany(() => MaintenanceTaskAttachment, (a) => a.task)
   attachments?: MaintenanceTaskAttachment[];

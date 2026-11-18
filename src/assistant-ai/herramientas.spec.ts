@@ -7,6 +7,10 @@ import {
 import { GasCylinder } from '../gascylinder/entities/gascylinder.entity';
 import type { GasCylinderService } from '../gascylinder/gascylinder.service';
 import { Order, OrderStatus } from '../order/entities/order.entity';
+import type {
+  RepartoDelPedido,
+  SeguimientoDelPedido,
+} from '../route-batch/seguimiento-del-cliente/seguimiento-del-pedido.service';
 import { TimeSlot } from '../time-slot/entities/time-slot.entity';
 import {
   type ContextoDeLasHerramientas,
@@ -129,8 +133,34 @@ function qbDePedidos(filas: FilaDePedido[]): QbFalso {
   return qb;
 }
 
-function armar(filas: FilaDePedido[] = PEDIDOS) {
+/** El reparto que devolvería la hoja de ruta, por id de pedido (los demás no vienen). */
+const EN_VIAJE: RepartoDelPedido = {
+  situacion: 'en_viaje',
+  diaDelReparto: 'hoy',
+  viajeIniciado: true,
+  entregasAntes: 2,
+  llegadaEstimada: 'entre las 15:05 y las 15:40, aprox.',
+  pasoAlFinalDelRecorrido: false,
+  reprogramadoPara: null,
+};
+
+function armar(
+  filas: FilaDePedido[] = PEDIDOS,
+  repartos: Record<string, RepartoDelPedido | null> = {},
+) {
   const qb = qbDePedidos(filas);
+  const seguimiento = {
+    deLosPedidos: jest.fn(
+      (_empresa: string, _cliente: string, ids: readonly string[]) =>
+        Promise.resolve(
+          new Map(
+            ids
+              .filter((id) => id in repartos)
+              .map((id) => [id, repartos[id]] as const),
+          ),
+        ),
+    ),
+  };
   const repos = new Map<
     unknown,
     { find: jest.Mock; createQueryBuilder?: jest.Mock<QbFalso> }
@@ -224,7 +254,9 @@ function armar(filas: FilaDePedido[] = PEDIDOS) {
     herramientas: new HerramientasDelAsistente(
       dataSource,
       garrafas as unknown as GasCylinderService,
+      seguimiento as unknown as SeguimientoDelPedido,
     ),
+    seguimiento,
     qb,
     repos,
     garrafas,
@@ -266,6 +298,7 @@ describe('Herramientas del asistente (sólo lectura)', () => {
           franja: 'Mañana (09:00 a 13:00)',
           chofer: 'Juan',
           total: '$ 12.345,50',
+          reparto: null,
         },
         {
           pedido: '0ABC02',
@@ -274,6 +307,7 @@ describe('Herramientas del asistente (sólo lectura)', () => {
           franja: null,
           chofer: null,
           total: '$ 12.345,50',
+          reparto: null,
         },
       ]);
       expect(qb.condiciones.slice(0, 2)).toEqual([
@@ -368,6 +402,48 @@ describe('Herramientas del asistente (sólo lectura)', () => {
         datos: { error: 'Esta persona no tiene pedidos' },
         error: false,
       });
+    });
+
+    it('suma el reparto de cada pedido (hoja de ruta), pedido con la empresa, el cliente y la hora de la conversación', async () => {
+      const { herramientas, seguimiento } = armar(PEDIDOS, {
+        'aaaaaaaa-0000-4000-8000-0000000abc01': EN_VIAJE,
+        'aaaaaaaa-0000-4000-8000-0000000abc02': null,
+      });
+      const ctx = contexto();
+      const r = await herramientas.ejecutar(ctx, ESTADO_DE_MI_PEDIDO, {});
+      expect(r.datos).toEqual([
+        expect.objectContaining({ pedido: '0ABC01', reparto: EN_VIAJE }),
+        expect.objectContaining({ pedido: '0ABC02', reparto: null }),
+      ]);
+      expect(seguimiento.deLosPedidos).toHaveBeenCalledWith(
+        EMPRESA,
+        CLIENTE,
+        [
+          'aaaaaaaa-0000-4000-8000-0000000abc01',
+          'aaaaaaaa-0000-4000-8000-0000000abc02',
+        ],
+        ctx.ahora,
+      );
+    });
+
+    it('el reparto sólo se pide por los pedidos del cliente: nunca por uno ajeno', async () => {
+      const { herramientas, seguimiento } = armar();
+      await herramientas.ejecutar(contexto(), ESTADO_DE_MI_PEDIDO, {
+        pedido: 'bbbbbbbb-0000-4000-8000-0000000abc01',
+      });
+      expect(seguimiento.deLosPedidos).not.toHaveBeenCalled();
+      const otra = armar();
+      await otra.herramientas.ejecutar(
+        contexto({ distributorId: OTRA_EMPRESA }),
+        ESTADO_DE_MI_PEDIDO,
+        {},
+      );
+      expect(otra.seguimiento.deLosPedidos).toHaveBeenCalledWith(
+        OTRA_EMPRESA,
+        CLIENTE,
+        ['cccccccc-0000-4000-8000-0000000abc01'],
+        expect.any(Date),
+      );
     });
 
     it('el chofer (nombre de pila) sólo mientras lo lleva', async () => {

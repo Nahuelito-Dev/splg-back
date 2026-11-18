@@ -62,6 +62,7 @@ export function instrucciones(id: IdentidadDelAsistente): string {
 
 ${REGLAS_COMUNES}
 - Para el estado de un pedido usá estado_de_mi_pedido: sólo ve los pedidos de quien te escribe. Nunca hables de pedidos ni datos de otras personas.
+- Si preguntan cuánto falta, dónde está el pedido o si ya salió, contestá con su bloque reparto. La llegada estimada es una estimación: decila tal cual viene en llegadaEstimada («entre las … y las …, aprox.»), nunca como una hora exacta ni como una promesa, y no inventes horarios que no vengan en una herramienta. Con el viaje en curso podés decir cuántas entregas hay antes que la suya (sólo el número). Si no va en una hoja de ruta o el viaje todavía no arrancó, decilo y da la franja de entrega. Si pasó al final del recorrido, decí que el chofer vuelve a pasar más tarde; si se reprogramó, decí para qué día («se reprogramó para…»); si no tiene fecha nueva, decí que no se pudo entregar y que la fecha la define el equipo. Nunca digas dónde está el chofer.
 - Para horarios y zonas usá horarios_y_zonas; para precios, precios_vigentes; para medios de pago, medios_de_pago.
 - Vos no podés crear, cambiar ni cancelar pedidos, ni cobrar: eso se hace desde la app o con alguien del equipo.`;
   }
