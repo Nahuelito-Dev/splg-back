@@ -21,6 +21,11 @@ import {
 /** Días de registro de uso que se leen: un año para ver la estacionalidad y un poco más. */
 const DIAS_DE_HISTORIAL = 400;
 
+/** Debajo de este ritmo (km por día de calendario) el propio no es creíble para proyectar. */
+export const PISO_KM_POR_DIA = 5;
+/** Una proyección por kilometraje más lejana que esto no se muestra ni se guarda. */
+export const HORIZONTE_DIAS = 730;
+
 export type FuenteDelConsumo = 'own' | 'fleet_average';
 
 /** El consumo diario de un vehículo y de dónde sale. */
@@ -85,6 +90,7 @@ export class MaintenanceForecastService {
     }
 
     const propios = new Map<string, ConsumoDelVehiculo>();
+    const todos = new Map<string, ConsumoDelVehiculo>();
     for (const car of cars) {
       const muestras = porVehiculo.get(car.carId) ?? [];
       const estimado = estimarKmPorDia(muestras, hoyDia, {
@@ -93,6 +99,17 @@ export class MaintenanceForecastService {
         staleDays: params.usageStaleDays,
       });
       if (estimado) {
+        const utilizable =
+          !estimado.desactualizado && estimado.kmPorDia >= PISO_KM_POR_DIA;
+        todos.set(car.carId, {
+          kmPorDia: estimado.kmPorDia,
+          source: 'own',
+          diasDeHistorial: estimado.diasConDato,
+          ultimoDia: estimado.ultimoDia,
+          desactualizado: estimado.desactualizado,
+          muestras,
+        });
+        if (!utilizable) continue;
         propios.set(car.carId, {
           kmPorDia: estimado.kmPorDia,
           source: 'own',
@@ -120,12 +137,16 @@ export class MaintenanceForecastService {
       resultado.set(
         car.carId,
         promedio === null
-          ? null
+          ? // Sin promedio de su tipo: el uso viejo se informa (el panel lo marca y no se proyecta);
+            // un ritmo reciente debajo del piso no es creíble y queda sin dato.
+            todos.get(car.carId)?.desactualizado
+            ? (todos.get(car.carId) ?? null)
+            : null
           : {
               kmPorDia: promedio,
               source: 'fleet_average',
               diasDeHistorial: 0,
-              ultimoDia: null,
+              ultimoDia: todos.get(car.carId)?.ultimoDia ?? null,
               desactualizado: false,
               muestras: porVehiculo.get(car.carId) ?? [],
             },
@@ -144,14 +165,26 @@ export class MaintenanceForecastService {
     const hoyDia = diaArgentino(hoy);
     // Datos viejos no se proyectan: un vehículo parado no es uno que anda poco.
     const base = consumo && !consumo.desactualizado ? consumo.kmPorDia : null;
-    const proyectar = (kmPorDia: number | null) =>
-      proyectarVencimiento({
+    const proyectar = (kmPorDia: number | null) => {
+      const p = proyectarVencimiento({
         dueAt: task.dueAt,
         dueKm: task.dueKm,
         odometerKm: car.odometerKm,
         kmPorDia,
         hoy,
       });
+      const lejos =
+        p.porKilometraje !== null &&
+        p.porKilometraje.getTime() - hoy.getTime() >
+          HORIZONTE_DIAS * 86_400_000;
+      if (!lejos) return p;
+      return {
+        ...p,
+        porKilometraje: null,
+        fecha: task.dueAt,
+        enObservacion: task.dueAt === null && task.dueKm !== null,
+      };
+    };
     const primera = proyectar(base);
     if (!consumo || base === null || !primera.porKilometraje) return primera;
 

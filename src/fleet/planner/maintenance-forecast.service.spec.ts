@@ -7,7 +7,7 @@ import { MaintenanceForecastService } from './maintenance-forecast.service';
 import { TareaProyectada } from './maintenance-forecast.service';
 
 const HOY = new Date('2026-10-30T15:00:00Z');
-const PARAMS = { decay: 0.7, minSampleDays: 30 };
+const PARAMS = { decay: 0.7, minSampleDays: 30, usageStaleDays: 14 };
 
 const auto = (carId: string, typeCar = 'Camioneta', odometerKm = 10_000) =>
   ({ carId, typeCar, odometerKm }) as Car;
@@ -69,6 +69,38 @@ describe('MaintenanceForecastService', () => {
       expect(r.get('b')?.kmPorDia).toBeCloseTo(80, 3);
     });
 
+    it('un vehículo con el uso viejo toma el promedio de la flota y marca la fuente', async () => {
+      const viejo = Array.from({ length: 40 }, (_, i) => ({
+        carId: 'v',
+        day: sumarDias('2026-10-30', -(40 + i)),
+        km: 90,
+      })) as unknown as VehicleUsageLog[];
+      find.mockResolvedValue([...uso('a', 60, 80), ...viejo]);
+      const r = await servicio.consumos(
+        'd1',
+        [auto('a'), auto('v')],
+        PARAMS,
+        HOY,
+      );
+      expect(r.get('v')).toMatchObject({
+        source: 'fleet_average',
+        desactualizado: false,
+      });
+      expect(r.get('v')?.kmPorDia).toBeCloseTo(80, 3);
+    });
+
+    it('un ritmo propio por debajo del piso toma el promedio de la flota', async () => {
+      find.mockResolvedValue([...uso('a', 60, 80), ...uso('b', 60, 2)]);
+      const r = await servicio.consumos(
+        'd1',
+        [auto('a'), auto('b')],
+        PARAMS,
+        HOY,
+      );
+      expect(r.get('b')).toMatchObject({ source: 'fleet_average' });
+      expect(r.get('b')?.kmPorDia).toBeCloseTo(80, 3);
+    });
+
     it('lee sólo el registro de la distribuidora y de los vehículos pedidos', async () => {
       await servicio.consumos('d1', [auto('a')], PARAMS, HOY);
       const donde = (
@@ -90,6 +122,34 @@ describe('MaintenanceForecastService', () => {
         HOY,
       );
       expect(r.enObservacion).toBe(true);
+    });
+
+    it('no proyecta por kilometraje más allá del horizonte y manda la fecha', () => {
+      const consumo = {
+        kmPorDia: 6,
+        source: 'fleet_average' as const,
+        diasDeHistorial: 0,
+        ultimoDia: null,
+        desactualizado: false,
+        muestras: [],
+      };
+      const dueAt = new Date('2026-12-15T00:00:00Z');
+      const r = servicio.proyectar(
+        tarea({ dueKm: 90_000, dueAt }),
+        auto('a'),
+        consumo,
+        HOY,
+      );
+      expect(r.porKilometraje).toBeNull();
+      expect(r.fecha).toEqual(dueAt);
+      const sinFecha = servicio.proyectar(
+        tarea({ dueKm: 90_000 }),
+        auto('a'),
+        consumo,
+        HOY,
+      );
+      expect(sinFecha.porKilometraje).toBeNull();
+      expect(sinFecha.enObservacion).toBe(true);
     });
 
     it('corrige por la estacionalidad del mes en que cae el vencimiento', async () => {
