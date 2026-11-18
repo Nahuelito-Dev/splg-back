@@ -91,7 +91,7 @@ export class ProcessRunService {
       this.runs
         .createQueryBuilder('r')
         .distinctOn(['r.process', 'r.distributorId'])
-        // Lo que no cuenta para la salud: la corrida salteada por cerrojo y la adelantada por un webhook
+        // Lo que no cuenta para el estado: la corrida salteada por cerrojo y la adelantada por un webhook
         // (una corrida manual sí cuenta).
         .where('r.status <> :saltada AND r.trigger <> :webhook', {
           saltada: ProcessRunStatus.SKIPPED,
@@ -108,6 +108,22 @@ export class ProcessRunService {
         .distinctOn(['r.process', 'r.distributorId'])
         .where('r.status IN (:...ok) AND r.trigger <> :webhook', {
           ok: [ProcessRunStatus.OK, ProcessRunStatus.PARTIAL],
+          webhook: RunTrigger.WEBHOOK,
+        })
+        .orderBy('r.process')
+        .addOrderBy('r.distributorId')
+        .addOrderBy('r.startedAt', 'DESC'),
+      distributorId,
+    ).getMany();
+
+    // La salteada más reciente (no había trabajo, o la tomó otra instancia): no cambia el estado, pero
+    // prueba que el proceso sigue corriendo a horario, así que cuenta para medir el atraso.
+    const salteadas = await this.delAlcance(
+      this.runs
+        .createQueryBuilder('r')
+        .distinctOn(['r.process', 'r.distributorId'])
+        .where('r.status = :saltada AND r.trigger <> :webhook', {
+          saltada: ProcessRunStatus.SKIPPED,
           webhook: RunTrigger.WEBHOOK,
         })
         .orderBy('r.process')
@@ -153,12 +169,33 @@ export class ProcessRunService {
         const ultima = filas.reduce((a, b) =>
           b.startedAt > a.startedAt ? b : a,
         );
+        let salud = evaluarSalud(ultima, proceso, ahora, this.cuelgaMinutos);
+        if (salud === ProcessHealth.LATE) {
+          const viva = salteadas
+            .filter(
+              (s) =>
+                s.process === proceso &&
+                (distributorId || s.distributorId === ultima.distributorId),
+            )
+            .reduce<Date | null>(
+              (max, s) => (!max || s.startedAt > max ? s.startedAt : max),
+              null,
+            );
+          if (viva && viva > ultima.startedAt) {
+            salud = evaluarSalud(
+              { ...ultima, startedAt: viva },
+              proceso,
+              ahora,
+              this.cuelgaMinutos,
+            );
+          }
+        }
         estados.push({
           proceso,
           distributorId: ultima.distributorId,
           ultima,
           ultimaBuena: buenaDe(proceso, ultima.distributorId),
-          salud: evaluarSalud(ultima, proceso, ahora, this.cuelgaMinutos),
+          salud,
         });
       }
     }

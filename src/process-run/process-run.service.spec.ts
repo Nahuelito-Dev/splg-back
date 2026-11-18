@@ -266,8 +266,57 @@ describe('ProcessRunService', () => {
     expect(qb.addGroupBy).toHaveBeenCalledWith('r.distributorId');
   });
 
-  it('la salud no cuenta las corridas salteadas ni las de webhook (las manuales sí)', async () => {
-    const { service, qb } = armar([[], []]);
+  it('una salteada reciente cuenta para el atraso: el proceso vivo sin trabajo queda ok', async () => {
+    const dia = 24 * 3600_000;
+    const vieja = corrida({
+      process: ProcessName.DOCUMENT_READING,
+      status: ProcessRunStatus.OK,
+      startedAt: new Date(AHORA.getTime() - 3 * dia),
+    });
+    const salteada = corrida({
+      process: ProcessName.DOCUMENT_READING,
+      status: ProcessRunStatus.SKIPPED,
+      startedAt: new Date(AHORA.getTime() - 60_000),
+    });
+    const conVida = (
+      await armar([[vieja], [vieja], [salteada]]).service.estados(null, AHORA)
+    ).find((e) => e.proceso === ProcessName.DOCUMENT_READING);
+    expect(conVida?.salud).toBe(ProcessHealth.OK);
+
+    const sinVida = (
+      await armar([[vieja], [vieja], []]).service.estados(null, AHORA)
+    ).find((e) => e.proceso === ProcessName.DOCUMENT_READING);
+    expect(sinVida?.salud).toBe(ProcessHealth.LATE);
+  });
+
+  it('una salteada posterior no tapa una falla ni un proceso colgado', async () => {
+    const falla = corrida({
+      process: ProcessName.DOCUMENT_READING,
+      status: ProcessRunStatus.FAILED,
+      startedAt: new Date(AHORA.getTime() - 120_000),
+    });
+    const colgada = corrida({
+      process: ProcessName.DOCUMENT_READING,
+      status: ProcessRunStatus.RUNNING,
+      startedAt: new Date(AHORA.getTime() - 5 * 3600_000),
+    });
+    const salteada = corrida({
+      process: ProcessName.DOCUMENT_READING,
+      status: ProcessRunStatus.SKIPPED,
+      startedAt: new Date(AHORA.getTime() - 60_000),
+    });
+    const conFalla = (
+      await armar([[falla], [], [salteada]]).service.estados(null, AHORA)
+    ).find((e) => e.proceso === ProcessName.DOCUMENT_READING);
+    expect(conFalla?.salud).toBe(ProcessHealth.FAILED);
+    const conCuelgue = (
+      await armar([[colgada], [], [salteada]]).service.estados(null, AHORA)
+    ).find((e) => e.proceso === ProcessName.DOCUMENT_READING);
+    expect(conCuelgue?.salud).toBe(ProcessHealth.STUCK);
+  });
+
+  it('el estado no cuenta las salteadas ni las de webhook (las manuales sí)', async () => {
+    const { service, qb } = armar([[], [], []]);
     await service.estados(null, AHORA);
     expect(qb.where).toHaveBeenCalledWith(
       expect.stringContaining('r.status <> :saltada AND r.trigger <> :webhook'),
