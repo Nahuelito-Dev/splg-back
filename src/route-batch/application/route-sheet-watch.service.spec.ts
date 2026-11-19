@@ -308,5 +308,33 @@ describe('RouteSheetWatchService', () => {
       expect(sql).toContain(`'arrivalWaitMinutes')::int, 10)`);
       expect(params).toEqual(['2026-11-14T13:11:00.000Z']);
     });
+
+    it('una parada con hora de llegada inválida se saltea y no tira la corrida', async () => {
+      const buena = new Date('2026-11-14T13:00:00Z');
+      const fila = (batchId: string, arrivedAt: Date) => ({
+        batchId,
+        orderId: `o-${batchId}`,
+        distributorId: DIST,
+        driverUserId: 'u-chofer',
+        token: 'tok',
+        arrivedAt,
+        waitMinutes: 10,
+      });
+      const t = armar({
+        vencidas: [
+          fila('rota', new Date('no es una fecha')),
+          fila('buena', buena),
+        ],
+      });
+      const r = await t.svc.vigilar(Date.parse('2026-11-14T13:11:00Z'));
+      expect(r.waitExpired).toBe(1);
+      expect(r.etaRecalculated).toBe(3);
+      expect(t.notifier.alPanel).toHaveBeenCalledTimes(1);
+      expect(t.notifier.alPanel).toHaveBeenCalledWith(
+        DIST,
+        'route-sheet:wait-expired',
+        expect.objectContaining({ sheetId: 'buena' }),
+      );
+    });
   });
 });

@@ -148,34 +148,49 @@ export class RouteSheetWatchService {
                 COALESCE((mc."params" ->> 'arrivalWaitMinutes')::int, 10) AS "waitMinutes"`,
       [new Date(nowMs).toISOString()],
     );
+    let avisadas = 0;
     for (const f of filas) {
-      const payload = {
-        sheetId: f.batchId,
-        orderId: f.orderId,
-        arrivedAt: new Date(f.arrivedAt).toISOString(),
-        waitMinutes: f.waitMinutes,
-      };
-      if (f.driverUserId) {
-        this.notifier.alChofer(
-          f.driverUserId,
+      try {
+        const llegada = new Date(f.arrivedAt);
+        if (Number.isNaN(llegada.getTime())) {
+          this.logger.warn(
+            `Hoja ${f.batchId}: la parada del pedido ${f.orderId} tiene una hora de llegada inválida; se saltea el aviso de espera`,
+          );
+          continue;
+        }
+        const payload = {
+          sheetId: f.batchId,
+          orderId: f.orderId,
+          arrivedAt: llegada.toISOString(),
+          waitMinutes: f.waitMinutes,
+        };
+        if (f.driverUserId) {
+          this.notifier.alChofer(
+            f.driverUserId,
+            'route-sheet:wait-expired',
+            payload,
+          );
+        }
+        void this.notifier.pushAlChofer(
+          f.token,
+          f.batchId,
+          `Pasaron ${f.waitMinutes} minutos en la puerta. Si nadie atiende, marcá «No pude entregar»: el pedido pasa al final de tu recorrido.`,
+          'Venció la espera',
+          'ROUTE_SHEET_WAIT_EXPIRED',
+        );
+        this.notifier.alPanel(
+          f.distributorId,
           'route-sheet:wait-expired',
           payload,
         );
+        avisadas += 1;
+      } catch (error) {
+        this.logger.warn(
+          `Hoja ${f.batchId}: no se pudo avisar la espera vencida del pedido ${f.orderId}: ${errorMessage(error)}`,
+        );
       }
-      void this.notifier.pushAlChofer(
-        f.token,
-        f.batchId,
-        `Pasaron ${f.waitMinutes} minutos en la puerta. Si nadie atiende, marcá «No pude entregar»: el pedido pasa al final de tu recorrido.`,
-        'Venció la espera',
-        'ROUTE_SHEET_WAIT_EXPIRED',
-      );
-      this.notifier.alPanel(
-        f.distributorId,
-        'route-sheet:wait-expired',
-        payload,
-      );
     }
-    return filas.length;
+    return avisadas;
   }
 
   /**

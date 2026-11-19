@@ -1266,6 +1266,13 @@ describe('UpdateOrderStatusUseCase', () => {
   });
 
   describe('RESERVED → PENDING (punto 9: activación manual con las mismas condiciones que el cron)', () => {
+    beforeEach(() => {
+      // Mediodía argentino: las fechas agendadas se comparan como días de negocio.
+      jest.useFakeTimers({ now: new Date('2026-10-15T15:00:00Z') });
+    });
+
+    afterEach(() => jest.useRealTimers());
+
     it('activa si la seña está paga y el día ya llegó', async () => {
       const ayer = new Date();
       ayer.setDate(ayer.getDate() - 1);

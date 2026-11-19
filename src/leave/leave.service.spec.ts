@@ -93,6 +93,8 @@ describe('LeaveService', () => {
     }) as EmployeeLeave;
 
   beforeEach(() => {
+    // Las licencias vencidas y el año por defecto son calendario argentino.
+    jest.useFakeTimers({ now: new Date('2026-10-15T15:00:00Z') });
     guardadas = [];
     superposicion = crearQb({});
     repoDeLaTransaccion = {
@@ -126,6 +128,8 @@ describe('LeaveService', () => {
       employees as unknown as EmployeeService,
     );
   });
+
+  afterEach(() => jest.useRealTimers());
 
   describe('create (CU-191)', () => {
     const cuerpo = {

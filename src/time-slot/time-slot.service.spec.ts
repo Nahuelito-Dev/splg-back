@@ -18,7 +18,7 @@ describe('TimeSlotService', () => {
   let slots: { findOne: jest.Mock; find: jest.Mock };
   let orders: { countBooked: jest.Mock; maxBookedFrom: jest.Mock };
 
-  const manana = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+  const manana = '2026-10-11';
   const franja = {
     time_slot_id: 't1',
     name: 'Mañana',
@@ -34,6 +34,8 @@ describe('TimeSlotService', () => {
   };
 
   beforeEach(() => {
+    // 12:00 ART evita que la fecha de mañana dependa del cambio UTC/Argentina.
+    jest.useFakeTimers({ now: new Date('2026-10-10T15:00:00Z') });
     slots = { findOne: jest.fn(), find: jest.fn() };
     orders = { countBooked: jest.fn(), maxBookedFrom: jest.fn() };
     service = new TimeSlotService(
@@ -42,6 +44,8 @@ describe('TimeSlotService', () => {
       {} as DistributorService,
     );
   });
+
+  afterEach(() => jest.useRealTimers());
 
   it('una franja inactiva o inexistente no admite pedidos', async () => {
     slots.findOne.mockResolvedValue(null);
