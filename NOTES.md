@@ -1,15 +1,12 @@
-## v2.4.0 - 2026-11-18
-
-### Funcionalidades
-
-- **flota:** ✨ tablero de tareas de flota con columnas, movimiento y aviso en tiempo real (2cff8d4)
-- **asistente:** ✨ contesta «¿cuánto falta?» con la hoja de ruta y la hora estimada (8d7d31c)
+## v2.4.1 - 2026-11-19
 
 ### Correcciones
 
-- **flota:** 🐛 el aviso del tablero llega sólo a quien tiene permiso de flota (7476a28)
+- **planificador:** 🐛 pronóstico creíble con uso viejo o escaso, y vigilancia de hojas tolerante a paradas inválidas (28fa60d)
+- **procesos:** 🐛 una corrida salteada a tiempo cuenta para el atraso sin tapar fallas ni cuelgues (5ae2597)
 
 ### Mantenimiento
 
-- ✅ datos de ejemplo con un nombre de distribuidora neutro (370a801)
+- 🔧 licencia propietaria de OrixTech (88e9a47)
+- ✅ reloj fijo en las pruebas que dependen del día argentino (107110c)
 
