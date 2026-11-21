@@ -16,6 +16,7 @@ import {
   ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiExtraModels,
   ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -43,6 +44,7 @@ import { UpdateFleetTaskV2Dto } from './dto/update-task.dto';
 import {
   FleetTaskBoardCardDto,
   FleetTaskBoardDto,
+  FleetTaskBoardEventDto,
   FleetTaskBoardQueryDto,
   MoveFleetTaskDto,
 } from './dto/task-board.dto';
@@ -81,6 +83,8 @@ import { Permiso } from '../common/decorators/permiso.decorator';
  * billetera. El resto de las operaciones sigue en `/fleet/tasks` (v1).
  */
 @ApiTags('Fleet · Tasks (v2)')
+// El aviso del tablero viaja por socket (`fleet:task`): se publica para que el panel tenga su tipo.
+@ApiExtraModels(FleetTaskBoardEventDto)
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller({ path: 'fleet/tasks', version: '2' })
 export class FleetTaskV2Controller {

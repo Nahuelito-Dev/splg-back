@@ -66,6 +66,14 @@ export class CompanyListItemDto {
   @ApiProperty({ example: 'gas-del-norte' })
   slug!: string;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Logo de la empresa: URL firmada de S3 de corta vigencia, o null si no tiene',
+  })
+  logoUrl!: string | null;
+
   @ApiProperty({ enum: DistributorStatus })
   status!: DistributorStatus;
 

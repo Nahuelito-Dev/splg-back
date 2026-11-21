@@ -31,6 +31,7 @@ export interface FilaDeEmpresa {
   created_at: Date;
   support_emergency_allowed: boolean;
   support_auto_approve: boolean;
+  logo_key: string | null;
 }
 
 export interface FilaDeMetricas {
@@ -465,4 +466,4 @@ const VENTA = `o."status"::text = $4 AND o."paymentStatus"::text = $5 AND o."del
 
 const COLUMNAS_DE_EMPRESA = `d."distributor_id" AS id, d."name", d."slug", d."legal_name", d."tax_id",
        d."email", d."status"::text AS status, d."owned_by_platform", d."plan",
-       d."createdAt" AS created_at, d."support_emergency_allowed", d."support_auto_approve"`;
+       d."createdAt" AS created_at, d."support_emergency_allowed", d."support_auto_approve", d."logo_key"`;
