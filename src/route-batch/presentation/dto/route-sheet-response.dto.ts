@@ -305,6 +305,12 @@ export class CarResourceDto {
   @ApiProperty({ type: String, nullable: true }) description!: string | null;
   @ApiProperty({ type: Number, nullable: true }) capacityKg!: number | null;
   @ApiProperty({ type: Number, nullable: true }) capacityUnits!: number | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Foto del vehículo: URL firmada de corta vigencia, o null',
+  })
+  photoUrl!: string | null;
   @ApiProperty() available!: boolean;
   @ApiProperty({ type: String, format: 'uuid', nullable: true }) busySheetId!:
     | string

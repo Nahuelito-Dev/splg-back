@@ -50,6 +50,7 @@ describe('OrderController · respuesta tras el cobro', () => {
       {} as never,
       {} as never,
       {} as never,
+      { completar: jest.fn() } as never,
     );
   });
 

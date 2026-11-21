@@ -7,6 +7,7 @@ import { CustomerPurchaseStatsController } from './customer-purchase-stats.contr
 import { CustomerPurchaseStatsService } from './application/customer-purchase-stats.service';
 import { OrderService } from './order.service';
 import { Order } from './entities/order.entity';
+import { Car } from '../car/entities/car.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { DispatchOffer } from './entities/dispatch-offer.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -28,6 +29,7 @@ import { CreateOrderUseCase } from './application/create-order.use-case';
 import { QuoteOrderUseCase } from './application/quote-order.use-case';
 import { UpdateOrderStatusUseCase } from './application/update-order-status.use-case';
 import { OrderDriverPhotoService } from './application/order-driver-photo.service';
+import { OrderVehiclePhotoService } from './application/order-vehicle-photo.service';
 import { UpdateOrderUseCase } from './application/update-order.use-case';
 import { ChangeOrderAddressUseCase } from './application/change-order-address.use-case';
 import { SetOrderReceiverUseCase } from './application/set-order-receiver.use-case';
@@ -92,6 +94,7 @@ import { VencimientoSinChoferService } from './application/vencimiento-sin-chofe
       DispatchOffer,
       OrderStatusHistory,
       OrderAddressChange,
+      Car,
     ]),
     CartModule, // checkout del carrito: ítems y vaciado en la transacción del pedido (CU-126)
     S3Module, // foto firmada del chofer en el tracking
@@ -146,6 +149,7 @@ import { VencimientoSinChoferService } from './application/vencimiento-sin-chofe
     ReceiverRetentionCron,
     UpdateOrderStatusUseCase,
     OrderDriverPhotoService,
+    OrderVehiclePhotoService,
     CancelOrderUseCase,
     ReleaseOrderUseCase,
     ConfirmDeliveryUseCase,

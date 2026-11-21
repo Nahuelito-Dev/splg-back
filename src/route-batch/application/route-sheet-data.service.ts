@@ -64,6 +64,8 @@ export interface VehiculoDelDia {
   capacityKg: number | null;
   capacityUnits: number | null;
   available: boolean;
+  /** Clave de la foto en el bucket; quien arma la respuesta la firma. */
+  photoKey: string | null;
 }
 
 interface FilaPedido {
@@ -345,11 +347,12 @@ export class RouteSheetDataService {
       carCapacity: number | null;
       maxCylinders: number | null;
       available: boolean;
+      photoKey: string | null;
     }> = await this.dataSource.query(
       `SELECT c."car_id" AS "carId", c."car_patent" AS "patent",
               NULLIF(concat_ws(' ', c."type_car", c."car_brand", c."car_model"), '') AS "description",
               c."max_load_kg" AS "maxLoadKg", c."car_capacity" AS "carCapacity",
-              c."max_cylinders" AS "maxCylinders",
+              c."max_cylinders" AS "maxCylinders", c."photo_key" AS "photoKey",
               (c."deletedAt" IS NULL AND c."fleet_status"::text = 'active') AS "available"
          FROM "car" c
         WHERE c."distributor_id" = $1
@@ -382,6 +385,7 @@ export class RouteSheetDataService {
             : null,
       capacityUnits: f.maxCylinders,
       available: f.available && !bloqueados.has(f.carId),
+      photoKey: f.photoKey,
     }));
   }
 

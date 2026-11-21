@@ -184,6 +184,7 @@ describe('OrderMapper · datos del panel', () => {
       patent: 'AB123CD',
       brand: 'Honda',
       model: 'Wave',
+      photoUrl: null,
     });
   });
 

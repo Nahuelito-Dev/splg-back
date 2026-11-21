@@ -66,6 +66,8 @@ function vehiculoDe(order: Order): VehicleDeOrderDto | null {
   dto.patent = order.vehiclePatent ?? null;
   dto.brand = order.vehicleBrand ?? null;
   dto.model = order.vehicleModel ?? null;
+  // La imagen la completa `OrderVehiclePhotoService` (el mapper no firma).
+  dto.photoUrl = null;
   return dto;
 }
 

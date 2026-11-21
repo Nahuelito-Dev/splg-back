@@ -177,6 +177,14 @@ export class VehicleDeOrderDto {
 
   @ApiProperty({ type: String, nullable: true }) brand!: string | null;
   @ApiProperty({ type: String, nullable: true }) model!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Foto del vehículo: URL firmada de corta vigencia, o null (sin foto o vehículo dado de baja)',
+  })
+  photoUrl!: string | null;
 }
 
 /**

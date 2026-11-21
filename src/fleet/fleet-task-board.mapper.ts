@@ -46,6 +46,7 @@ export class FleetTaskBoardMapper {
           id: task.car.carId,
           plate: task.car.carPatent,
           label: etiquetaDelVehiculo(task.car),
+          photoUrl: task.car.photoSignedUrl ?? null,
         }
       : null;
     card.assignee = task.assignee

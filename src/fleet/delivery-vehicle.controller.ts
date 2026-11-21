@@ -27,6 +27,7 @@ import {
   VehicleAssignmentHistoryResponseDto,
   VehicleInUseResponseDto,
 } from './dto/vehicle-assignment-response.dto';
+import { CarPhotoService } from '../car/car-photo.service';
 import { DeliveryService } from '../delivery/delivery.service';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
@@ -53,6 +54,7 @@ export class DeliveryVehicleController {
     private readonly vehicleAssignments: VehicleAssignmentService,
     private readonly fleetTasks: FleetTaskService,
     private readonly deliveryService: DeliveryService,
+    private readonly fotosDeVehiculos: CarPhotoService,
   ) {}
 
   // Declarado ANTES de `:id/vehicle`: si no, `:id` matchea "me" como si
@@ -139,6 +141,7 @@ export class DeliveryVehicleController {
     // cambiado entre el alta y la lectura. El vehículo recién pasó el gate
     // de flota (arriba, en esta misma request): no hace falta otra consulta
     // para `isLocked`.
+    await this.fotosDeVehiculos.firmar(asignacion.car);
     return VehicleAssignmentMapper.toVehicleInUseDto(asignacion, false);
   }
 
@@ -193,6 +196,7 @@ export class DeliveryVehicleController {
       pagination,
     );
     informarTotal(res, total);
+    await this.fotosDeVehiculos.firmar(filas.map((f) => f.car));
     return filas.map((f) => VehicleAssignmentMapper.toHistoryDto(f));
   }
 
@@ -205,6 +209,7 @@ export class DeliveryVehicleController {
       distributorId,
     );
     if (!asignacion) return null;
+    await this.fotosDeVehiculos.firmar(asignacion.car);
 
     const motivos = await this.fleetTasks.motivosDeInhabilitacionDeVehiculo(
       asignacion.carId,

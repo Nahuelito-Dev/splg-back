@@ -81,6 +81,7 @@ import type { Response } from 'express';
 import { DownloadQueryDto } from '../s3/dto/download-link.dto';
 import { ApiVerFoto, responderFoto } from '../s3/photo-http';
 import { OrderDriverPhotoService } from './application/order-driver-photo.service';
+import { OrderVehiclePhotoService } from './application/order-vehicle-photo.service';
 import { RoleType } from '../common/constants/role-type.enum';
 import { TruckLoadGatePort } from './domain/ports/truck-load-gate.port';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -116,6 +117,7 @@ export class OrderController {
     private readonly changeAddressUseCase: ChangeOrderAddressUseCase,
     private readonly setReceiverUseCase: SetOrderReceiverUseCase,
     private readonly declareEmpties: DeclareEmptiesUseCase,
+    private readonly vehiclePhoto: OrderVehiclePhotoService,
   ) {}
 
   @Post()
@@ -182,7 +184,7 @@ export class OrderController {
       () => this.orderService.create(createOrderDto, distributorId),
       { context: 'OrderService.create' },
     );
-    const dto = OrderMapper.toDto(order);
+    const dto = await this.conFoto(OrderMapper.toDto(order));
     // Solo presente para paymentMethod MERCADOPAGO (checkout de Checkout Pro).
     dto.paymentUrl = paymentUrl;
     return dto;
@@ -257,7 +259,9 @@ export class OrderController {
     const result = await this.orderService.findAll(queryDto, distributorId);
     return {
       ...result,
-      orders: result.orders.map((order) => OrderMapper.toDto(order)),
+      orders: await this.conFotos(
+        result.orders.map((order) => OrderMapper.toDto(order)),
+      ),
     };
   }
 
@@ -295,7 +299,9 @@ export class OrderController {
     );
     return {
       ...result,
-      orders: result.orders.map((order) => OrderMapper.toDto(order)),
+      orders: await this.conFotos(
+        result.orders.map((order) => OrderMapper.toDto(order)),
+      ),
     };
   }
 
@@ -323,7 +329,7 @@ export class OrderController {
       res.status(HttpStatus.NO_CONTENT);
       return undefined;
     }
-    return order;
+    return this.conFoto(order);
   }
 
   @Get('delivery/:deliveryId')
@@ -349,7 +355,9 @@ export class OrderController {
     );
     return {
       ...result,
-      orders: result.orders.map((order) => OrderMapper.toDto(order)),
+      orders: await this.conFotos(
+        result.orders.map((order) => OrderMapper.toDto(order)),
+      ),
     };
   }
 
@@ -401,11 +409,13 @@ export class OrderController {
     return {
       ...result,
       // El pool es de pedidos sin chofer: quién recibe todavía no es de nadie.
-      orders: result.orders.map((order) => {
-        const dto = OrderMapper.toDto(order);
-        dto.receiver = null;
-        return dto;
-      }),
+      orders: await this.conFotos(
+        result.orders.map((order) => {
+          const dto = OrderMapper.toDto(order);
+          dto.receiver = null;
+          return dto;
+        }),
+      ),
       openLoadRequired: false,
       message: null,
     };
@@ -526,12 +536,14 @@ export class OrderController {
       user.role === RoleType.CUSTOMER ? user.user_id : undefined;
     const choferScope =
       user.role === RoleType.DELIVERY ? user.user_id : undefined;
-    return await this.orderService.getOne(
-      id,
-      distributorId,
-      customerScope,
-      choferScope,
-      user.role !== RoleType.DELIVERY,
+    return this.conFoto(
+      await this.orderService.getOne(
+        id,
+        distributorId,
+        customerScope,
+        choferScope,
+        user.role !== RoleType.DELIVERY,
+      ),
     );
   }
 
@@ -608,7 +620,7 @@ export class OrderController {
       user.user_id,
       body.reason,
     );
-    return OrderMapper.toDto(order);
+    return this.conFoto(OrderMapper.toDto(order));
   }
 
   @Post(':id/reject')
@@ -721,7 +733,7 @@ export class OrderController {
       user.role,
       body.reason,
     );
-    return OrderMapper.toDto(order);
+    return this.conFoto(OrderMapper.toDto(order));
   }
 
   @Patch(':id/empties')
@@ -750,8 +762,15 @@ export class OrderController {
     @Body() body: DeclareEmptiesDto,
     @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ) {
-    return OrderMapper.toDto(
-      await this.declareEmpties.execute(id, user.user_id, distributorId, body),
+    return this.conFoto(
+      OrderMapper.toDto(
+        await this.declareEmpties.execute(
+          id,
+          user.user_id,
+          distributorId,
+          body,
+        ),
+      ),
     );
   }
 
@@ -946,7 +965,7 @@ export class OrderController {
       deliveryId,
       distributorId,
     );
-    return OrderMapper.toDto(order);
+    return this.conFoto(OrderMapper.toDto(order));
   }
 
   @Patch(':id/location')
@@ -981,7 +1000,7 @@ export class OrderController {
       body.lng,
       user.user_id,
     );
-    return OrderMapper.toDto(order);
+    return this.conFoto(OrderMapper.toDto(order));
   }
 
   @Get('stats/summary')
@@ -1042,7 +1061,7 @@ export class OrderController {
         ),
       { context: 'OrderService.update' },
     );
-    return OrderMapper.toDto(order);
+    return this.conFoto(OrderMapper.toDto(order));
   }
 
   @Patch(':id/address')
@@ -1084,7 +1103,7 @@ export class OrderController {
         this.changeAddressUseCase.execute(id, dto, user.user_id, distributorId),
       { context: 'OrderService.changeAddress' },
     );
-    return OrderMapper.toDto(order);
+    return this.conFoto(OrderMapper.toDto(order));
   }
 
   @Patch(':id/receiver')
@@ -1114,7 +1133,9 @@ export class OrderController {
     @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ) {
     await this.setReceiverUseCase.execute(id, dto, user.user_id, distributorId);
-    return this.orderService.getOne(id, distributorId, user.user_id);
+    return this.conFoto(
+      await this.orderService.getOne(id, distributorId, user.user_id),
+    );
   }
 
   @Delete(':id')
@@ -1298,7 +1319,7 @@ export class OrderController {
       distributorId,
       user.user_id,
     );
-    return OrderMapper.toDto(order);
+    return this.conFoto(OrderMapper.toDto(order));
   }
 
   @Get('stats/chart')
@@ -1325,12 +1346,28 @@ export class OrderController {
    * posterior. Si el chofer "cancela" el pedido vuelve a pendiente: no está
    * cancelado y `cancelledBy` queda `null`.
    */
-  private pedidoCancelado(order: Order, actor: CancelActor): OrderResponseDto {
+  private async pedidoCancelado(
+    order: Order,
+    actor: CancelActor,
+  ): Promise<OrderResponseDto> {
     const dto = OrderMapper.toDto(order);
     if (order.status === OrderStatus.CANCELLED) {
       dto.cancelledBy = cancelledByDe(actor);
     }
+    return this.conFoto(dto);
+  }
+
+  /** Completa la foto del vehículo del pedido (una lectura por lista, nunca una por pedido). */
+  private async conFoto(dto: OrderResponseDto): Promise<OrderResponseDto> {
+    await this.vehiclePhoto.completar([dto]);
     return dto;
+  }
+
+  private async conFotos(
+    dtos: OrderResponseDto[],
+  ): Promise<OrderResponseDto[]> {
+    await this.vehiclePhoto.completar(dtos);
+    return dtos;
   }
 
   private async pedidoTrasElCobro(
@@ -1339,7 +1376,9 @@ export class OrderController {
     guardado: Order,
   ): Promise<OrderResponseDto> {
     try {
-      return await this.orderService.getOne(id, distributorId);
+      return await this.conFoto(
+        await this.orderService.getOne(id, distributorId),
+      );
     } catch (error) {
       this.logger.error(
         `No se pudo releer el pedido ${id} tras el cobro: ${errorMessage(error)}`,

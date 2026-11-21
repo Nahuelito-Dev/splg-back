@@ -6,6 +6,7 @@ import {
 import { RouteBatchStop } from '../../order/entities/route-batch-stop.entity';
 import { RouteBatchStatus } from '../domain/route-batch.enums';
 import { instanteDelDia } from '../domain/route-sheet-rules';
+import { EntityPhotoService } from '../../s3/entity-photo.service';
 import { RoutePlanService } from './route-plan.service';
 import {
   PedidoDeHoja,
@@ -90,6 +91,16 @@ function armar(
         capacityKg: 500,
         capacityUnits: 30,
         available: true,
+        photoKey: 'cars/d1/auto-1/f.jpg',
+      },
+      {
+        carId: 'auto-2',
+        patent: 'EF456GH',
+        description: null,
+        capacityKg: 300,
+        capacityUnits: 10,
+        available: true,
+        photoKey: null,
       },
     ]),
     pedidosSinHoja: jest.fn().mockResolvedValue(o.sinHoja ?? []),
@@ -163,6 +174,11 @@ function armar(
         ),
     ),
   };
+  const fotos = {
+    urlDe: jest.fn((key: string | null) =>
+      Promise.resolve(key ? `https://s3.test/${key}` : null),
+    ),
+  };
   const svc = new RouteSheetQueryService(
     ds as unknown as DataSource,
     sheets as unknown as Repository<RouteBatch>,
@@ -171,8 +187,20 @@ function armar(
     plans as unknown as RoutePlanService,
     writer as unknown as RouteSheetWriter,
     locks as unknown as RouteSheetLocks,
+    fotos as unknown as EntityPhotoService,
   );
-  return { svc, sheets, stops, data, plans, ds, writer, locks, recalcular };
+  return {
+    svc,
+    sheets,
+    stops,
+    data,
+    plans,
+    ds,
+    writer,
+    locks,
+    recalcular,
+    fotos,
+  };
 }
 
 describe('RouteSheetQueryService', () => {
@@ -405,6 +433,19 @@ describe('RouteSheetQueryService', () => {
       carId: 'auto-1',
       busySheetId: 'hoja-1',
     });
+  });
+
+  it('dia: cada vehículo de los recursos lleva su foto firmada, o null si no tiene, y no expone la clave', async () => {
+    const { svc, fotos } = armar({
+      hojas: [hoja({ status: RouteBatchStatus.CONFIRMED })],
+    });
+    const d = await svc.dia(DIST, DIA);
+    expect(d.resources.cars.map((c) => [c.carId, c.photoUrl])).toEqual([
+      ['auto-1', 'https://s3.test/cars/d1/auto-1/f.jpg'],
+      ['auto-2', null],
+    ]);
+    expect(d.resources.cars[0]).not.toHaveProperty('photoKey');
+    expect(fotos.urlDe).toHaveBeenCalledTimes(2);
   });
 
   it('envases a retirar: por parada (cantidad menos envases cobrados) y su suma en la hoja, con una sola consulta de pedidos', async () => {

@@ -36,6 +36,7 @@ describe('OrderController · cancelledBy en la respuesta de la cancelación', ()
       {} as never,
       {} as never,
       {} as never,
+      { completar: jest.fn() } as never,
     );
   });
 
@@ -88,6 +89,7 @@ describe('OrderController · pedido en curso del chofer', () => {
       {} as never,
       {} as never,
       {} as never,
+      { completar: jest.fn() } as never,
     );
   });
 
@@ -138,6 +140,7 @@ describe('OrderController · historial de estados', () => {
       {} as never,
       {} as never,
       {} as never,
+      { completar: jest.fn() } as never,
     );
   });
 
