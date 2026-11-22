@@ -180,6 +180,13 @@ export class SupplierResponseDto {
   @ApiProperty({ nullable: true, type: Number, example: 30 })
   paymentTermsDays!: number | null;
   @ApiProperty() isActive!: boolean;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'URL firmada de la foto del proveedor (se abre sin token, vence); `null` si no tiene.',
+  })
+  photoUrl!: string | null;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
 }

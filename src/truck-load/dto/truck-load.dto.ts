@@ -342,6 +342,13 @@ export class TruckLoadSummaryDto {
     description: 'Renglones (tipos de garrafa) de la carga',
   })
   itemsCount!: number;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'URL firmada de la foto de la carga (se abre sin token, vence); `null` si no tiene.',
+  })
+  photoUrl!: string | null;
 }
 
 export class TruckLoadResponseDto extends TruckLoadSummaryDto {

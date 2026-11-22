@@ -30,6 +30,7 @@ import { QuoteOrderUseCase } from './application/quote-order.use-case';
 import { UpdateOrderStatusUseCase } from './application/update-order-status.use-case';
 import { OrderDriverPhotoService } from './application/order-driver-photo.service';
 import { OrderVehiclePhotoService } from './application/order-vehicle-photo.service';
+import { OrderProductPhotoService } from './application/order-product-photo.service';
 import { UpdateOrderUseCase } from './application/update-order.use-case';
 import { ChangeOrderAddressUseCase } from './application/change-order-address.use-case';
 import { SetOrderReceiverUseCase } from './application/set-order-receiver.use-case';
@@ -150,6 +151,7 @@ import { VencimientoSinChoferService } from './application/vencimiento-sin-chofe
     UpdateOrderStatusUseCase,
     OrderDriverPhotoService,
     OrderVehiclePhotoService,
+    OrderProductPhotoService,
     CancelOrderUseCase,
     ReleaseOrderUseCase,
     ConfirmDeliveryUseCase,

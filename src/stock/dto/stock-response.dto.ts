@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { FOTO_DEL_PRODUCTO_API } from '../../gascylinder/foto-del-producto';
 import {
   StockAdjustmentReason,
   StockCondition,
@@ -30,6 +31,7 @@ export class StockBalanceDto {
   carId!: string | null;
   @ApiProperty({ format: 'uuid' }) gasCylinderId!: string;
   @ApiProperty({ example: '10kg' }) gasCylinderType!: string;
+  @ApiProperty(FOTO_DEL_PRODUCTO_API) gasCylinderPhotoUrl!: string | null;
   @ApiProperty({ enum: StockCondition }) condition!: StockCondition;
   @ApiProperty({ example: 40 }) quantity!: number;
   @ApiProperty() updatedAt!: Date;
@@ -44,6 +46,7 @@ export class ConditionTotalsDto {
 export class StockSummaryDto {
   @ApiProperty({ format: 'uuid' }) gasCylinderId!: string;
   @ApiProperty({ example: '10kg' }) gasCylinderType!: string;
+  @ApiProperty(FOTO_DEL_PRODUCTO_API) gasCylinderPhotoUrl!: string | null;
   @ApiProperty({ type: ConditionTotalsDto, description: 'En los depósitos' })
   warehouses!: ConditionTotalsDto;
   @ApiProperty({ type: ConditionTotalsDto, description: 'En los camiones' })
@@ -163,6 +166,7 @@ export class StockThresholdDto {
 export class DiferenciaDeVendibleDto {
   @ApiProperty({ format: 'uuid' }) gasCylinderId!: string;
   @ApiProperty({ example: '10kg' }) gasCylinderType!: string;
+  @ApiProperty(FOTO_DEL_PRODUCTO_API) gasCylinderPhotoUrl!: string | null;
   @ApiProperty({ description: '`gas_cylinder.stock`' }) sellable!: number;
   @ApiProperty({ description: 'Llenas en depósitos y camiones' })
   physicalFull!: number;
@@ -204,6 +208,7 @@ export class PedidoEntregadoSinMovimientoDto {
   @ApiProperty() deliveredAt!: Date;
   @ApiProperty({ format: 'uuid' }) gasCylinderId!: string;
   @ApiProperty({ example: '10kg' }) gasCylinderType!: string;
+  @ApiProperty(FOTO_DEL_PRODUCTO_API) gasCylinderPhotoUrl!: string | null;
   @ApiProperty() quantity!: number;
 }
 

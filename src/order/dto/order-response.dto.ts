@@ -27,6 +27,13 @@ export class ProductoDelRenglonDto {
   price!: number;
   @ApiProperty({ type: String, nullable: true })
   description!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'URL firmada de la foto del producto (se abre sin token, vence); `null` si no tiene.',
+  })
+  photoUrl!: string | null;
 }
 
 /** Un renglón del pedido. El producto sale como `gas_cylinder`. */

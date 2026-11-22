@@ -1,4 +1,5 @@
 import { DataSource, EntityManager } from 'typeorm';
+import { GasCylinderPhotoService } from '../../gascylinder/gascylinder-photo.service';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
 import { StockAdminNotifier } from './stock-admin-notifier.service';
 import { MensajeDeCorreo } from '../../email/layout/correo';
@@ -35,6 +36,7 @@ function armarConciliacion(datos: {
     quantity: number;
   }>;
   conMovimiento?: Array<{ reference_id: string; gas_cylinder_id: string }>;
+  fotos?: Array<[string, string | null]>;
 }) {
   const query = jest.fn((sql: string) => {
     if (sql.includes('FROM "gas_cylinder"'))
@@ -60,12 +62,18 @@ function armarConciliacion(datos: {
       .mockResolvedValue(new Map(Object.entries(datos.reservadas))),
     deliveredItemsSince: jest.fn().mockResolvedValue(datos.entregadas ?? []),
   };
+  const productos = {
+    urlsPorId: jest.fn(() =>
+      Promise.resolve(new Map<string, string | null>(datos.fotos ?? [])),
+    ),
+  };
   const service = new StockReconciliationService(
     dataSource,
     orders as unknown as OrderLookupService,
     new StockOnHandService(),
+    productos as unknown as GasCylinderPhotoService,
   );
-  return { service, transaction, query, orders, manager };
+  return { service, transaction, query, orders, manager, productos };
 }
 
 describe('StockReconciliationService (invariante del vendible, D4)', () => {
@@ -126,6 +134,36 @@ describe('StockReconciliationService (invariante del vendible, D4)', () => {
     await service.conciliar(DIST);
     expect(transaction.mock.calls[0][0]).toBe('REPEATABLE READ');
     expect(orders.reservedByCylinder).toHaveBeenCalledWith(DIST, manager);
+  });
+
+  it('cada garrafa y cada entrega sin movimiento llevan la foto firmada del producto, o null', async () => {
+    const { service, productos } = armarConciliacion({
+      garrafas: [
+        { gas_cylinder_id: G1, type: '10kg', stock: 70 },
+        { gas_cylinder_id: G2, type: '15kg', stock: 0 },
+      ],
+      fisicas: [{ gas_cylinder_id: G1, total: '100' }],
+      reservadas: { [G1]: 30 },
+      desde: new Date('2026-10-01'),
+      entregadas: [
+        {
+          orderId: 'o9',
+          deliveredAt: new Date(),
+          gasCylinderId: G1,
+          quantity: 1,
+        },
+      ],
+      fotos: [[G1, 'https://s3.test/g1.jpg']],
+    });
+    const r = await service.conciliar(DIST);
+    expect(productos.urlsPorId).toHaveBeenCalledTimes(1);
+    expect(r.cylinders.map((c) => c.gasCylinderPhotoUrl)).toEqual([
+      'https://s3.test/g1.jpg',
+      null,
+    ]);
+    expect(r.deliveriesWithoutMovement[0].gasCylinderPhotoUrl).toBe(
+      'https://s3.test/g1.jpg',
+    );
   });
 
   it('lista las entregas posteriores al arranque que no descontaron el físico', async () => {

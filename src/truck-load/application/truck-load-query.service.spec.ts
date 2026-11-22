@@ -1,6 +1,7 @@
 import { DataSource } from 'typeorm';
 import { DeliveryService } from '../../delivery/delivery.service';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
+import { EntityPhotoService } from '../../s3/entity-photo.service';
 import { StockOnHandService } from '../../stock/application/stock-on-hand.service';
 import { StockQueryService } from '../../stock/application/stock-query.service';
 import { CargaNoEncontradaError } from '../domain/errors/truck-load.errors';
@@ -42,6 +43,8 @@ interface Escenario {
     deliveredFull: number;
     collectedEmpty: number;
   }>;
+  /** Key de la foto de la carga. */
+  photoKey?: string | null;
 }
 
 function armar(e: Escenario = {}) {
@@ -71,6 +74,7 @@ function armar(e: Escenario = {}) {
     cancel_reason: null,
     notes: null,
     opened_by_user_id: 'u-1',
+    photo_key: e.photoKey ?? null,
     created_at: new Date(),
   };
   const renglon = {
@@ -92,6 +96,8 @@ function armar(e: Escenario = {}) {
   const dataSource = {
     manager: {},
     query: jest.fn((sql: string): Promise<unknown[]> => {
+      if (sql.includes('COUNT(*) AS total'))
+        return Promise.resolve([{ total: '1' }]);
       if (sql.includes('FROM "truck_load" l')) return Promise.resolve([fila]);
       if (sql.includes('FROM "truck_load_item"'))
         return Promise.resolve([renglon]);
@@ -121,6 +127,11 @@ function armar(e: Escenario = {}) {
       ),
     ),
   };
+  const fotos = {
+    urlDe: jest.fn((key: string | null) =>
+      Promise.resolve(key ? `https://s3.test/${key}` : null),
+    ),
+  };
   const service = new TruckLoadQueryService(
     dataSource as unknown as DataSource,
     {
@@ -136,9 +147,52 @@ function armar(e: Escenario = {}) {
     onHand as unknown as StockOnHandService,
     {} as unknown as DeliveryService,
     {} as unknown as StockControlSettingsService,
+    fotos as unknown as EntityPhotoService,
   );
-  return { service, onHand };
+  return { service, onHand, fotos };
 }
+
+describe('TruckLoadQueryService · foto de la carga', () => {
+  it('detalle con foto: photoUrl es la URL firmada de la key de la carga', async () => {
+    const { service } = armar({ photoKey: 'truck-loads/d1/carga-1/x.jpg' });
+    const r = await service.detalle(CARGA, 'd1');
+    expect(r.photoUrl).toBe('https://s3.test/truck-loads/d1/carga-1/x.jpg');
+  });
+
+  it('detalle sin foto: photoUrl null', async () => {
+    const { service } = armar({ photoKey: null });
+    const r = await service.detalle(CARGA, 'd1');
+    expect(r.photoUrl).toBeNull();
+  });
+
+  it('detalle con la firma caída: photoUrl null y la carga sigue', async () => {
+    const { service, fotos } = armar({ photoKey: 'truck-loads/d1/x.jpg' });
+    fotos.urlDe.mockResolvedValueOnce(null);
+    const r = await service.detalle(CARGA, 'd1');
+    expect(r.photoUrl).toBeNull();
+    expect(r.loadId).toBe(CARGA);
+  });
+
+  it('listar con foto: cada fila lleva su URL firmada', async () => {
+    const { service } = armar({ photoKey: 'truck-loads/d1/carga-1/x.jpg' });
+    const r = await service.listar('d1', {});
+    expect(r.data[0].photoUrl).toBe(
+      'https://s3.test/truck-loads/d1/carga-1/x.jpg',
+    );
+  });
+
+  it('listar sin foto: photoUrl null', async () => {
+    const { service } = armar({ photoKey: null });
+    const r = await service.listar('d1', {});
+    expect(r.data[0].photoUrl).toBeNull();
+  });
+
+  it('listar firma una vez por fila, sin consultar la base de más', async () => {
+    const { service, fotos } = armar({ photoKey: 'k.jpg' });
+    await service.listar('d1', {});
+    expect(fotos.urlDe).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('TruckLoadQueryService.detalle · vista previa del cierre', () => {
   it('lo declarado coincide con lo esperado y el camión lo tiene: no hay diferencia', async () => {

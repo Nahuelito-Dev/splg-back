@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { GasCylinderPhotoService } from '../../gascylinder/gascylinder-photo.service';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
 import { StockOnHandService } from './stock-on-hand.service';
 import { conciliarVendible } from '../domain/stock-rules';
@@ -26,10 +27,33 @@ export class StockReconciliationService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly orders: OrderLookupService,
     private readonly onHand: StockOnHandService,
+    private readonly productos: GasCylinderPhotoService,
   ) {}
 
   async conciliar(distributorId: string): Promise<StockReconciliationDto> {
-    return this.dataSource.transaction('REPEATABLE READ', async (manager) => {
+    const informe = await this.dataSource.transaction(
+      'REPEATABLE READ',
+      (manager) => this.leer(manager, distributorId),
+    );
+    // La foto no es parte de la foto del instante: se firma fuera de la transacción.
+    const fotos = await this.productos.urlsPorId(distributorId, [
+      ...informe.cylinders.map((c) => c.gasCylinderId),
+      ...informe.deliveriesWithoutMovement.map((e) => e.gasCylinderId),
+    ]);
+    for (const c of informe.cylinders) {
+      c.gasCylinderPhotoUrl = fotos.get(c.gasCylinderId) ?? null;
+    }
+    for (const e of informe.deliveriesWithoutMovement) {
+      e.gasCylinderPhotoUrl = fotos.get(e.gasCylinderId) ?? null;
+    }
+    return informe;
+  }
+
+  private async leer(
+    manager: DataSource['manager'],
+    distributorId: string,
+  ): Promise<StockReconciliationDto> {
+    {
       const [garrafas, fisicas, reservadas, arranque] = await Promise.all([
         manager.query<
           Array<{
@@ -67,6 +91,7 @@ export class StockReconciliationService {
         return {
           ...d,
           gasCylinderType: g.type,
+          gasCylinderPhotoUrl: null,
           correction: 0 - d.difference,
           reservationDeficit: g.reservation_deficit,
           deficitDifference: g.reservation_deficit - d.overReserved,
@@ -92,7 +117,7 @@ export class StockReconciliationService {
         cylinders,
         deliveriesWithoutMovement,
       };
-    });
+    }
   }
 
   /**
@@ -125,6 +150,7 @@ export class StockReconciliationService {
         deliveredAt: e.deliveredAt,
         gasCylinderId: e.gasCylinderId,
         gasCylinderType: tipos.get(e.gasCylinderId) ?? e.gasCylinderId,
+        gasCylinderPhotoUrl: null,
         quantity: Number(e.quantity),
       });
     }

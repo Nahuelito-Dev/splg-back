@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { GasCylinderPhotoService } from '../../gascylinder/gascylinder-photo.service';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
 import { rangoDeDiasArgentinos } from '../../common/utils/dias-argentina';
 import { StockCondition, StockLocationKind } from '../domain/stock.enums';
@@ -72,6 +73,7 @@ export class StockQueryService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly orders: OrderLookupService,
+    private readonly productos: GasCylinderPhotoService,
   ) {}
 
   async saldos(
@@ -106,6 +108,10 @@ export class StockQueryService {
        ORDER BY l."kind", name, gc."type", b."condition"`,
       params,
     );
+    const fotos = await this.productos.urlsPorId(
+      distributorId,
+      filas.map((f) => f.gas_cylinder_id),
+    );
     return filas.map((f) => ({
       locationId: f.location_id,
       locationName: f.name,
@@ -114,6 +120,7 @@ export class StockQueryService {
       carId: f.car_id,
       gasCylinderId: f.gas_cylinder_id,
       gasCylinderType: f.type,
+      gasCylinderPhotoUrl: fotos.get(f.gas_cylinder_id) ?? null,
       condition: f.condition,
       quantity: f.quantity,
       updatedAt: f.updatedAt,
@@ -159,6 +166,10 @@ export class StockQueryService {
       ),
       this.orders.reservedByCylinder(distributorId),
     ]);
+    const fotos = await this.productos.urlsPorId(
+      distributorId,
+      garrafas.map((g) => g.gas_cylinder_id),
+    );
 
     return garrafas.map((g) => {
       const vacio = (): ConditionTotalsDto => ({
@@ -180,6 +191,7 @@ export class StockQueryService {
       return {
         gasCylinderId: g.gas_cylinder_id,
         gasCylinderType: g.type,
+        gasCylinderPhotoUrl: fotos.get(g.gas_cylinder_id) ?? null,
         warehouses,
         vehicles,
         physicalFull: warehouses.full + vehicles.full,

@@ -26,6 +26,8 @@ import {
   getSchemaPath,
 } from '@nestjs/swagger';
 import { CylinderService } from './cylinder.service';
+import { CylinderPhotoService } from './cylinder-photo.service';
+import { Cylinder } from './entities/cylinder.entity';
 import { CylinderVigenciaService } from './cylinder-vigencia.service';
 import { CylinderMapper } from './cylinder.mapper';
 import {
@@ -64,7 +66,19 @@ export class CylinderController {
   constructor(
     private readonly cylinderService: CylinderService,
     private readonly vigencia: CylinderVigenciaService,
+    private readonly photo: CylinderPhotoService,
   ) {}
+
+  /** El DTO del envase con su foto y la de su producto como URL firmada. */
+  private async aDto(cylinder: Cylinder): Promise<CylinderResponseDto> {
+    await this.photo.firmar(cylinder);
+    return CylinderMapper.toDto(cylinder);
+  }
+
+  private async aDtos(cylinders: Cylinder[]): Promise<CylinderResponseDto[]> {
+    await this.photo.firmar(cylinders);
+    return cylinders.map((c) => CylinderMapper.toDto(c));
+  }
 
   @Post()
   @Permiso('stock.gestionar')
@@ -84,9 +98,7 @@ export class CylinderController {
     @Body() dto: CreateCylinderDto,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<CylinderResponseDto> {
-    return CylinderMapper.toDto(
-      await this.cylinderService.create(dto, distributorId),
-    );
+    return this.aDto(await this.cylinderService.create(dto, distributorId));
   }
 
   @Post('assign')
@@ -134,7 +146,7 @@ export class CylinderController {
       user.user_id,
       user.role,
     );
-    return cylinders.map((c) => CylinderMapper.toDto(c));
+    return this.aDtos(cylinders);
   }
 
   @Get()
@@ -165,7 +177,7 @@ export class CylinderController {
       query,
     );
     informarTotal(res, total);
-    return cylinders.map((c) => CylinderMapper.toDto(c));
+    return this.aDtos(cylinders);
   }
 
   @Get('vigencia/proximos-a-vencer')
@@ -233,9 +245,7 @@ export class CylinderController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor() distributorId: string | null,
   ): Promise<CylinderResponseDto> {
-    return CylinderMapper.toDto(
-      await this.cylinderService.findOne(id, distributorId),
-    );
+    return this.aDto(await this.cylinderService.findOne(id, distributorId));
   }
 
   @Get(':id/vigencia')
@@ -337,9 +347,7 @@ export class CylinderController {
     @Body() dto: UpdateCylinderDto,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<CylinderResponseDto> {
-    return CylinderMapper.toDto(
-      await this.cylinderService.update(id, dto, distributorId),
-    );
+    return this.aDto(await this.cylinderService.update(id, dto, distributorId));
   }
 
   @Patch(':id/retire')
@@ -364,7 +372,7 @@ export class CylinderController {
     @CurrentDistributor({ required: true }) distributorId: string,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<CylinderResponseDto> {
-    return CylinderMapper.toDto(
+    return this.aDto(
       await this.cylinderService.retire(
         id,
         dto.reason,
@@ -419,7 +427,7 @@ export class CylinderController {
     @CurrentDistributor({ required: true }) distributorId: string,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<CylinderResponseDto> {
-    return CylinderMapper.toDto(
+    return this.aDto(
       await this.cylinderService.transition(
         id,
         dto,

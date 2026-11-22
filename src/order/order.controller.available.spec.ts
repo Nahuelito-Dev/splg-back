@@ -32,6 +32,7 @@ describe('OrderController · GET /orders/available y los pedidos express', () =>
       {} as never,
       {} as never,
       { completar: jest.fn() } as never,
+      { completar: jest.fn() } as never,
     );
   });
 

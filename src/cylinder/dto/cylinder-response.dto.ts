@@ -5,6 +5,13 @@ import { CylinderState } from '../entities/cylinder.entity';
 export class ProductoDelEnvaseDto {
   @ApiProperty({ example: 'Garrafa 10kg' }) type!: string;
   @ApiProperty({ example: 10 }) weight!: number;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'URL firmada de la foto del producto (se abre sin token, vence); `null` si no tiene.',
+  })
+  photoUrl!: string | null;
 }
 
 /** El cliente que tiene el envase en su poder. */
@@ -36,6 +43,13 @@ export class CylinderResponseDto {
   @ApiProperty({ type: String, format: 'uuid', nullable: true })
   current_order_id!: string | null;
   @ApiProperty({ example: 15000 }) deposit!: number;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'URL firmada de la foto del envase (se abre sin token, vence); `null` si no tiene.',
+  })
+  photoUrl!: string | null;
   @ApiProperty({
     type: ProductoDelEnvaseDto,
     nullable: true,

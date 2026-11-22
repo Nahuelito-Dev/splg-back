@@ -1,4 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { In, Repository } from 'typeorm';
 import { GasCylinder } from './entities/gascylinder.entity';
 import { GasCylinderService } from './gascylinder.service';
 import {
@@ -22,11 +24,38 @@ export class GasCylinderPhotoService {
   constructor(
     private readonly products: GasCylinderService,
     private readonly fotos: EntityPhotoService,
+    @InjectRepository(GasCylinder)
+    private readonly repo: Repository<GasCylinder>,
   ) {}
 
   /** Completa la URL firmada en uno o varios productos. */
   firmar(productos: GasCylinder | readonly GasCylinder[]): Promise<void> {
     return this.fotos.firmar(productos, (g) => g.photoKey);
+  }
+
+  /**
+   * La foto firmada de varios productos de una distribuidora, en una sola
+   * lectura (`photo_key` por ids) y firma local. Un producto sin foto, ajeno a
+   * la distribuidora o con la firma caída no aparece o queda en `null`: para
+   * los listados que nombran al producto y no deben romperse por la imagen.
+   */
+  async urlsPorId(
+    distributorId: string,
+    ids: Iterable<string>,
+  ): Promise<Map<string, string | null>> {
+    const unicos = [...new Set(ids)];
+    const urls = new Map<string, string | null>();
+    if (unicos.length === 0) return urls;
+    const filas = await this.repo.find({
+      select: { gasCylinderId: true, photoKey: true },
+      where: { gasCylinderId: In(unicos), distributorId },
+    });
+    await Promise.all(
+      filas.map(async (g) => {
+        urls.set(g.gasCylinderId, await this.fotos.urlDe(g.photoKey));
+      }),
+    );
+    return urls;
   }
 
   async subir(

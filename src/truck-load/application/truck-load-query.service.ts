@@ -12,6 +12,7 @@ import {
   PaymentStatus,
 } from '../../order/entities/order.entity';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
+import { EntityPhotoService } from '../../s3/entity-photo.service';
 import { StockOnHandService } from '../../stock/application/stock-on-hand.service';
 import { StockQueryService } from '../../stock/application/stock-query.service';
 import { StockReferenceType } from '../../stock/domain/stock.enums';
@@ -61,6 +62,7 @@ interface FilaDeCarga {
   cancel_reason: string | null;
   notes: string | null;
   opened_by_user_id: string;
+  photo_key: string | null;
   created_at: Date;
 }
 
@@ -89,7 +91,7 @@ const SELECT_CARGA = `
          COALESCE(w."name", 'Depósito') AS origin_name,
          l."opened_at", l."departed_at", l."returned_at", l."closed_at",
          (SELECT COUNT(*)::int FROM "truck_load_item" i WHERE i."load_id" = l."load_id") AS items_count,
-         l."difference_note", l."cancel_reason", l."notes", l."opened_by_user_id", l."createdAt" AS created_at
+         l."difference_note", l."cancel_reason", l."notes", l."opened_by_user_id", l."photo_key", l."createdAt" AS created_at
   FROM "truck_load" l
   JOIN "car" c ON c."car_id" = l."car_id"
   JOIN "delivery" d ON d."delivery_id" = l."delivery_id"
@@ -98,8 +100,9 @@ const SELECT_CARGA = `
   JOIN "stock_location" ol ON ol."location_id" = l."origin_location_id"
   LEFT JOIN "warehouse" w ON w."warehouse_id" = ol."warehouse_id"`;
 
-function resumen(f: FilaDeCarga): TruckLoadSummaryDto {
+function resumen(f: FilaDeCarga, photoUrl: string | null): TruckLoadSummaryDto {
   return {
+    photoUrl,
     loadId: f.load_id,
     number: f.number,
     status: f.status,
@@ -130,6 +133,7 @@ export class TruckLoadQueryService {
     private readonly onHand: StockOnHandService,
     private readonly deliveries: DeliveryService,
     private readonly settings: StockControlSettingsService,
+    private readonly fotos: EntityPhotoService,
   ) {}
 
   async listar(
@@ -175,7 +179,13 @@ export class TruckLoadQueryService {
        LIMIT ${limit} OFFSET ${offset}`,
       params,
     );
-    return { data: filas.map(resumen), total: Number(total) };
+    const fotos = await Promise.all(
+      filas.map((f) => this.fotos.urlDe(f.photo_key)),
+    );
+    return {
+      data: filas.map((f, i) => resumen(f, fotos[i])),
+      total: Number(total),
+    };
   }
 
   async detalle(
@@ -349,7 +359,7 @@ export class TruckLoadQueryService {
       page: 1,
     });
     return {
-      ...resumen(fila),
+      ...resumen(fila, await this.fotos.urlDe(fila.photo_key)),
       items,
       hayDiferencia,
       requiereVolverADeclarar,

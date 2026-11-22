@@ -14,6 +14,7 @@ export class SupplierMapper {
     dto.address = s.address;
     dto.paymentTermsDays = s.paymentTermsDays;
     dto.isActive = s.isActive;
+    dto.photoUrl = s.photoSignedUrl ?? null;
     dto.createdAt = s.createdAt;
     dto.updatedAt = s.updatedAt;
     return dto;

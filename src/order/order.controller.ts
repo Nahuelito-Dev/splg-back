@@ -82,6 +82,7 @@ import { DownloadQueryDto } from '../s3/dto/download-link.dto';
 import { ApiVerFoto, responderFoto } from '../s3/photo-http';
 import { OrderDriverPhotoService } from './application/order-driver-photo.service';
 import { OrderVehiclePhotoService } from './application/order-vehicle-photo.service';
+import { OrderProductPhotoService } from './application/order-product-photo.service';
 import { RoleType } from '../common/constants/role-type.enum';
 import { TruckLoadGatePort } from './domain/ports/truck-load-gate.port';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -118,6 +119,7 @@ export class OrderController {
     private readonly setReceiverUseCase: SetOrderReceiverUseCase,
     private readonly declareEmpties: DeclareEmptiesUseCase,
     private readonly vehiclePhoto: OrderVehiclePhotoService,
+    private readonly productPhoto: OrderProductPhotoService,
   ) {}
 
   @Post()
@@ -1360,6 +1362,7 @@ export class OrderController {
   /** Completa la foto del vehículo del pedido (una lectura por lista, nunca una por pedido). */
   private async conFoto(dto: OrderResponseDto): Promise<OrderResponseDto> {
     await this.vehiclePhoto.completar([dto]);
+    await this.productPhoto.completar([dto]);
     return dto;
   }
 
@@ -1367,6 +1370,7 @@ export class OrderController {
     dtos: OrderResponseDto[],
   ): Promise<OrderResponseDto[]> {
     await this.vehiclePhoto.completar(dtos);
+    await this.productPhoto.completar(dtos);
     return dtos;
   }
 

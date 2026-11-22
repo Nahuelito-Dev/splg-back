@@ -149,6 +149,9 @@ export class Cylinder {
   @Column({ name: 'photo_key', type: 'varchar', length: 512, nullable: true })
   photoKey!: string | null;
 
+  /** URL firmada; la completa `EntityPhotoService.firmar`. No es una columna. */
+  photoSignedUrl?: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 

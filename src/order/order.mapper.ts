@@ -206,6 +206,7 @@ export class OrderMapper {
         producto.weight = Number(item.gasCylinder.weight);
         producto.price = Number(item.gasCylinder.price);
         producto.description = item.gasCylinder.description;
+        producto.photoUrl = null;
         renglon.cylinder = producto;
       }
       return renglon;
