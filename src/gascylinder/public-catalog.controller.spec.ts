@@ -44,7 +44,6 @@ describe('GET /public/distributors/:slug/catalog', () => {
     productos = {
       mediosDePagoPublicos: jest.fn().mockResolvedValue([
         { name: 'Efectivo', key: 'CASH', surcharge: 0 },
-        { name: 'Transferencia', key: 'TRANSFER', surcharge: 7.5 },
         { name: 'Mercado Pago', key: 'MERCADOPAGO', surcharge: 10 },
       ]),
       catalogoPublico: jest.fn().mockResolvedValue({
@@ -112,7 +111,6 @@ describe('GET /public/distributors/:slug/catalog', () => {
     expect(productos.mediosDePagoPublicos).toHaveBeenCalledWith('demo');
     expect(res.body).toEqual([
       { name: 'Efectivo', key: 'CASH', surcharge: 0 },
-      { name: 'Transferencia', key: 'TRANSFER', surcharge: 7.5 },
       { name: 'Mercado Pago', key: 'MERCADOPAGO', surcharge: 10 },
     ]);
   });

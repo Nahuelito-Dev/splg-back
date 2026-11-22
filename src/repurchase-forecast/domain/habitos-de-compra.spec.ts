@@ -55,11 +55,25 @@ describe('habitosDe', () => {
     const h = habitosDe([
       compra({ paymentMethod: PaymentMethod.ACCOUNT }),
       compra({ paymentMethod: PaymentMethod.ACCOUNT }),
-      compra({ paymentMethod: PaymentMethod.TRANSFER }),
+      compra({ paymentMethod: PaymentMethod.MERCADOPAGO }),
     ]);
-    expect(h.paymentMethod).toBe(PaymentMethod.TRANSFER);
+    expect(h.paymentMethod).toBe(PaymentMethod.MERCADOPAGO);
     expect(
       habitosDe([compra({ paymentMethod: PaymentMethod.ACCOUNT })])
+        .paymentMethod,
+    ).toBe(PaymentMethod.CASH);
+  });
+
+  it('una compra vieja por transferencia no cuenta como hábito: la transferencia ya no se acepta', () => {
+    expect(
+      habitosDe([
+        compra({ paymentMethod: PaymentMethod.TRANSFER }),
+        compra({ paymentMethod: PaymentMethod.TRANSFER }),
+        compra({ paymentMethod: PaymentMethod.MERCADOPAGO }),
+      ]).paymentMethod,
+    ).toBe(PaymentMethod.MERCADOPAGO);
+    expect(
+      habitosDe([compra({ paymentMethod: PaymentMethod.TRANSFER })])
         .paymentMethod,
     ).toBe(PaymentMethod.CASH);
   });

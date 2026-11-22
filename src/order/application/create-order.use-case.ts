@@ -62,6 +62,7 @@ import { coordenadasDePunto } from '../../common/geo/punto';
 import { DomainError } from '../../common/errors/domain.error';
 import { esTimeoutDeBase } from '../../common/errors/db-exceptions';
 import { CODIGOS_DE_ERROR, conCodigo } from '../../common/errors/con-codigo';
+import { assertMedioDePagoAceptado } from '../domain/medio-de-pago-aceptado';
 import { CustomerContainerService } from '../../customer-container/customer-container.service';
 import { AccesoDeLaEmpresa } from '../../platform/access/acceso-de-la-empresa.service';
 import { moduloDeshabilitado } from '../../platform/access/errores';
@@ -145,6 +146,7 @@ export class CreateOrderUseCase {
     createOrderDto: CreateOrderDto,
     distributorId?: string | null,
   ): Promise<CreateOrderResult> {
+    assertMedioDePagoAceptado(createOrderDto.paymentMethod);
     // Compatibilidad: sin tenant explícito (app previa al multi-tenant), el
     // pedido va a la distribuidora default.
     if (!distributorId) {

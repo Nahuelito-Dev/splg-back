@@ -46,14 +46,14 @@ describe('PaymentSurchargeSettingsService', () => {
     expect((await service.vigentes('d1')).isDefault).toBe(true);
     const fecha = new Date('2026-10-31T10:00:00Z');
     configs.fila.mockResolvedValue({
-      params: { transferPercentage: 5 },
+      params: { mercadoPagoPercentage: 5 },
       updatedAt: fecha,
       updatedByUserId: 'u1',
     });
     const v = await service.vigentes('d1');
     expect(v).toMatchObject({
-      transferPercentage: 5,
-      mercadoPagoPercentage: 10,
+      transferPercentage: 10,
+      mercadoPagoPercentage: 5,
       cashPercentage: 0,
       isDefault: false,
       updatedAt: fecha,
@@ -61,7 +61,19 @@ describe('PaymentSurchargeSettingsService', () => {
     });
   });
 
-  it('guardar reemplaza la configuración con los tres porcentajes', async () => {
+  it('una configuración vieja con recargo de transferencia se sigue leyendo, y sólo eso no la saca de los valores por omisión', async () => {
+    configs.fila.mockResolvedValue({
+      params: { transferPercentage: 5 },
+      updatedAt: null,
+      updatedByUserId: null,
+    });
+    const v = await service.vigentes('d1');
+    expect(v.transferPercentage).toBe(5);
+    expect(v.isDefault).toBe(true);
+  });
+
+  it('guardar reemplaza Mercado Pago y efectivo; el recargo de transferencia que llega se ignora y queda el guardado', async () => {
+    configs.parametros.mockResolvedValue({ transferPercentage: 3 });
     await service.guardar(
       'd1',
       { transferPercentage: 7.5, mercadoPagoPercentage: 10, cashPercentage: 2 },
@@ -70,7 +82,21 @@ describe('PaymentSurchargeSettingsService', () => {
     expect(configs.guardar).toHaveBeenCalledWith(
       'd1',
       ConfigurableProcess.PAYMENT_SURCHARGES,
-      { transferPercentage: 7.5, mercadoPagoPercentage: 10, cashPercentage: 2 },
+      { transferPercentage: 3, mercadoPagoPercentage: 10, cashPercentage: 2 },
+      'u1',
+    );
+  });
+
+  it('guardar sin recargo de transferencia en el cuerpo es válido', async () => {
+    await service.guardar(
+      'd1',
+      { mercadoPagoPercentage: 8, cashPercentage: 1 },
+      'u1',
+    );
+    expect(configs.guardar).toHaveBeenCalledWith(
+      'd1',
+      ConfigurableProcess.PAYMENT_SURCHARGES,
+      { transferPercentage: 10, mercadoPagoPercentage: 8, cashPercentage: 1 },
       'u1',
     );
   });
@@ -78,13 +104,13 @@ describe('PaymentSurchargeSettingsService', () => {
   it.each([
     [
       {
-        transferPercentage: null,
-        mercadoPagoPercentage: 10,
+        transferPercentage: 10,
+        mercadoPagoPercentage: null,
         cashPercentage: 0,
       },
     ],
-    [{ mercadoPagoPercentage: 10, cashPercentage: 0 }],
-    [{ transferPercentage: 31, mercadoPagoPercentage: 10, cashPercentage: 0 }],
+    [{ transferPercentage: 10, cashPercentage: 0 }],
+    [{ mercadoPagoPercentage: 31, cashPercentage: 0 }],
   ])('guardar rechaza un cuerpo incompleto o inválido %j', async (cuerpo) => {
     await expect(
       service.guardar('d1', cuerpo as never, 'u1'),

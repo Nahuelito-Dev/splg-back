@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { medioVigenteDeLaSugerencia } from '../order/domain/medio-de-pago-aceptado';
 import {
   diaArgentino,
   minutosDelDiaArgentino,
@@ -177,7 +178,11 @@ export class RepurchaseAcceptService {
       quantity: i.quantity,
       unitPrice: 0,
     }));
-    dto.paymentMethod = cuerpo.paymentMethod ?? invitacion.paymentMethod;
+    // Una invitación vieja sugería transferencia: ya no se acepta, así que
+    // sin elección del cliente se ofrece en efectivo.
+    dto.paymentMethod =
+      cuerpo.paymentMethod ??
+      medioVigenteDeLaSugerencia(invitacion.paymentMethod);
     dto.timeSlotId = entrega?.timeSlotId;
     dto.scheduledDate = entrega?.scheduledDate;
     dto.notes = cuerpo.notes;

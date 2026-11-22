@@ -212,7 +212,7 @@ export class OrderController {
   @ApiOperation({
     summary: 'Cotizar un pedido',
     description:
-      'Mismo cuerpo que `POST /orders` (sólo `items` y `paymentMethod` son obligatorios). Devuelve el desglose que cobrará el alta: renglones con la promoción por volumen, `subtotal`, recargo de zona (con `addressId`; el admin además manda `customerId`), recargo por medio de pago (`paymentSurchargePercentage` % sobre subtotal + zona: parámetro de la distribuidora por medio de pago, por omisión 10 en `mercadopago` y `transfer` y 0 en `cash`), `deposit` (si `isReservation`), `total` y `balance` (`total - deposit`). El `total` es exactamente el del pedido que se crea con el mismo cuerpo. No escribe nada ni reserva stock; sí rechaza lo que el alta rechazaría (producto de otra distribuidora, sin stock, dirección fuera de cobertura). Cliente sin `X-Distributor`: distribuidora por defecto, igual que el alta. Con `orderId` cotiza la EDICIÓN de ese pedido (mismas reglas que `PATCH /orders/:id`): pedido ajeno o inexistente 404, no editable 409, stock por diferencia contra lo ya reservado, franja y fecha sólo si cambian.',
+      'Mismo cuerpo que `POST /orders` (sólo `items` y `paymentMethod` son obligatorios). Devuelve el desglose que cobrará el alta: renglones con la promoción por volumen, `subtotal`, recargo de zona (con `addressId`; el admin además manda `customerId`), recargo por medio de pago (`paymentSurchargePercentage` % sobre subtotal + zona: parámetro de la distribuidora por medio de pago, por omisión 10 en `mercadopago` y 0 en `cash`; la transferencia ya no se acepta: 400 `PAYMENT_METHOD_NOT_ACCEPTED`), `deposit` (si `isReservation`), `total` y `balance` (`total - deposit`). El `total` es exactamente el del pedido que se crea con el mismo cuerpo. No escribe nada ni reserva stock; sí rechaza lo que el alta rechazaría (producto de otra distribuidora, sin stock, dirección fuera de cobertura). Cliente sin `X-Distributor`: distribuidora por defecto, igual que el alta. Con `orderId` cotiza la EDICIÓN de ese pedido (mismas reglas que `PATCH /orders/:id`): pedido ajeno o inexistente 404, no editable 409, stock por diferencia contra lo ya reservado, franja y fecha sólo si cambian.',
   })
   @ApiOkResponse({ type: QuoteResponseDto })
   @ApiBadRequestResponse({
@@ -1032,7 +1032,7 @@ export class OrderController {
       '`items` reemplazan a los actuales: se devuelve el stock viejo y se ' +
       'reserva el nuevo con los precios y recargos vigentes (mismas reglas ' +
       'que el alta). Fuera de `pending`, o con un pedido de Mercado Pago, responde 409; ' +
-      'pasar un pedido a Mercado Pago es 400 (la transferencia sí se edita). ' +
+      'pasar un pedido a Mercado Pago es 400 (pasar a transferencia también es 400 `PAYMENT_METHOD_NOT_ACCEPTED`; un pedido viejo con transferencia la conserva si el medio no cambia). ' +
       'Para eliminar un pedido: `PATCH /orders/:id/cancel`.',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })

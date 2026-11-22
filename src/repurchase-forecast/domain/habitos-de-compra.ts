@@ -13,10 +13,13 @@ export interface HabitosDeCompra {
   paymentMethod: PaymentMethod;
 }
 
-/** Medios de pago que se sugieren: el crédito de cuenta corriente lo carga el administrador. */
+/**
+ * Medios de pago que se sugieren: el crédito de cuenta corriente lo carga el
+ * administrador y la transferencia ya no se acepta (una compra vieja con ella
+ * no cuenta como hábito).
+ */
 const MEDIOS_SUGERIBLES: readonly PaymentMethod[] = [
   PaymentMethod.CASH,
-  PaymentMethod.TRANSFER,
   PaymentMethod.MERCADOPAGO,
 ];
 

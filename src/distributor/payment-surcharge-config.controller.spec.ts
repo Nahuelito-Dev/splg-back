@@ -19,13 +19,13 @@ describe('PaymentSurchargeConfigController', () => {
 
   it('PUT guarda con la distribuidora del contexto y el usuario del token', async () => {
     await controller.put(
-      { transferPercentage: 7.5, mercadoPagoPercentage: 10, cashPercentage: 0 },
+      { mercadoPagoPercentage: 10, cashPercentage: 0 },
       'dist-1',
       'adm-1',
     );
     expect(recargos.guardar).toHaveBeenCalledWith(
       'dist-1',
-      { transferPercentage: 7.5, mercadoPagoPercentage: 10, cashPercentage: 0 },
+      { mercadoPagoPercentage: 10, cashPercentage: 0 },
       'adm-1',
     );
   });

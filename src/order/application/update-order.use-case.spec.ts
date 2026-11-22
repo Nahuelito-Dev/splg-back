@@ -197,6 +197,38 @@ describe('UpdateOrderUseCase', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('pasar un pedido a transferencia es 400 PAYMENT_METHOD_NOT_ACCEPTED; el que ya la tiene la conserva', async () => {
+    locked = makeOrder({ paymentMethod: PaymentMethod.CASH });
+    const error = await useCase
+      .execute('o1', { paymentMethod: PaymentMethod.TRANSFER }, 'u1', 'd1')
+      .then(
+        () => null,
+        (e: unknown) => e as BadRequestException,
+      );
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect(error?.getResponse()).toMatchObject({
+      message:
+        'La distribuidora ya no acepta transferencias. Elegí efectivo o Mercado Pago.',
+      code: 'PAYMENT_METHOD_NOT_ACCEPTED',
+    });
+    expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+
+    // Un pedido viejo con transferencia se sigue editando sin tocar el medio.
+    locked = makeOrder({ paymentMethod: PaymentMethod.TRANSFER });
+    await expect(
+      useCase.execute('o1', { notes: 'x' }, 'u1', 'd1'),
+    ).resolves.toBeDefined();
+    locked = makeOrder({ paymentMethod: PaymentMethod.TRANSFER });
+    await expect(
+      useCase.execute(
+        'o1',
+        { paymentMethod: PaymentMethod.TRANSFER, notes: 'y' },
+        'u1',
+        'd1',
+      ),
+    ).resolves.toBeDefined();
+  });
+
   it('un pedido con pago online no se edita (409) ni se pasa a MercadoPago (400)', async () => {
     locked = makeOrder({ paymentMethod: PaymentMethod.MERCADOPAGO });
     await expect(

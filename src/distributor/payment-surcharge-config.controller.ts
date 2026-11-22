@@ -31,7 +31,7 @@ export class PaymentSurchargeConfigController {
   @ApiOperation({
     summary: 'Recargos por medio de pago de la distribuidora',
     description:
-      'Porcentaje que se suma al total del pedido según el medio de pago (transferencia, Mercado Pago, efectivo). Sin configuración rigen los de omisión: transferencia 10, Mercado Pago 10, efectivo 0 (`isDefault: true`).',
+      'Porcentaje que se suma al total del pedido según el medio de pago (Mercado Pago, efectivo). Sin configuración rigen los de omisión: Mercado Pago 10, efectivo 0 (`isDefault: true`). `transferPercentage` queda sólo por compatibilidad (la transferencia ya no se acepta).',
   })
   @ApiOkResponse({ type: PaymentSurchargeConfigResponseDto })
   @ApiBadRequestResponse({ description: CUERPO_INVALIDO })
@@ -46,7 +46,7 @@ export class PaymentSurchargeConfigController {
   @ApiOperation({
     summary: 'Cambiar los recargos por medio de pago',
     description:
-      'Reemplaza la configuración: los tres porcentajes (`transferPercentage`, `mercadoPagoPercentage`, `cashPercentage`) son obligatorios; omitir uno o mandar `null` es 400. Para volver a los valores por omisión del sistema mandá 10, 10 y 0. Rige para los pedidos que se cotizan o crean desde ese momento; los pedidos ya creados conservan el porcentaje con que se crearon. El cliente ve el recargo en la cotización antes de confirmar.',
+      'Reemplaza la configuración: `mercadoPagoPercentage` y `cashPercentage` son obligatorios; omitir uno o mandar `null` es 400. Mandar `transferPercentage` también es 400 porque la transferencia ya no se acepta. Para volver a los valores por omisión del sistema mandá 10 y 0.',
   })
   @ApiOkResponse({ type: PaymentSurchargeConfigResponseDto })
   @ApiBadRequestResponse({ description: CUERPO_INVALIDO })

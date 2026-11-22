@@ -10,6 +10,7 @@ import { errorMessage, errorStatus } from '../common/errors/error-message';
 import { DistributorService } from '../distributor/distributor.service';
 import { DistributorStatus } from '../distributor/entities/distributor.entity';
 import { QuoteOrderUseCase } from '../order/application/quote-order.use-case';
+import { medioVigenteDeLaSugerencia } from '../order/domain/medio-de-pago-aceptado';
 import { QuoteOrderDto, QuoteResponseDto } from '../order/dto/quote-order.dto';
 import { GasCylinderService } from '../gascylinder/gascylinder.service';
 import { GasCylinder } from '../gascylinder/entities/gascylinder.entity';
@@ -107,7 +108,7 @@ export class RepurchaseInvitationDetailService {
     }
     const dto = new QuoteOrderDto();
     dto.addressId = invitacion.addressId;
-    dto.paymentMethod = invitacion.paymentMethod;
+    dto.paymentMethod = medioVigenteDeLaSugerencia(invitacion.paymentMethod);
     dto.items = invitacion.suggestedItems.map((i) => ({
       gasCylinderId: i.gasCylinderId,
       quantity: i.quantity,

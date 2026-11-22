@@ -15,6 +15,10 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
   CHK_order_montos: 'Los montos del pedido no pueden ser negativos',
   CHK_order_total_formula:
     'El total del pedido no coincide con la suma de ítems, recargos y envío',
+  CHK_order_sin_transferencia:
+    'La distribuidora ya no acepta transferencias. Elegí efectivo o Mercado Pago.',
+  CHK_repurchase_invitation_sin_transferencia:
+    'La distribuidora ya no acepta transferencias. Elegí efectivo o Mercado Pago.',
   CHK_order_pago_coherente:
     'El tipo de pago no corresponde al medio de pago elegido',
   CHK_order_aceptado_fecha:

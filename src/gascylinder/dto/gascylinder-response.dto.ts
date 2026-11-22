@@ -73,7 +73,7 @@ export class MedioDePagoDto {
   @ApiProperty({ example: 'Efectivo' })
   name!: string;
 
-  @ApiProperty({ example: 'CASH', enum: ['CASH', 'TRANSFER', 'MERCADOPAGO'] })
+  @ApiProperty({ example: 'CASH', enum: ['CASH', 'MERCADOPAGO'] })
   key!: string;
 
   @ApiProperty({

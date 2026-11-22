@@ -405,11 +405,18 @@ describe('GasCylinderService', () => {
       });
       const medios = await service.mediosDePagoPublicos('demo');
       expect(recargos.obtener).toHaveBeenCalledWith('d-slug');
-      expect(medios.map((m) => m.key)).toEqual([
-        'CASH',
-        'TRANSFER',
-        'MERCADOPAGO',
-      ]);
+      expect(medios.map((m) => m.key)).toEqual(['CASH', 'MERCADOPAGO']);
+    });
+
+    it('nunca ofrece la transferencia, aunque la distribuidora tenga un recargo viejo guardado', async () => {
+      recargos.obtener.mockResolvedValue({
+        transferPercentage: 7.5,
+        mercadoPagoPercentage: 12,
+        cashPercentage: 2,
+      });
+      const medios = await service.mediosDePago('d1');
+      expect(medios.map((m) => m.key)).not.toContain('TRANSFER');
+      expect(medios.map((m) => m.name)).not.toContain('Transferencia');
     });
 
     it('una distribuidora que no está activa es 404', async () => {
@@ -422,7 +429,7 @@ describe('GasCylinderService', () => {
       );
     });
 
-    it('sin el módulo de Mercado Pago habilitado, Mercado Pago no se ofrece (efectivo y transferencia sí)', async () => {
+    it('sin el módulo de Mercado Pago habilitado, Mercado Pago no se ofrece (efectivo sí)', async () => {
       distribuidoras.findBySlug.mockResolvedValue({
         distributorId: 'd-slug',
         status: 'active',
@@ -432,7 +439,7 @@ describe('GasCylinderService', () => {
       );
       const medios = await service.mediosDePagoPublicos('demo');
       expect(acceso.habilitado).toHaveBeenCalledWith('d-slug', 'mercadopago');
-      expect(medios.map((m) => m.key)).toEqual(['CASH', 'TRANSFER']);
+      expect(medios.map((m) => m.key)).toEqual(['CASH']);
     });
 
     it('apagarlo en una distribuidora no lo saca de otra', async () => {
@@ -441,11 +448,9 @@ describe('GasCylinderService', () => {
       );
       expect((await service.mediosDePago('d-a')).map((m) => m.key)).toEqual([
         'CASH',
-        'TRANSFER',
       ]);
       expect((await service.mediosDePago('d-b')).map((m) => m.key)).toEqual([
         'CASH',
-        'TRANSFER',
         'MERCADOPAGO',
       ]);
     });
@@ -467,7 +472,6 @@ describe('GasCylinderService', () => {
       expect(recargos.obtener).toHaveBeenCalledWith('d-slug');
       expect(paymentMethods).toEqual([
         { name: 'Efectivo', key: 'CASH', surcharge: 2 },
-        { name: 'Transferencia', key: 'TRANSFER', surcharge: 7.5 },
         { name: 'Mercado Pago', key: 'MERCADOPAGO', surcharge: 12 },
       ]);
     });

@@ -29,7 +29,7 @@ const invitacion = (
     distributorId: 'd1',
     userId: 'u1',
     addressId: 'a1',
-    paymentMethod: PaymentMethod.TRANSFER,
+    paymentMethod: PaymentMethod.CASH,
     status: Estado.PENDING,
     suggestedItems: [{ gasCylinderId: 'g10', quantity: 2 }],
     expiresAt: new Date(AHORA.getTime() + 3_600_000),
@@ -126,7 +126,7 @@ describe('RepurchaseAcceptService', () => {
     expect(dto).toMatchObject({
       customerId: 'u1',
       addressId: 'a1',
-      paymentMethod: PaymentMethod.TRANSFER,
+      paymentMethod: PaymentMethod.CASH,
       items: [{ gasCylinderId: 'g10', quantity: 2, unitPrice: 0 }],
     });
     expect(dto.timeSlotId).toBeUndefined();
@@ -140,6 +140,15 @@ describe('RepurchaseAcceptService', () => {
       expect.any(Function),
       expect.any(Number),
     );
+  });
+
+  it('una invitación vieja que sugería transferencia se acepta en efectivo', async () => {
+    invitaciones.delCliente.mockResolvedValue(
+      invitacion({ paymentMethod: PaymentMethod.TRANSFER }),
+    );
+    await service.aceptar('i1', 'u1', {}, AHORA);
+    const [dto] = orders.create.mock.calls[0] as [Record<string, unknown>];
+    expect(dto.paymentMethod).toBe(PaymentMethod.CASH);
   });
 
   it('el cliente puede cambiar medio de pago, franja, fecha y notas', async () => {

@@ -20,6 +20,7 @@ import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { OrderDeliveryMode, PaymentMethod } from '../entities/order.entity';
 import { SetOrderReceiverDto } from './set-order-receiver.dto';
+import { RechazarTransferenciaEnDto } from '../domain/medio-de-pago-aceptado';
 
 export class OrderItemDto {
   @ApiProperty({ description: 'ID de la garrafa' })
@@ -75,9 +76,12 @@ export class CreateOrderDto {
 
   @ApiProperty({
     description: 'Método de pago',
-    enum: PaymentMethod,
+    enum: Object.values(PaymentMethod).filter(
+      (m) => m !== PaymentMethod.TRANSFER,
+    ),
     example: PaymentMethod.CASH,
   })
+  @RechazarTransferenciaEnDto()
   @IsEnum(PaymentMethod)
   paymentMethod!: PaymentMethod;
 

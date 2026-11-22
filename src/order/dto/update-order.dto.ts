@@ -14,6 +14,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { PaymentMethod } from '../entities/order.entity';
+import { RechazarTransferenciaEnDto } from '../domain/medio-de-pago-aceptado';
 
 /** Renglón de la edición: el precio lo pone el servidor, nunca el cliente. */
 export class UpdateOrderItemDto {
@@ -61,12 +62,15 @@ export class UpdateOrderDto {
   scheduledDate?: string;
 
   @ApiPropertyOptional({
-    enum: PaymentMethod,
+    enum: Object.values(PaymentMethod).filter(
+      (m) => m !== PaymentMethod.TRANSFER,
+    ),
     description:
       'Medio de pago. No se puede pasar a ni desde MercadoPago: ' +
       'cancelá y creá el pedido de nuevo.',
   })
   @IsOptional()
+  @RechazarTransferenciaEnDto()
   @IsEnum(PaymentMethod)
   paymentMethod?: PaymentMethod;
 

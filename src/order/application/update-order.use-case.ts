@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { totalBajoLaSenaPagada } from '../domain/deposit-cap';
+import { assertCambioDeMedioAceptado } from '../domain/medio-de-pago-aceptado';
 import { diaArgentino } from '../../common/utils/dias-argentina';
 import { DataSource } from 'typeorm';
 import Decimal from 'decimal.js';
@@ -486,6 +487,7 @@ export class UpdateOrderUseCase {
         'La venta a cuenta corriente se elige al crear el pedido desde el panel',
       );
     }
+    assertCambioDeMedioAceptado(order.paymentMethod, dto.paymentMethod);
   }
 
   /** Texto de la anotación del historial: qué tocó el cliente. */

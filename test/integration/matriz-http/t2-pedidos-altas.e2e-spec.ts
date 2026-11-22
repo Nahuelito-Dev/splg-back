@@ -212,17 +212,27 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
       },
     ),
     crear(
-      'cliente por transferencia: suma el recargo del medio',
+      'cliente por transferencia: la distribuidora ya no la acepta',
       'clienteA',
-      201,
+      400,
       {
         body: alta({ paymentMethod: 'transfer' }),
-        verificar: (cuerpo) =>
-          expect(cuerpo).toMatchObject({
-            total_amount: 1210,
-          }),
+        code: 'PAYMENT_METHOD_NOT_ACCEPTED',
       },
     ),
+    crear('administrador por transferencia: también 400', 'adminA', 400, {
+      body: alta({ paymentMethod: 'transfer' }),
+      code: 'PAYMENT_METHOD_NOT_ACCEPTED',
+    }),
+    crear('reserva con seña por transferencia: 400', 'clienteA', 400, {
+      body: alta({
+        paymentMethod: 'transfer',
+        isReservation: true,
+        depositAmount: 100,
+        scheduledDate: '2099-01-01',
+      }),
+      code: 'PAYMENT_METHOD_NOT_ACCEPTED',
+    }),
     crear('varias unidades', 'clienteA', 201, {
       body: (c) =>
         alta({
@@ -562,9 +572,14 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
           zone: { name: 'Norte' },
         }),
     }),
-    cotizar('transferencia: suma el recargo del medio', 'clienteA', 200, {
+    cotizar('transferencia: ya no se acepta', 'clienteA', 400, {
       body: (c) =>
         cotiza({ addressId: c.dirCentro, paymentMethod: 'transfer' })(c),
+      code: 'PAYMENT_METHOD_NOT_ACCEPTED',
+    }),
+    cotizar('Mercado Pago: suma el recargo del medio', 'clienteA', 200, {
+      body: (c) =>
+        cotiza({ addressId: c.dirCentro, paymentMethod: 'mercadopago' })(c),
       verificar: (cuerpo) =>
         expect(cuerpo).toMatchObject({
           zoneSurcharge: 200,
@@ -720,10 +735,20 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
           expect(cuerpo).toMatchObject({ total_amount: 1250 }),
       },
     ),
-    editar('cliente dueño cambia el medio de pago', 'clienteA', 200, {
+    editar('cliente dueño pasa a transferencia: 400', 'clienteA', 400, {
       antes: nuevo('e'),
       body: { paymentMethod: 'transfer' },
+      code: 'PAYMENT_METHOD_NOT_ACCEPTED',
     }),
+    editar(
+      'cliente dueño de un pedido viejo por transferencia pasa a efectivo',
+      'clienteA',
+      200,
+      {
+        antes: nuevo('e', { metodo: PaymentMethod.TRANSFER }),
+        body: { paymentMethod: 'cash' },
+      },
+    ),
     editar('administrador', 'adminA', 200, {
       antes: nuevo('e'),
       body: { notes: 'Llamar antes' },

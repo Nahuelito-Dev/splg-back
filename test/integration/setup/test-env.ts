@@ -46,6 +46,7 @@ import {
 } from '../../../src/migrations/sql/auditoria-de-datos';
 import mapaDeAuditoria from '../../../src/audit/data/auditoria-mapa.datos.json';
 import { sentenciasDeReglasDeDatos } from '../../../src/migrations/sql/reglas-de-datos';
+import { sentenciasDeSinTransferencia } from '../../../src/migrations/sql/sin-transferencia';
 import { CREAR_PROCEDIMIENTOS_DE_CONCILIACION } from '../../../src/migrations/sql/procedimientos-de-conciliacion';
 import { sentenciasDeSaldos } from '../../../src/migrations/sql/saldo-contra-libro';
 import { sentenciasDeTransiciones } from '../../../src/migrations/sql/transiciones-de-estado';
@@ -176,6 +177,13 @@ export async function createTestApp(
       {
         content: [
           'CREATE EXTENSION IF NOT EXISTS btree_gist;',
+          // Los fixtures siembran pedidos históricos con transferencia: esta base
+          // descartable arranca con `splg.bypass_transferencia = on` (toda
+          // conexión nueva lo hereda). Por eso las suites HTTP NO prueban el
+          // trigger `sin-transferencia`: el 400 que ven sale de la capa DTO y del
+          // dominio. El trigger se prueba en `sin-transferencia-trigger.e2e-spec.ts`,
+          // que apaga el bypass con `SET LOCAL` en su propia transacción.
+          `ALTER DATABASE splg_test SET splg.bypass_transferencia = 'on';`,
           `${CREAR_ES_CUIT_VALIDO};`,
           `${CREAR_ES_CUIL_VALIDO};`,
         ].join('\n'),
@@ -327,6 +335,7 @@ async function instalarTriggersDeLaBase(dataSource: DataSource) {
     ...sentenciasDelLote(),
     ...sentenciasDeSaldos(),
     ...sentenciasDeReglasDeDatos(),
+    ...sentenciasDeSinTransferencia(),
     ...CREAR_PROCEDIMIENTOS_DE_CONCILIACION,
     // Roles del personal (F37): únicos parciales, rol de sistema por
     // distribuidora y rol de personal de cada admin.

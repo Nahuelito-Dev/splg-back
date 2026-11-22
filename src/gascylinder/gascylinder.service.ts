@@ -538,11 +538,6 @@ export class GasCylinderService {
     const recargos = await this.paymentSurcharges.obtener(distributorId);
     const medios: MedioDePagoDto[] = [
       { name: 'Efectivo', key: 'CASH', surcharge: recargos.cashPercentage },
-      {
-        name: 'Transferencia',
-        key: 'TRANSFER',
-        surcharge: recargos.transferPercentage,
-      },
     ];
     if (
       !distributorId ||

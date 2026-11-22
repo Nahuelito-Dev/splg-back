@@ -100,14 +100,14 @@ export class QuoteResponseDto {
 
   @ApiProperty({
     enum: PaymentMethod,
-    example: PaymentMethod.TRANSFER,
+    example: PaymentMethod.CASH,
   })
   paymentMethod!: PaymentMethod;
 
   @ApiProperty({
     example: 1995,
     description:
-      'Recargo por medio de pago en pesos: `paymentSurchargePercentage` % sobre subtotal + recargo de zona (parámetro de la distribuidora por medio de pago; por omisión 10 en `mercadopago` y `transfer`, 0 en `cash`)',
+      'Recargo por medio de pago en pesos: `paymentSurchargePercentage` % sobre subtotal + recargo de zona (parámetro de la distribuidora por medio de pago; por omisión 10 en `mercadopago`, 0 en `cash`)',
   })
   paymentSurcharge!: number;
 
