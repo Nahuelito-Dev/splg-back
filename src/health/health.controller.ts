@@ -1,16 +1,47 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query, Req, Res } from '@nestjs/common';
 import {
   HealthCheck,
+  HealthCheckResult,
   HealthCheckService,
   TypeOrmHealthIndicator,
-  MemoryHealthIndicator,
-  DiskHealthIndicator,
 } from '@nestjs/terminus';
-import { ConfigService } from '@nestjs/config';
-import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiOkResponse,
+  ApiOperation,
+  ApiProduces,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
+import { randomBytes } from 'node:crypto';
+import type { Request, Response } from 'express';
 import { Public } from '../common/decorators/isPublic.decorator';
+import { ChequeosService } from './chequeos.service';
+import { PaginaEstadoService } from './pagina-estado.service';
+import { cspDePagina, renderPaginaEstado } from './pagina-estado.html';
 import { RedisHealthIndicator } from './redis.health';
+
+/** Esquema de la respuesta de Terminus (`HealthCheckResult`). */
+function esquemaHealth(status: 'ok' | 'error') {
+  const indicadores = {
+    type: 'object',
+    additionalProperties: {
+      type: 'object',
+      properties: { status: { type: 'string', example: 'up' } },
+      additionalProperties: { type: 'string' },
+    },
+  };
+  return {
+    type: 'object',
+    properties: {
+      status: { type: 'string', example: status },
+      info: { ...indicadores, nullable: true },
+      error: { ...indicadores, nullable: true },
+      details: indicadores,
+    },
+  };
+}
 
 // Health checks: los pega un load balancer / orquestador cada pocos
 // segundos. No es tráfico de usuario y NO debe competir con el rate limit
@@ -19,25 +50,13 @@ import { RedisHealthIndicator } from './redis.health';
 @ApiTags('Health')
 @Controller('health')
 export class HealthController {
-  /** RSS máxima antes de reportar `down` (H-53: 300 MB fijo era el de un
-   * proceso recién levantado; con tráfico real lo pasa de largo y un load
-   * balancer sacaba de servicio una instancia sana). Configurable por env,
-   * con default documentado en `.env.example`. */
-  private readonly memoryRssThresholdBytes: number;
-
   constructor(
+    private readonly chequeos: ChequeosService,
+    private readonly pagina: PaginaEstadoService,
     private readonly health: HealthCheckService,
     private readonly db: TypeOrmHealthIndicator,
-    private readonly memory: MemoryHealthIndicator,
-    private readonly disk: DiskHealthIndicator,
     private readonly redis: RedisHealthIndicator,
-    config: ConfigService,
-  ) {
-    const thresholdMb = config.getOrThrow<number>(
-      'HEALTH_MEMORY_RSS_THRESHOLD_MB',
-    );
-    this.memoryRssThresholdBytes = thresholdMb * 1024 * 1024;
-  }
+  ) {}
 
   /**
    * Health check completo del sistema. Pensado para load balancers,
@@ -51,19 +70,63 @@ export class HealthController {
    *
    * Retorna 200 con `{ status: "ok" }` cuando todo está sano.
    * Retorna 503 con detalle por componente cuando algo falla.
+   *
+   * Un navegador (`Accept` que prefiere `text/html`) recibe la página de
+   * estado, con el mismo código HTTP (200 o 503). Con `?format=json` o sin
+   * `Accept: text/html` la respuesta es el JSON de siempre.
    */
   @Get()
   @Public()
-  @HealthCheck()
-  @ApiOperation({ summary: 'Health check del sistema' })
-  check() {
-    return this.health.check([
-      () => this.db.pingCheck('postgres'),
-      () => this.redis.isHealthy('redis'),
-      () => this.memory.checkRSS('memory_rss', this.memoryRssThresholdBytes),
-      () =>
-        this.disk.checkStorage('storage', { path: '/', thresholdPercent: 0.9 }),
-    ]);
+  // La documentación de Swagger se arma acá (no la de Terminus): la suya pisa
+  // la respuesta 200 y dejaría afuera la representación HTML.
+  @HealthCheck({ noCache: true, swaggerDocumentation: false })
+  @ApiOperation({
+    summary: 'Health check del sistema (JSON) y página de estado (HTML)',
+  })
+  @ApiProduces('application/json', 'text/html')
+  @ApiQuery({
+    name: 'format',
+    required: false,
+    enum: ['json'],
+    description: 'Con `json` fuerza el JSON aunque el cliente prefiera HTML.',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Todo sano. JSON de Terminus; con `Accept: text/html`, la página de estado.',
+    content: {
+      'application/json': { schema: esquemaHealth('ok') },
+      'text/html': { schema: { type: 'string' } },
+    },
+  })
+  @ApiResponse({
+    status: 503,
+    description:
+      'Algo caído. JSON de Terminus con el detalle; con `Accept: text/html`, la página de estado.',
+    content: {
+      'application/json': { schema: esquemaHealth('error') },
+      'text/html': { schema: { type: 'string' } },
+    },
+  })
+  async check(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Query('format') format?: string,
+  ): Promise<HealthCheckResult | string> {
+    res.vary('Accept');
+    const quiereHtml =
+      format !== 'json' && req.accepts(['json', 'html']) === 'html';
+    if (!quiereHtml) return this.chequeos.check();
+
+    const modelo = await this.pagina.modelo();
+    const nonce = randomBytes(16).toString('base64');
+    res.status(modelo.general === 'ok' ? 200 : 503);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'private, max-age=15');
+    res.setHeader('Content-Security-Policy', cspDePagina(nonce));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    return renderPaginaEstado(modelo, nonce);
   }
 
   /**
