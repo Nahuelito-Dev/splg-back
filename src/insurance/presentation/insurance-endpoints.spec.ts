@@ -17,7 +17,7 @@ const ENDPOINTS: Array<[Clase, string[]]> = [
   ],
   [
     InsuranceInstallmentController,
-    ['findAll', 'findOne', 'update', 'uploadReceipt', 'pay'],
+    ['findAll', 'findOne', 'update', 'uploadReceipt', 'approve', 'pay'],
   ],
 ];
 

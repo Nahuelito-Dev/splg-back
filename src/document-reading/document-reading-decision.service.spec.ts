@@ -130,6 +130,8 @@ describe('DocumentReadingDecisionService', () => {
       },
       'd1',
       'u1',
+      // Confirmar la propuesta es la aprobación del admin que confirma.
+      true,
     );
     expect(fines.pagarEn).not.toHaveBeenCalled();
     // Reclamo condicional, y después ejecutada.
@@ -199,6 +201,7 @@ describe('DocumentReadingDecisionService', () => {
       expect.objectContaining({ amount: 30000 }),
       'd1',
       'u1',
+      true,
     );
     expect(llamadas()[0][2]).toMatchObject({
       status: DocumentReadingStatus.CORRECTED,
@@ -754,6 +757,7 @@ describe('DocumentReadingDecisionService', () => {
       expect.objectContaining({ amount: 29958 }),
       'd1',
       'u1',
+      true,
     );
     expect(llamadas()[0][2]).toMatchObject({
       status: DocumentReadingStatus.CORRECTED,

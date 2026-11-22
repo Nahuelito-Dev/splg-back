@@ -1,10 +1,18 @@
 import {
   conGraciaVencida,
+  debePedirAprobacion,
+  pagoBloqueadoPorAprobacion,
+  puedeAprobarse,
+  superaElImporteAprobado,
   estadoDeLaPoliza,
   polizaPorVencer,
   vencePronto,
 } from './insurance-rules';
-import { InstallmentStatus, PolicyStatus } from './insurance.enums';
+import {
+  InstallmentApprovalStatus as Aprobacion,
+  InstallmentStatus,
+  PolicyStatus,
+} from './insurance.enums';
 
 describe('estadoDeLaPoliza', () => {
   const p = {
@@ -74,5 +82,56 @@ describe('polizaPorVencer', () => {
     expect(
       polizaPorVencer({ ...p, cancelledAt: new Date() }, '2026-12-01', 30),
     ).toBe(false);
+  });
+});
+
+describe('aprobación del pago de una cuota', () => {
+  const E = InstallmentStatus;
+  const HOY = '2026-11-10';
+
+  it.each([
+    [E.PENDING, Aprobacion.NONE, '2026-11-10', true],
+    [E.PENDING, Aprobacion.NONE, '2026-11-15', true],
+    [E.PENDING, Aprobacion.NONE, '2026-11-16', false], // más lejos que 5 días
+    [E.PENDING, Aprobacion.NONE, '2026-11-09', false], // ya vencida: no hay ola de pedidos
+    [E.PENDING, Aprobacion.AWAITING, '2026-11-12', false],
+    [E.PENDING, Aprobacion.APPROVED, '2026-11-12', false],
+    [E.PAID, Aprobacion.NONE, '2026-11-12', false],
+    [E.CANCELLED, Aprobacion.NONE, '2026-11-12', false],
+  ])(
+    'debePedirAprobacion(%s, %s, vence %s) = %s',
+    (status, approvalStatus, dueDate, esperado) => {
+      expect(
+        debePedirAprobacion({ status, approvalStatus, dueDate }, HOY, 5),
+      ).toBe(esperado);
+    },
+  );
+
+  it.each([
+    [E.PENDING, Aprobacion.AWAITING, true],
+    [E.PENDING, Aprobacion.NONE, true],
+    [E.PENDING, Aprobacion.APPROVED, false],
+    [E.PAID, Aprobacion.AWAITING, false],
+    [E.CANCELLED, Aprobacion.NONE, false],
+  ])('puedeAprobarse(%s, %s) = %s', (status, approvalStatus, esperado) => {
+    expect(puedeAprobarse({ status, approvalStatus })).toBe(esperado);
+  });
+
+  it('sólo la aprobada se puede pagar', () => {
+    expect(
+      pagoBloqueadoPorAprobacion({ approvalStatus: Aprobacion.AWAITING }),
+    ).toBe(true);
+    expect(
+      pagoBloqueadoPorAprobacion({ approvalStatus: Aprobacion.NONE }),
+    ).toBe(true);
+    expect(
+      pagoBloqueadoPorAprobacion({ approvalStatus: Aprobacion.APPROVED }),
+    ).toBe(false);
+  });
+
+  it('no se paga más que el importe aprobado', () => {
+    expect(superaElImporteAprobado({ amount: 100 }, 100.01)).toBe(true);
+    expect(superaElImporteAprobado({ amount: 100 }, 100)).toBe(false);
+    expect(superaElImporteAprobado({ amount: 100 }, 90)).toBe(false);
   });
 });

@@ -51,6 +51,7 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   // Mensajería: bandeja de la empresa, clientes y choferes (CH3).
   ackEnabled: 'Aviso automático de recibido',
   ackMessage: 'Texto del aviso automático de recibido',
+  approvalStatus: 'Estado de la aprobación',
   assistantName: 'Nombre del asistente',
   assistantAiEnabled: 'Asistente con IA',
   awaiting: 'Esperando a una persona',
@@ -202,6 +203,8 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   compare: 'Comparar',
   condition: 'Condición',
   container_price: 'Precio del envase',
+  calibrationClosures: 'Cierres que se promedian para calibrar',
+  calibrationMaxDays: 'Tope de la corrección por desvío (días)',
   confirmOutOfRange: 'Confirmación fuera de rango',
   consumption: 'Consumo',
   contactName: 'Nombre de contacto',

@@ -317,6 +317,30 @@ export class PatchPlannerSettingsDto {
   @Min(0)
   @Max(1)
   driverEmail?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Cuántos de los últimos cierres de un vehículo y tipo de tarea se promedian para corregir la proyección',
+    minimum: 3,
+    maximum: 20,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(3)
+  @Max(20)
+  calibrationClosures?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Tope de la corrección de la fecha proyectada, en días y en uno y otro sentido (0 apaga la autocalibración)',
+    minimum: 0,
+    maximum: 60,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(60)
+  calibrationMaxDays?: number;
 }
 
 export class CancelPlanningCaseDto {

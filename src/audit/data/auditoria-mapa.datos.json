@@ -7098,6 +7098,38 @@
       "position": 14
     },
     {
+      "table": "insurance_installment",
+      "column": "approval_status",
+      "property": "approvalStatus",
+      "secret": false,
+      "kind": "text",
+      "position": 15
+    },
+    {
+      "table": "insurance_installment",
+      "column": "approval_requested_at",
+      "property": "approvalRequestedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 16
+    },
+    {
+      "table": "insurance_installment",
+      "column": "approved_at",
+      "property": "approvedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 17
+    },
+    {
+      "table": "insurance_installment",
+      "column": "approved_by_user_id",
+      "property": "approvedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 18
+    },
+    {
       "table": "insurance_policy",
       "column": "policy_id",
       "property": "policyId",
@@ -7675,11 +7707,43 @@
     },
     {
       "table": "maintenance_task",
+      "column": "first_corrected_due_at",
+      "property": "firstCorrectedDueAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 12
+    },
+    {
+      "table": "maintenance_task",
+      "column": "first_predicted_at",
+      "property": "firstPredictedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 13
+    },
+    {
+      "table": "maintenance_task",
+      "column": "first_predicted_odometer_km",
+      "property": "firstPredictedOdometerKm",
+      "secret": false,
+      "kind": "text",
+      "position": 14
+    },
+    {
+      "table": "maintenance_task",
+      "column": "forecast_deviation_days",
+      "property": "forecastDeviationDays",
+      "secret": false,
+      "kind": "text",
+      "position": 15
+    },
+    {
+      "table": "maintenance_task",
       "column": "scheduled_at",
       "property": "scheduledAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 12
+      "position": 16
     },
     {
       "table": "maintenance_task",
@@ -7687,7 +7751,7 @@
       "property": "performedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 13
+      "position": 17
     },
     {
       "table": "maintenance_task",
@@ -7695,7 +7759,7 @@
       "property": "odometerKm",
       "secret": false,
       "kind": "text",
-      "position": 14
+      "position": 18
     },
     {
       "table": "maintenance_task",
@@ -7703,7 +7767,7 @@
       "property": "cost",
       "secret": false,
       "kind": "text",
-      "position": 15
+      "position": 19
     },
     {
       "table": "maintenance_task",
@@ -7711,7 +7775,7 @@
       "property": "cashMovementId",
       "secret": false,
       "kind": "text",
-      "position": 16
+      "position": 20
     },
     {
       "table": "maintenance_task",
@@ -7719,7 +7783,7 @@
       "property": "paidAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 17
+      "position": 21
     },
     {
       "table": "maintenance_task",
@@ -7727,7 +7791,7 @@
       "property": "paidAmount",
       "secret": false,
       "kind": "text",
-      "position": 18
+      "position": 22
     },
     {
       "table": "maintenance_task",
@@ -7735,7 +7799,7 @@
       "property": "provider",
       "secret": false,
       "kind": "text",
-      "position": 19
+      "position": 23
     },
     {
       "table": "maintenance_task",
@@ -7743,7 +7807,7 @@
       "property": "referenceNumber",
       "secret": false,
       "kind": "text",
-      "position": 20
+      "position": 24
     },
     {
       "table": "maintenance_task",
@@ -7751,7 +7815,7 @@
       "property": "category",
       "secret": false,
       "kind": "text",
-      "position": 21
+      "position": 25
     },
     {
       "table": "maintenance_task",
@@ -7759,7 +7823,7 @@
       "property": "notes",
       "secret": false,
       "kind": "text",
-      "position": 22
+      "position": 26
     },
     {
       "table": "maintenance_task",
@@ -7767,7 +7831,7 @@
       "property": "assigneeEmployeeId",
       "secret": false,
       "kind": "text",
-      "position": 23
+      "position": 27
     },
     {
       "table": "maintenance_task",
@@ -7775,7 +7839,7 @@
       "property": "boardPosition",
       "secret": false,
       "kind": "text",
-      "position": 24
+      "position": 28
     },
     {
       "table": "maintenance_task_attachment",

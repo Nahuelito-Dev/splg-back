@@ -125,6 +125,7 @@ describe('MaintenancePlannerService', () => {
     const t = {
       distributorId: D1,
       carId: 'car-1',
+      planId: 'plan-1',
       status: MaintenanceTaskStatus.FORECAST,
       dueAt: dias(6),
       dueKm: null,
@@ -303,6 +304,30 @@ describe('MaintenancePlannerService', () => {
         withinMarginRate: 0.67,
         marginDays: 7,
         meanBiasDays: 5.67,
+      });
+    });
+
+    it('mide también la primera fecha ya corregida: antes y después de calibrar', async () => {
+      conTareas([
+        // Sin corregir erró 6 días; corregida, 1.
+        {
+          ...hecha('2026-10-10T15:00:00Z', '2026-10-16T15:00:00Z'),
+          firstCorrectedDueAt: new Date('2026-10-15T15:00:00Z'),
+        } as MaintenanceTask,
+        // Una cerrada antes de la autocalibración: cuenta igual en las dos.
+        hecha('2026-10-20T15:00:00Z', '2026-10-22T15:00:00Z'),
+      ]);
+      const r = await servicio.acierto(
+        'd1',
+        undefined,
+        undefined,
+        new Date('2026-11-17T15:00:00Z'),
+      );
+      expect(r.accuracy.meanAbsoluteErrorDays).toBe(4);
+      expect(r.calibratedAccuracy).toMatchObject({
+        measured: 2,
+        meanAbsoluteErrorDays: 1.5,
+        meanBiasDays: 1.5,
       });
     });
 
@@ -645,6 +670,27 @@ describe('MaintenancePlannerService', () => {
       expect(notifier.propuestaAlChofer).toHaveBeenCalledTimes(2);
     });
 
+    it('la ventana rechazada queda con su motivo de descarte en el cuadro del caso (D-06)', async () => {
+      const { caso: elCaso, propuesta } = await caso();
+
+      await servicio.rechazar(
+        'user-1',
+        propuesta.proposalId,
+        { reason: 'Tengo turno médico' },
+        AHORA,
+      );
+
+      const ofrecidas = elCaso.evaluatedWindows.filter((w) => w.offered);
+      const rechazada = ofrecidas.find(
+        (w) => new Date(w.start).getTime() === propuesta.windowStart.getTime(),
+      );
+      expect(rechazada?.discardReason).toBe('rejected');
+      // Las ofrecidas que siguen sin responder no tienen descarte.
+      expect(
+        ofrecidas.filter((w) => w !== rechazada).map((w) => w.discardReason),
+      ).not.toContain('rejected');
+    });
+
     it('rechazar sin motivo es un 400 y no toca la propuesta', async () => {
       const { propuesta } = await caso();
       await expect(
@@ -852,6 +898,17 @@ describe('MaintenancePlannerService', () => {
       await servicio.ejecutar(D1, AHORA);
       return { caso: cases.filas[0], propuesta: proposals.filas[0] };
     };
+
+    it('la ventana vencida sin respuesta queda como descartada por vencimiento (D-06)', async () => {
+      const { caso: elCaso, propuesta } = await caso();
+      await servicio.vencerPropuestas(
+        new Date(propuesta.expiresAt.getTime() + 60_000),
+      );
+      const vencida = elCaso.evaluatedWindows.find(
+        (w) => new Date(w.start).getTime() === propuesta.windowStart.getTime(),
+      );
+      expect(vencida?.discardReason).toBe('expired');
+    });
 
     it('vence la que pasó su vigencia y ofrece la siguiente', async () => {
       const { propuesta } = await caso();
@@ -1170,6 +1227,79 @@ describe('MaintenancePlannerService', () => {
       expect(v.items[0].proyeccion.fecha).toEqual(dias(10));
       expect(v.items[0].porVencer).toBe(true);
       expect(v.items[1].porVencer).toBe(false);
+    });
+
+    describe('autocalibración', () => {
+      const cerrada = (desvio: number, dia: number) =>
+        tarea({
+          status: MaintenanceTaskStatus.DONE,
+          dueAt: null,
+          forecastDeviationDays: desvio,
+          performedAt: dias(-dia),
+        });
+
+      it('corre la fecha por km con el desvío medio del vehículo en ese tipo de tarea y lo explica', async () => {
+        conUso('car-1', 60, 100);
+        cerrada(5, 60);
+        cerrada(7, 40);
+        cerrada(6, 20);
+        tarea({ dueAt: null, dueKm: 11_000, plan: plan({ leadTimeDays: 30 }) });
+
+        const [v] = await servicio.vencimientos(D1, {}, AHORA);
+
+        expect(v.items[0].proyeccion.porKilometrajeSinCorregir).toEqual(
+          dias(10),
+        );
+        expect(v.items[0].proyeccion.fecha).toEqual(dias(16));
+        expect(v.items[0].proyeccion.correccion).toMatchObject({
+          correctionDays: 6,
+          samples: 3,
+          source: 'vehicle_task_type',
+        });
+      });
+
+      it('con dos cierres no corrige', async () => {
+        conUso('car-1', 60, 100);
+        cerrada(5, 60);
+        cerrada(7, 40);
+        tarea({ dueAt: null, dueKm: 11_000 });
+
+        const [v] = await servicio.vencimientos(D1, {}, AHORA);
+
+        expect(v.items[0].proyeccion.fecha).toEqual(dias(10));
+        expect(v.items[0].proyeccion.correccion).toBeNull();
+      });
+
+      it('con el tope en 0 está apagada', async () => {
+        params.calibrationMaxDays = 0;
+        conUso('car-1', 60, 100);
+        cerrada(5, 60);
+        cerrada(7, 40);
+        cerrada(6, 20);
+        tarea({ dueAt: null, dueKm: 11_000 });
+
+        const [v] = await servicio.vencimientos(D1, {}, AHORA);
+
+        expect(v.items[0].proyeccion.correccion).toBeNull();
+      });
+
+      it('la corrida guarda la primera fecha sin corregir y la corregida, y planifica con la corregida', async () => {
+        conUso('car-1', 60, 100);
+        cerrada(5, 60);
+        cerrada(7, 40);
+        cerrada(6, 20);
+        const abierta = tarea({
+          dueAt: null,
+          dueKm: 11_000,
+          plan: plan({ leadTimeDays: 30 }),
+        });
+
+        await servicio.ejecutar(D1, AHORA);
+
+        expect(abierta.firstPredictedDueAt).toEqual(dias(10));
+        expect(abierta.firstCorrectedDueAt).toEqual(dias(16));
+        expect(abierta.predictedDueAt).toEqual(dias(16));
+      });
     });
 
     it('la próxima ventana es la de la tarea programada', async () => {

@@ -61,6 +61,8 @@ const RANGOS_DEL_PLANIFICADOR: ReadonlyArray<[string, number, number]> = [
   ['usageStaleDays', 1, 90],
   ['anticipationKm', 0, 1_000_000],
   ['driverEmail', 0, 1],
+  ['calibrationClosures', 3, 20],
+  ['calibrationMaxDays', 0, 60],
 ];
 
 /** Los parámetros enteros del planificador: `decay` es el único con decimales. */

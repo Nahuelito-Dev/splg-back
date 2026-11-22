@@ -11,7 +11,10 @@ import { RoleType } from '../../common/constants/role-type.enum';
 import { RedisService } from '../../redis/redis.service';
 import { InsuranceInstallmentService } from '../application/insurance-installment.service';
 import { InsuranceQueryService } from '../application/insurance-query.service';
-import { InstallmentStatus } from '../domain/insurance.enums';
+import {
+  InstallmentApprovalStatus,
+  InstallmentStatus,
+} from '../domain/insurance.enums';
 import { InsuranceInstallment } from '../entities/insurance-installment.entity';
 import { InsuranceInstallmentController } from './insurance-installment.controller';
 import { crearValidationPipe } from '../../common/validation/validation-pipe';
@@ -36,6 +39,10 @@ const cuotaPaga = {
   paidByUserId: 'u1',
   cashMovementId: 'mov1',
   receiptAttachmentId: ADJUNTO,
+  approvalStatus: InstallmentApprovalStatus.APPROVED,
+  approvalRequestedAt: new Date('2026-11-17T12:00:00.000Z'),
+  approvedAt: new Date('2026-11-18T12:00:00.000Z'),
+  approvedByUserId: 'u1',
   createdAt: new Date('2026-10-01T00:00:00.000Z'),
   policy: {
     carId: 'c1',
@@ -53,6 +60,7 @@ describe('InsuranceInstallmentController · cuotas del seguro en la API v2', () 
     modificar: jest.Mock;
     subirComprobante: jest.Mock;
     pagar: jest.Mock;
+    aprobar: jest.Mock;
   };
   let consultas: { findInstallments: jest.Mock };
 
@@ -65,6 +73,7 @@ describe('InsuranceInstallmentController · cuotas del seguro en la API v2', () 
         scan: { available: false, data: null },
       }),
       pagar: jest.fn().mockResolvedValue(undefined),
+      aprobar: jest.fn().mockResolvedValue(undefined),
     };
     consultas = {
       findInstallments: jest
@@ -157,6 +166,48 @@ describe('InsuranceInstallmentController · cuotas del seguro en la API v2', () 
         .post(`/v1/insurance-installments/${CUOTA}/receipt`)
         .expect(404);
     });
+  });
+
+  describe('POST /v2/insurance-installments/:id/approve', () => {
+    it('aprueba con el usuario y la distribuidora de la sesión y responde la cuota con quién y cuándo', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/v2/insurance-installments/${CUOTA}/approve`)
+        .expect(200);
+
+      expect(cuotas.aprobar).toHaveBeenCalledWith(CUOTA, 'd1', 'u1');
+      expect(res.body).toMatchObject({
+        installmentId: CUOTA,
+        approvalStatus: 'approved',
+        approvedByUserId: 'u1',
+        approvedAt: '2026-11-18T12:00:00.000Z',
+      });
+    });
+
+    it('un id que no es UUID es 400 y no aprueba nada', async () => {
+      await request(app.getHttpServer())
+        .post('/v2/insurance-installments/no-es-uuid/approve')
+        .expect(400);
+      expect(cuotas.aprobar).not.toHaveBeenCalled();
+    });
+
+    it('en la v1 no existe', async () => {
+      await request(app.getHttpServer())
+        .post(`/v1/insurance-installments/${CUOTA}/approve`)
+        .expect(404);
+    });
+  });
+
+  it('GET /v2/insurance-installments filtra por aprobación pendiente', async () => {
+    await request(app.getHttpServer())
+      .get('/v2/insurance-installments?approvalStatus=awaiting')
+      .expect(200);
+    expect(consultas.findInstallments).toHaveBeenCalledWith(
+      'd1',
+      expect.objectContaining({ approvalStatus: 'awaiting' }),
+    );
+    await request(app.getHttpServer())
+      .get('/v2/insurance-installments?approvalStatus=otra')
+      .expect(400);
   });
 
   describe('POST /v2/insurance-installments/:id/pay', () => {

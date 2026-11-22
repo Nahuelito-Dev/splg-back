@@ -22,12 +22,22 @@ describe('PatchPlannerSettingsDto', () => {
     ).toEqual([]);
   });
 
+  it('acepta los parámetros de la autocalibración', async () => {
+    expect(
+      await errores({ calibrationClosures: 5, calibrationMaxDays: 0 }),
+    ).toEqual([]);
+  });
+
   it.each([
     ['workshopDays', 0],
     ['workshopDays', 128],
     ['usageStaleDays', 91],
     ['anticipationKm', -1],
     ['driverEmail', 2],
+    ['calibrationClosures', 2],
+    ['calibrationClosures', 21],
+    ['calibrationMaxDays', -1],
+    ['calibrationMaxDays', 61],
     ['usageStaleDays', 7.5],
   ])('rechaza %s = %p', async (campo, valor) => {
     expect(await errores({ [campo]: valor })).toEqual([campo]);

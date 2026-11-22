@@ -18,6 +18,7 @@ const RUTA_DEL_PANEL: Readonly<Record<string, (id: string) => string>> = {
   'traffic-fine': (id) => `fleet/fines?fine=${encodeURIComponent(id)}`,
   'car-insurance': (id) =>
     `cars/details/${encodeURIComponent(id)}?tab=insurance`,
+  'insurance-installment': () => 'notifications',
   'support-session': (id) => `support-access?session=${encodeURIComponent(id)}`,
   conversation: (id) => `messages/${encodeURIComponent(id)}`,
 };

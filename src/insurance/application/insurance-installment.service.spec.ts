@@ -20,7 +20,10 @@ import {
   DatosDelComprobante,
   ReceiptReaderPort,
 } from '../../receipt-reader/receipt-reader.port';
-import { InstallmentStatus } from '../domain/insurance.enums';
+import {
+  InstallmentApprovalStatus,
+  InstallmentStatus,
+} from '../domain/insurance.enums';
 import { InsuranceInstallment } from '../entities/insurance-installment.entity';
 import { InsurancePolicy } from '../entities/insurance-policy.entity';
 import {
@@ -70,6 +73,10 @@ describe('InsuranceInstallmentService', () => {
       paidByUserId: null,
       cashMovementId: null,
       receiptAttachmentId: null,
+      approvalStatus: InstallmentApprovalStatus.NONE,
+      approvalRequestedAt: null,
+      approvedAt: null,
+      approvedByUserId: null,
       policy: { insurer: { name: 'Seguros Rivadavia' } },
       ...over,
     }) as unknown as InsuranceInstallment;
@@ -270,6 +277,14 @@ describe('InsuranceInstallmentService', () => {
       cashBoxId: 'caja1',
     };
 
+    // Todo pago requiere aprobación: salvo que el test diga otra cosa, la cuota ya está aprobada.
+    beforeEach(() => {
+      cuota.approvalStatus = InstallmentApprovalStatus.APPROVED;
+      cuota.approvalRequestedAt = new Date('2026-10-18T12:00:00Z');
+      cuota.approvedAt = new Date('2026-10-19T12:00:00Z');
+      cuota.approvedByUserId = 'u9';
+    });
+
     it('saca el egreso de la caja elegida con la categoría y la referencia de la cuota y la deja paga', async () => {
       await service.pagar('q5', dto, 'd1', 'u1');
 
@@ -375,6 +390,74 @@ describe('InsuranceInstallmentService', () => {
       expect(pagos.egresar).not.toHaveBeenCalled();
     });
 
+    it.each([
+      InstallmentApprovalStatus.AWAITING,
+      InstallmentApprovalStatus.NONE,
+    ])(
+      'una cuota con la aprobación en %s no se paga: 409 INSTALLMENT_APPROVAL_REQUIRED y no mueve la caja',
+      async (estado) => {
+        cuota.approvalStatus = estado;
+        cuota.approvedAt = null;
+        cuota.approvedByUserId = null;
+        await expect(
+          service.pagar('q5', dto, 'd1', 'u1'),
+        ).rejects.toMatchObject({
+          status: 409,
+          response: { code: 'INSTALLMENT_APPROVAL_REQUIRED' },
+        });
+        expect(pagos.egresar).not.toHaveBeenCalled();
+        expect(manager.save).not.toHaveBeenCalled();
+      },
+    );
+
+    it('no se paga más que el importe aprobado (409 INSTALLMENT_AMOUNT_EXCEEDS_APPROVED)', async () => {
+      await expect(
+        service.pagar('q5', { ...dto, amount: 29958.01 }, 'd1', 'u1'),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'INSTALLMENT_AMOUNT_EXCEEDS_APPROVED' },
+      });
+      expect(pagos.egresar).not.toHaveBeenCalled();
+    });
+
+    it('un importe menor al aprobado (descuento) se paga', async () => {
+      await service.pagar('q5', { ...dto, amount: 29000 }, 'd1', 'u1');
+      expect(pagos.egresar).toHaveBeenCalledTimes(1);
+    });
+
+    it('confirmar desde una lectura de documento cuenta como la aprobación de quien confirma, antes de pagar', async () => {
+      cuota.approvalStatus = InstallmentApprovalStatus.NONE;
+      cuota.approvalRequestedAt = null;
+      cuota.approvedAt = null;
+      cuota.approvedByUserId = null;
+
+      await service.pagarEn(manager as never, 'q5', dto, 'd1', 'u7', true);
+
+      expect(cuota).toMatchObject({
+        approvalStatus: InstallmentApprovalStatus.APPROVED,
+        approvedByUserId: 'u7',
+        status: InstallmentStatus.PAID,
+      });
+      expect(cuota.approvedAt).toBeInstanceOf(Date);
+      expect(cuota.approvalRequestedAt).toBeInstanceOf(Date);
+      expect(pagos.egresar).toHaveBeenCalledTimes(1);
+    });
+
+    it('sin confirmar la aprobación, pagarEn tampoco paga una cuota sin aprobar', async () => {
+      cuota.approvalStatus = InstallmentApprovalStatus.NONE;
+      await expect(
+        service.pagarEn(manager as never, 'q5', dto, 'd1', 'u7'),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(pagos.egresar).not.toHaveBeenCalled();
+    });
+
+    it('una cuota aprobada se paga como siempre', async () => {
+      cuota.approvalStatus = InstallmentApprovalStatus.APPROVED;
+      await service.pagar('q5', dto, 'd1', 'u1');
+      expect(pagos.egresar).toHaveBeenCalledTimes(1);
+      expect(cuota.status).toBe(InstallmentStatus.PAID);
+    });
+
     it('un comprobante de otra cuota es 400 y no mueve la caja', async () => {
       attachments.findDelDueno.mockResolvedValue(null);
       await expect(service.pagar('q5', dto, 'd1', 'u1')).rejects.toBeInstanceOf(
@@ -413,6 +496,79 @@ describe('InsuranceInstallmentService', () => {
       pagos.cajaDelPago.mockResolvedValue(null);
       await expect(service.pagar('q5', dto, 'd1', 'u1')).rejects.toBeInstanceOf(
         BadRequestException,
+      );
+    });
+  });
+
+  describe('aprobar', () => {
+    const AHORA = new Date('2026-11-18T12:00:00Z');
+
+    it('aprueba la cuota pendiente de aprobación y deja quién y cuándo', async () => {
+      cuota.approvalStatus = InstallmentApprovalStatus.AWAITING;
+      cuota.approvalRequestedAt = new Date('2026-11-17T12:00:00Z');
+
+      await service.aprobar('q5', 'd1', 'u9', AHORA);
+
+      expect(cuota).toMatchObject({
+        approvalStatus: InstallmentApprovalStatus.APPROVED,
+        approvedAt: AHORA,
+        approvedByUserId: 'u9',
+        status: InstallmentStatus.PENDING,
+      });
+      expect(manager.save).toHaveBeenCalledWith(cuota);
+      // Aprobar no mueve plata: el pago se registra aparte.
+      expect(pagos.egresar).not.toHaveBeenCalled();
+    });
+
+    it('se aprueba también una cuota sin pedido de aprobación (todo pago requiere aprobación): deja el pedido y la aprobación', async () => {
+      cuota.approvalStatus = InstallmentApprovalStatus.NONE;
+      await service.aprobar('q5', 'd1', 'u9', AHORA);
+      expect(cuota).toMatchObject({
+        approvalStatus: InstallmentApprovalStatus.APPROVED,
+        approvalRequestedAt: AHORA,
+        approvedAt: AHORA,
+        approvedByUserId: 'u9',
+      });
+    });
+
+    it('una cuota ya aprobada es 409 INSTALLMENT_NOT_APPROVABLE y no cambia quién aprobó', async () => {
+      cuota.approvalStatus = InstallmentApprovalStatus.APPROVED;
+      cuota.approvedByUserId = 'u1';
+      await expect(
+        service.aprobar('q5', 'd1', 'u9', AHORA),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: {
+          code: 'INSTALLMENT_NOT_APPROVABLE',
+          message: expect.stringContaining('ya está aprobada') as unknown,
+        },
+      });
+      expect(cuota.approvedByUserId).toBe('u1');
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it.each([InstallmentStatus.PAID, InstallmentStatus.CANCELLED])(
+      'una cuota %s no se aprueba (409)',
+      async (status) => {
+        cuota.status = status;
+        cuota.approvalStatus = InstallmentApprovalStatus.AWAITING;
+        await expect(
+          service.aprobar('q5', 'd1', 'u9', AHORA),
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(manager.save).not.toHaveBeenCalled();
+      },
+    );
+
+    it('una cuota de otra distribuidora es 404 (bloquea con el tenant)', async () => {
+      manager.findOne.mockResolvedValue(null);
+      await expect(
+        service.aprobar('q5', 'd2', 'u9', AHORA),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(manager.findOne).toHaveBeenCalledWith(
+        InsuranceInstallment,
+        expect.objectContaining({
+          where: { installmentId: 'q5', distributorId: 'd2' },
+        }),
       );
     });
   });
@@ -476,6 +632,41 @@ describe('InsuranceInstallmentService', () => {
         service.modificar('q5', { graceUntil: '2026-11-01' }, 'd1'),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    describe('una cuota aprobada vuelve a pedir aprobación si cambia lo aprobado', () => {
+      const AHORA = new Date('2026-11-18T12:00:00Z');
+      beforeEach(() => {
+        cuota.approvalStatus = InstallmentApprovalStatus.APPROVED;
+        cuota.approvalRequestedAt = new Date('2026-11-10T12:00:00Z');
+        cuota.approvedAt = new Date('2026-11-11T12:00:00Z');
+        cuota.approvedByUserId = 'u9';
+      });
+
+      it.each([
+        ['el importe', { amount: 31000 }],
+        ['el vencimiento', { dueDate: '2026-11-25' }],
+      ])('al corregir %s', async (_n, cambio) => {
+        await service.modificar('q5', cambio, 'd1', AHORA);
+        expect(cuota).toMatchObject({
+          approvalStatus: InstallmentApprovalStatus.AWAITING,
+          approvalRequestedAt: AHORA,
+          approvedAt: null,
+          approvedByUserId: null,
+        });
+        expect(manager.save).toHaveBeenCalledWith(cuota);
+      });
+
+      it('corregir sólo la gracia, o repetir el mismo importe, no toca la aprobación', async () => {
+        await service.modificar(
+          'q5',
+          { graceUntil: '2026-11-30', amount: cuota.amount },
+          'd1',
+          AHORA,
+        );
+        expect(cuota.approvalStatus).toBe(InstallmentApprovalStatus.APPROVED);
+        expect(cuota.approvedByUserId).toBe('u9');
+      });
     });
 
     it('una cuota paga no se corrige (409)', async () => {

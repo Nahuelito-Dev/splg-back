@@ -113,6 +113,8 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   android: 'Android',
   appealed: 'Apelada',
   approved: 'Aprobada',
+  'approvalStatus:awaiting': 'Pendiente de aprobación',
+  'approvalStatus:none': 'Sin pedir aprobación',
   approximate: 'Aproximada',
   archivo: 'Archivo',
   art_coverage: 'Alta en la ART',

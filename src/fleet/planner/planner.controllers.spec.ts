@@ -190,8 +190,10 @@ describe('controladores del planificador', () => {
       marginDays: 7,
       meanBiasDays: 2,
     };
+    const calibratedAccuracy = { ...accuracy, meanAbsoluteErrorDays: 1 };
     planner.acierto.mockResolvedValue({
       accuracy,
+      calibratedAccuracy,
       desde: new Date('2026-10-01T03:00:00Z'),
       hasta: new Date('2026-11-01T03:00:00Z'),
     });
@@ -203,6 +205,7 @@ describe('controladores del planificador', () => {
       expect.any(Date),
     );
     expect(r.accuracy).toEqual(accuracy);
+    expect(r.calibratedAccuracy).toEqual(calibratedAccuracy);
   });
 
   it('el detalle de un caso viene con el cuadro', async () => {

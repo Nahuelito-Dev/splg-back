@@ -173,6 +173,29 @@ describe('process-config', () => {
       ).toHaveLength(1);
     });
 
+    it('lleva la autocalibración: promedia 5 cierres y corrige hasta 14 días, con topes validados', () => {
+      const por = (k: string) => PLANIFICADOR.fields.find((f) => f.key === k);
+      expect(por('calibrationClosures')).toMatchObject({
+        default: 5,
+        min: 3,
+        max: 20,
+      });
+      expect(por('calibrationMaxDays')).toMatchObject({
+        default: 14,
+        min: 0,
+        max: 60,
+      });
+      expect(
+        validarParametros(PLANIFICADOR, { calibrationClosures: 2 }),
+      ).toHaveLength(1);
+      expect(
+        validarParametros(PLANIFICADOR, { calibrationMaxDays: 61 }),
+      ).toHaveLength(1);
+      expect(
+        validarParametros(PLANIFICADOR, { calibrationMaxDays: 0 }),
+      ).toHaveLength(0);
+    });
+
     it('el taller tiene que empezar antes de terminar', () => {
       expect(
         validarParametros(PLANIFICADOR, {

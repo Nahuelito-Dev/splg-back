@@ -286,6 +286,7 @@ export class DocumentReadingDecisionService {
               pago,
               distributorId,
               userId,
+              true, // confirmar la propuesta es la aprobación del admin que confirma
             );
           else
             await this.fines.pagarEn(

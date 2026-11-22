@@ -230,6 +230,24 @@ export const ESQUEMAS: Record<ProcesoAutomatico, EsquemaDeProceso> = {
         null,
         'Mandar también un correo al chofer cuando se le propone una ventana (0 no, 1 sí)',
       ),
+      campo(
+        'calibrationClosures',
+        'integer',
+        3,
+        20,
+        5,
+        'cierres',
+        'Cuántos de los últimos cierres de un vehículo y tipo de tarea se promedian para corregir la proyección (hacen falta al menos 3)',
+      ),
+      campo(
+        'calibrationMaxDays',
+        'integer',
+        0,
+        60,
+        14,
+        'días',
+        'Tope de la corrección de la fecha proyectada por el desvío del vehículo, en uno y otro sentido (0 apaga la autocalibración)',
+      ),
     ],
     cruzada: (v) =>
       v.workshopStartHour >= v.workshopEndHour

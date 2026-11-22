@@ -12,6 +12,7 @@ import { Brackets, EntityManager, Repository } from 'typeorm';
 import { CashDocumentPaymentService } from '../cash/application/cash-document-payment.service';
 import { CashReferenceType, CashSystemCode } from '../cash/domain/cash.enums';
 import { instanteValido } from '../cash/domain/instante-del-pago';
+import { desvioDelPronostico } from './planner/domain/autocalibracion';
 import { diaArgentino } from '../common/utils/dias-argentina';
 import {
   MaintenanceTask,
@@ -364,6 +365,30 @@ export class FleetTaskService {
     return task;
   }
 
+  private desvioDelPronostico(
+    task: MaintenanceTask,
+    cerradaEn: Date,
+  ): number | null {
+    if (
+      !task.firstPredictedDueAt ||
+      !task.firstPredictedAt ||
+      task.firstPredictedOdometerKm === null ||
+      task.dueKm === null ||
+      task.odometerKm === null
+    ) {
+      return null;
+    }
+    return desvioDelPronostico({
+      primeraFecha: task.firstPredictedDueAt,
+      pronosticadaEn: task.firstPredictedAt,
+      odometroAlPronosticar: task.firstPredictedOdometerKm,
+      dueKm: task.dueKm,
+      dueAt: task.dueAt,
+      cerradaEn,
+      odometroAlCerrar: task.odometerKm,
+    });
+  }
+
   /** CU-141: registrar que el mantenimiento/habilitación se hizo. */
   async close(
     id: string,
@@ -421,6 +446,12 @@ export class FleetTaskService {
         task.provider = dto.provider ?? task.provider;
         task.notes = dto.notes ?? task.notes;
         task.status = MaintenanceTaskStatus.DONE;
+        // Autocalibración (M2): cuánto se equivocó el pronóstico de uso, medido con el
+        // odómetro y no con la fecha del taller (que depende de la ventana elegida).
+        task.forecastDeviationDays = this.desvioDelPronostico(
+          task,
+          performedAt,
+        );
 
         const guardada = await manager
           .getRepository(MaintenanceTask)

@@ -94,8 +94,13 @@ export class EvaluatedWindowResponseDto {
   urgent!: boolean;
   @ApiProperty({ description: 'Entre las que se le ofrecen al chofer' })
   offered!: boolean;
-  @ApiProperty({ enum: ['coverage', 'not_selected'], nullable: true })
-  discardReason!: 'coverage' | 'not_selected' | null;
+  @ApiProperty({
+    enum: ['coverage', 'not_selected', 'rejected', 'expired'],
+    nullable: true,
+    description:
+      '`coverage`: sin cobertura; `not_selected`: no entró entre las ofrecidas; `rejected`: se ofreció y el chofer la rechazó; `expired`: se ofreció y venció sin respuesta',
+  })
+  discardReason!: 'coverage' | 'not_selected' | 'rejected' | 'expired' | null;
 }
 
 export class PlanningCaseResponseDto {
@@ -175,6 +180,40 @@ export class PlanningCasePageDto {
   counts!: Record<string, number>;
 }
 
+export class ForecastCalibrationResponseDto {
+  @ApiProperty({
+    description:
+      'Días que se sumaron a la fecha por kilometraje (negativo: se adelantó)',
+    example: 6,
+  })
+  correctionDays!: number;
+  @ApiProperty({
+    description:
+      'Desvío medio de los cierres promediados, con signo: positivo = se hizo después de lo proyectado',
+    example: 6.4,
+  })
+  averageDeviationDays!: number;
+  @ApiProperty({ description: 'Cierres promediados', example: 5 })
+  samples!: number;
+  @ApiProperty({
+    description: 'El desvío medio superaba el tope y la corrección quedó en él',
+  })
+  capped!: boolean;
+  @ApiProperty({
+    enum: ['vehicle_task_type'],
+    description:
+      'De dónde sale: el historial de cierres de este vehículo en este tipo de tarea',
+  })
+  source!: 'vehicle_task_type';
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: 'La fecha por kilometraje antes de corregir',
+  })
+  uncorrectedAt!: Date | null;
+}
+
 export class ForecastItemResponseDto {
   @ApiProperty({ format: 'uuid' }) taskId!: string;
   @ApiProperty() taskName!: string;
@@ -220,6 +259,13 @@ export class ForecastItemResponseDto {
     | null;
   @ApiProperty({ enum: PlanningCaseStatus, nullable: true })
   caseStatus!: PlanningCaseStatus | null;
+  @ApiProperty({
+    type: ForecastCalibrationResponseDto,
+    nullable: true,
+    description:
+      'La corrección que se le aplicó a `predictedByKmAt` por el desvío histórico del vehículo en este tipo de tarea; `null` si no hubo (menos de 3 cierres, autocalibración apagada o nada que corregir)',
+  })
+  calibration!: ForecastCalibrationResponseDto | null;
 }
 
 export class NextWindowResponseDto {
@@ -329,7 +375,13 @@ export class PlannerAccuracyResponseDto {
   @ApiProperty({
     type: PredictionAccuracyDto,
     description:
-      'Primera fecha proyectada del vencimiento por kilometraje contra la fecha en que se hizo el trabajo, en las tareas cerradas del período',
+      'Primera fecha proyectada del vencimiento por kilometraje, sin corregir, contra la fecha en que se hizo el trabajo, en las tareas cerradas del período',
   })
   accuracy!: PredictionAccuracyDto;
+  @ApiProperty({
+    type: PredictionAccuracyDto,
+    description:
+      'Lo mismo con la primera fecha ya corregida por el desvío del vehículo (autocalibración); igual a `accuracy` donde no hubo corrección',
+  })
+  calibratedAccuracy!: PredictionAccuracyDto;
 }
