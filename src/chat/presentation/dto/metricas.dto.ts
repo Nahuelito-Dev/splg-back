@@ -440,6 +440,13 @@ export class CompanyChatUsageDto {
   @ApiProperty({ format: 'uuid' }) distributorId!: string;
   @ApiProperty({ example: 'Gas del Sur' }) name!: string;
   @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Logo de la empresa: URL firmada de S3 de corta vigencia, o null si no tiene',
+  })
+  logoUrl!: string | null;
+  @ApiProperty({
     description: 'Conversaciones con clientes y choferes creadas en el período',
   })
   conversations!: number;

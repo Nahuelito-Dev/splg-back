@@ -313,6 +313,10 @@ export class UsersController {
   }
 
   @Get(':id/photo')
+  // Desde plataforma, la foto de las mismas cuentas que ya devuelve
+  // `GET /users/:id` con su `photoUrl` (super admins y admins de empresa), para
+  // renovar la URL firmada sin sesión de soporte; clientes y choferes, 404.
+  @Alcance('ambos')
   @ApiVerFoto(
     'Ver la foto de perfil de un usuario',
     'El id no es un UUID o el modo no es válido',
@@ -330,7 +334,7 @@ export class UsersController {
       throw new ForbiddenException('No podés ver a otro usuario');
     }
     if (esAdministrador(user) && !esElMismoUsuario(id, user)) {
-      await this.assertDeSuDistribuidora(id, distributorId);
+      await this.assertPuedeVer(id, user, distributorId);
     }
     responderFoto(res, query.modo, await this.userPhoto.enlace(id));
   }

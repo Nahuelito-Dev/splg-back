@@ -4,6 +4,13 @@ import type {
   PlatformMetricsRepository,
 } from '../infrastructure/platform-metrics.repository';
 import { PlatformActivityService } from './platform-activity.service';
+import type { EntityPhotoService } from '../../s3/entity-photo.service';
+
+/** Firma de mentira: la key con una marca, `null` si no hay foto. */
+const urlDe = jest.fn((key: string | null | undefined) =>
+  Promise.resolve(key ? `https://s3.test/${key}?firma` : null),
+);
+const fotos = { urlDe } as unknown as EntityPhotoService;
 
 const fila = (total: number): FilaDeActividad => ({
   id: 'a1',
@@ -11,6 +18,7 @@ const fila = (total: number): FilaDeActividad => ({
   kind: 'request',
   actor_user_id: 'u1',
   actor_name: 'Soporte',
+  actor_photo_key: null,
   actor_role: 'super_admin',
   method: 'PATCH',
   resource: 'distributor',
@@ -31,6 +39,7 @@ function armar() {
   return {
     service: new PlatformActivityService(
       repo as unknown as PlatformMetricsRepository,
+      fotos,
     ),
     repo,
   };
@@ -62,6 +71,7 @@ describe('PlatformActivityService', () => {
       kind: 'request',
       actorUserId: 'u1',
       actorName: 'Soporte',
+      actorPhotoUrl: null,
       actorRole: 'super_admin',
       method: 'PATCH',
       resource: 'distributor',
@@ -73,6 +83,33 @@ describe('PlatformActivityService', () => {
       statusCode: 200,
     });
     expect(repo.totalDeActividad).not.toHaveBeenCalled();
+  });
+
+  it('la foto del actor: firmada si tiene, null si no tiene o no hay actor; una firma por foto aunque el actor se repita', async () => {
+    urlDe.mockClear();
+    const { service, repo } = armar();
+    repo.actividad.mockResolvedValue([
+      { ...fila(4), id: 'a1', actor_photo_key: 'users/u1/a.jpg' },
+      { ...fila(4), id: 'a2', actor_photo_key: 'users/u1/a.jpg' },
+      { ...fila(4), id: 'a3', actor_user_id: 'u2', actor_photo_key: null },
+      {
+        ...fila(4),
+        id: 'a4',
+        actor_user_id: null,
+        actor_name: null,
+        actor_photo_key: null,
+      },
+    ]);
+    const r = await service.listar({ limit: 20, offset: 0 });
+    expect(r.items.map((i) => i.actorPhotoUrl)).toEqual([
+      'https://s3.test/users/u1/a.jpg?firma',
+      'https://s3.test/users/u1/a.jpg?firma',
+      null,
+      null,
+    ]);
+    expect(urlDe).toHaveBeenCalledTimes(1);
+    // La key no sale en la respuesta.
+    expect(JSON.stringify(r)).not.toContain('actor_photo_key');
   });
 
   it('sin filtros pasa nulos', async () => {

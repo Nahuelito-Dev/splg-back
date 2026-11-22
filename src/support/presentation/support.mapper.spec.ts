@@ -45,7 +45,7 @@ describe('SupportMapper', () => {
       id: 's1',
       distributorId: 'd1',
       distributorName: 'Empresa A',
-      requestedBy: { userId: 'u1', fullName: 'Soporte Uno' },
+      requestedBy: { userId: 'u1', fullName: 'Soporte Uno', photoUrl: null },
       kind: 'consented',
       status: 'revoked',
       reason: 'motivo',
@@ -53,17 +53,44 @@ describe('SupportMapper', () => {
       scope: ['files'],
       requestedMinutes: 60,
       requestExpiresAt: '2026-11-14T12:00:00.000Z',
-      decidedBy: { userId: 'a1', fullName: 'Admin A' },
+      decidedBy: { userId: 'a1', fullName: 'Admin A', photoUrl: null },
       decidedAt: '2026-11-13T12:00:00.000Z',
       decisionNote: null,
       startedAt: '2026-11-13T12:00:00.000Z',
       expiresAt: '2026-11-13T13:00:00.000Z',
       endedAt: '2026-11-13T12:10:00.000Z',
-      endedBy: { userId: 'a1', fullName: null },
+      endedBy: { userId: 'a1', fullName: null, photoUrl: null },
       endReason: 'revoked_by_company',
       createdAt: '2026-11-13T11:00:00.000Z',
     });
     expect(JSON.stringify(dto)).not.toContain('soporte@x.test');
+  });
+
+  it('con las fotos firmadas, cada persona lleva la suya; la que no tiene, null', () => {
+    const s = Object.assign(new SupportSession(), {
+      supportSessionId: 's1',
+      distributorId: 'd1',
+      requestedBy: 'u1',
+      decidedBy: 'a1',
+      endedBy: 'a2',
+      scope: [],
+      requestExpiresAt: null,
+      decidedAt: null,
+      startedAt: null,
+      expiresAt: null,
+      endedAt: null,
+      createdAt: new Date('2026-11-13T11:00:00Z'),
+    });
+    const dto = SupportMapper.toDto(
+      s,
+      new Map([
+        ['u1', 'https://s3.test/u1.jpg'],
+        ['a1', null],
+      ]),
+    );
+    expect(dto.requestedBy.photoUrl).toBe('https://s3.test/u1.jpg');
+    expect(dto.decidedBy?.photoUrl).toBeNull();
+    expect(dto.endedBy?.photoUrl).toBeNull();
   });
 
   it('un acceso sale sin la ip ni el usuario', () => {

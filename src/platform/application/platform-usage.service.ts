@@ -11,6 +11,7 @@ import {
 } from '../presentation/dto/platform-response.dto';
 import { dolares } from '../presentation/platform.mapper';
 import type { Mes } from './periodo';
+import { EntityPhotoService } from '../../s3/entity-photo.service';
 
 const ESQUEMA_DEL_LECTOR = ESQUEMAS[ConfigurableProcess.DOCUMENT_READING];
 
@@ -40,10 +41,38 @@ export function porcentajeDelTope(costo: number, tope: number): number {
  */
 @Injectable()
 export class PlatformUsageService {
-  constructor(private readonly repo: PlatformMetricsRepository) {}
+  constructor(
+    private readonly repo: PlatformMetricsRepository,
+    private readonly fotos: EntityPhotoService,
+  ) {}
 
+  /** El uso por empresa con el logo firmado de cada una (la pantalla de uso). */
   async porEmpresa(mes: Mes): Promise<DocumentReadingUsageResponseDto> {
+    return this.calcular(mes, true);
+  }
+
+  /**
+   * `conLogos`: el tablero sólo quiere los totales, así que no firma nada. La
+   * key del logo llega en la consulta de las empresas (sin una por fila).
+   */
+  private async calcular(
+    mes: Mes,
+    conLogos: boolean,
+  ): Promise<DocumentReadingUsageResponseDto> {
     const empresas = await this.repo.nombres();
+    const logos = new Map<string, string | null>(
+      conLogos
+        ? await Promise.all(
+            empresas.map(
+              async (e) =>
+                [e.id, await this.fotos.urlDe(e.logo_key)] as [
+                  string,
+                  string | null,
+                ],
+            ),
+          )
+        : [],
+    );
     const uso = new Map(
       (await this.repo.lector(null, mes.desde, mes.hasta)).map((f) => [
         f.id,
@@ -59,6 +88,7 @@ export class PlatformUsageService {
       const dto = new DocumentReadingUsageItemDto();
       dto.distributorId = e.id;
       dto.name = e.name;
+      dto.logoUrl = logos.get(e.id) ?? null;
       dto.readings = u?.lecturas ?? 0;
       dto.costUsd = dolares([u?.costo ?? '0']);
       dto.monthlyBudgetUsd = p.monthlyBudgetUsd;
@@ -85,7 +115,7 @@ export class PlatformUsageService {
 
   /** El total del mes de todas las empresas vigentes (para el tablero). */
   async totalDelMes(mes: Mes): Promise<DocumentReadingTotalsDto> {
-    const r = await this.porEmpresa(mes);
+    const r = await this.calcular(mes, false);
     const dto = new DocumentReadingTotalsDto();
     dto.month = r.month;
     dto.readings = r.totalReadings;

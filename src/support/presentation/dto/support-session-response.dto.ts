@@ -13,6 +13,14 @@ export class SupportActorDto {
 
   @ApiProperty({ type: String, nullable: true, example: 'Ana Pérez' })
   fullName!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Foto de perfil: URL firmada de S3 de corta vigencia, o null si no tiene',
+  })
+  photoUrl!: string | null;
 }
 
 /** Una sesión de soporte (pedido, sesión activa o historial). */

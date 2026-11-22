@@ -114,13 +114,18 @@ export class PlatformMapper {
     return dto;
   }
 
-  static actividad(f: FilaDeActividad): ActivityItemDto {
+  /** `actorPhotoUrl`: la foto del actor ya firmada (el mapper no conoce S3). */
+  static actividad(
+    f: FilaDeActividad,
+    actorPhotoUrl: string | null,
+  ): ActivityItemDto {
     const dto = new ActivityItemDto();
     dto.id = f.id;
     dto.at = f.at;
     dto.kind = f.kind;
     dto.actorUserId = f.actor_user_id;
     dto.actorName = f.actor_name;
+    dto.actorPhotoUrl = actorPhotoUrl;
     dto.actorRole = f.actor_role;
     dto.method = f.method;
     dto.resource = f.resource;

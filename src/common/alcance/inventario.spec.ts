@@ -199,9 +199,13 @@ const AMBOS = [
   'GET /admin/term/:term',
   'GET /audit',
   'GET /distributor/current',
+  // El logo de una empresa: identidad visual que ya sale en la lista de plataforma.
+  'GET /distributor/:id/logo',
   'GET /users',
   'GET /users/:id',
   'GET /users/email/:email',
+  // La foto de las cuentas que la plataforma ya ve (super admins y admins).
+  'GET /users/:id/photo',
   'GET /users/me/photo',
   'GET /users/phone/:phoneNumber',
   'GET /v2/admin-notifications',

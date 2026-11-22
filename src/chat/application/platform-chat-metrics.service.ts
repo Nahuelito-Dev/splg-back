@@ -28,6 +28,7 @@ import {
   type TrazaDeEmpresa,
 } from '../infrastructure/metricas-read-model';
 import { SupportSettingsService } from './support-settings.service';
+import { EntityPhotoService } from '../../s3/entity-photo.service';
 
 export interface MetricasDelChatDeSoporte {
   /** Chats con la plataforma creados en el período. */
@@ -59,6 +60,8 @@ export interface MetricasDeTickets {
 export interface MetricasDeUnaEmpresa {
   distributorId: string;
   name: string;
+  /** Logo de la empresa: URL firmada de corta vigencia, o `null` si no tiene. */
+  logoUrl: string | null;
   conversations: number;
   messages: number;
   /** Sólo si la empresa usó el asistente en el período. */
@@ -98,6 +101,7 @@ export class PlatformChatMetricsService {
   constructor(
     private readonly lectura: MetricasReadModel,
     private readonly soporte: SupportSettingsService,
+    private readonly fotos: EntityPhotoService,
   ) {}
 
   async metricas(
@@ -138,6 +142,10 @@ export class PlatformChatMetricsService {
         empresa,
       ),
     ]);
+    // La key del logo vino en la consulta del uso: sólo falta firmarla.
+    const logos = await Promise.all(
+      uso.map((u) => this.fotos.urlDe(u.logoKey)),
+    );
     const horario: HorarioDeLaEmpresa = {
       franjas: ajustes.chatHours,
       feriados: [],
@@ -230,12 +238,16 @@ export class PlatformChatMetricsService {
         soporte.atendidas,
         resueltasSoporte,
       ),
-      companies: uso.map((u) => {
+      companies: uso.map((u, i) => {
         const propias = deEmpresas.trazas.filter(
           (t) => t.distributorId === u.distributorId,
         );
         return {
-          ...u,
+          distributorId: u.distributorId,
+          name: u.name,
+          logoUrl: logos[i],
+          conversations: u.conversations,
+          messages: u.messages,
           assistant:
             propias.length > 0
               ? asistenteDe(

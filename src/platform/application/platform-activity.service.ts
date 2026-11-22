@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PlatformMetricsRepository } from '../infrastructure/platform-metrics.repository';
+import type { FilaDeActividad } from '../infrastructure/platform-metrics.repository';
 import { ActivityListResponseDto } from '../presentation/dto/platform-response.dto';
 import { PlatformMapper } from '../presentation/platform.mapper';
+import { EntityPhotoService } from '../../s3/entity-photo.service';
 
 export interface FiltroDeActividadDto {
   from?: string;
@@ -19,7 +21,10 @@ export interface FiltroDeActividadDto {
  */
 @Injectable()
 export class PlatformActivityService {
-  constructor(private readonly repo: PlatformMetricsRepository) {}
+  constructor(
+    private readonly repo: PlatformMetricsRepository,
+    private readonly fotos: EntityPhotoService,
+  ) {}
 
   async listar(q: FiltroDeActividadDto): Promise<ActivityListResponseDto> {
     const desde = q.from ? new Date(q.from) : null;
@@ -42,6 +47,28 @@ export class PlatformActivityService {
     const total =
       filas[0]?.total ??
       (q.offset > 0 ? await this.repo.totalDeActividad(filtro) : 0);
-    return { items: filas.map((f) => PlatformMapper.actividad(f)), total };
+    const fotos = await this.fotosDeLosActores(filas);
+    return {
+      items: filas.map((f) =>
+        PlatformMapper.actividad(f, fotos.get(f.actor_photo_key ?? '') ?? null),
+      ),
+      total,
+    };
+  }
+
+  /**
+   * La foto firmada de cada actor de la página, por su key. La key llega en la
+   * misma consulta y cada foto se firma una sola vez aunque el actor se repita.
+   */
+  private async fotosDeLosActores(
+    filas: readonly FilaDeActividad[],
+  ): Promise<Map<string, string | null>> {
+    const keys = [
+      ...new Set(
+        filas.flatMap((f) => (f.actor_photo_key ? [f.actor_photo_key] : [])),
+      ),
+    ];
+    const urls = await Promise.all(keys.map((k) => this.fotos.urlDe(k)));
+    return new Map(keys.map((k, i) => [k, urls[i]]));
   }
 }

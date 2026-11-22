@@ -10,6 +10,7 @@ import type {
   TicketDelPeriodo,
 } from '../infrastructure/metricas-read-model';
 import { PlatformChatMetricsService } from './platform-chat-metrics.service';
+import type { EntityPhotoService } from '../../s3/entity-photo.service';
 import {
   configuracionPorDefecto,
   type SupportSettingsService,
@@ -193,12 +194,14 @@ function lecturaFalsa() {
         {
           distributorId: A,
           name: 'Gas del Sur',
+          logoKey: 'distributors/a/logo/x.png',
           conversations: 10,
           messages: 80,
         },
         {
           distributorId: B,
           name: 'Florchi Gas',
+          logoKey: null,
           conversations: 2,
           messages: 5,
         },
@@ -228,6 +231,10 @@ function servicio() {
     s: new PlatformChatMetricsService(
       lectura as unknown as MetricasReadModel,
       soporte as unknown as SupportSettingsService,
+      {
+        urlDe: (key: string | null) =>
+          Promise.resolve(key ? `https://s3.test/${key}?firma` : null),
+      } as unknown as EntityPhotoService,
     ),
   };
 }
@@ -308,6 +315,7 @@ describe('PlatformChatMetricsService (tablero de la plataforma)', () => {
       {
         distributorId: A,
         name: 'Gas del Sur',
+        logoUrl: 'https://s3.test/distributors/a/logo/x.png?firma',
         conversations: 10,
         messages: 80,
         assistant: {
@@ -323,11 +331,14 @@ describe('PlatformChatMetricsService (tablero de la plataforma)', () => {
       {
         distributorId: B,
         name: 'Florchi Gas',
+        logoUrl: null,
         conversations: 2,
         messages: 5,
         assistant: null,
       },
     ]);
+    // La key del bucket no sale: sólo la URL firmada.
+    expect(JSON.stringify(m)).not.toContain('logoKey');
     // Nada de texto: sólo números, fechas del período, ids y nombres.
     expect(JSON.stringify(m)).not.toMatch(/body|preview|comment/);
   });

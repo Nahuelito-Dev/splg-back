@@ -33,6 +33,20 @@ describe('ChatReadModel: qué cuenta como «sin leer» (relevamiento B2)', () =>
     ]);
   });
 
+  it('los logos de las empresas: una consulta por los ids (sin repetir), sólo las que tienen logo', async () => {
+    const { sql, lectura } = base([
+      { distributor_id: 'dist-a', logo_key: 'distributors/dist-a/logo/x.png' },
+    ]);
+    expect(
+      await lectura.logosDeLasEmpresas(['dist-a', 'dist-a', 'dist-b']),
+    ).toEqual(new Map([['dist-a', 'distributors/dist-a/logo/x.png']]));
+    expect(sql).toHaveLength(1);
+    expect(sql[0]).toContain('"logo_key" IS NOT NULL');
+    // Sin ids no se consulta.
+    expect(await lectura.logosDeLasEmpresas([])).toEqual(new Map());
+    expect(sql).toHaveLength(1);
+  });
+
   it('un ticket cerrado no cuenta en el contador de la empresa ni en el de la plataforma', async () => {
     const { sql, lectura } = base([{ chat: '0', tickets: '0' }]);
     await lectura.resumenDeLaEmpresa('dist-a', 'a');

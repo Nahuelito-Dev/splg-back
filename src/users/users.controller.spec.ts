@@ -1,10 +1,17 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import type { Response } from 'express';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { UserPhotoService } from './user-photo.service';
 import { User } from './entities/user.entity';
 import { RoleType } from '../common/constants/role-type.enum';
+import { DownloadMode } from '../s3/dto/download-link.dto';
+import { AlcanceGuard } from '../common/guards/alcance.guard';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { AutoridadSobreCuentas } from '../common/permisos/autoridad-sobre-cuentas';
 
@@ -316,6 +323,108 @@ describe('UsersController — alcance', () => {
         controller.getPhoto('otro', {}, usuario(RoleType.CUSTOMER), null, resp),
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(photo.enlace).not.toHaveBeenCalled();
+    });
+
+    const EN_JSON = { modo: DownloadMode.URL };
+
+    it.each([RoleType.ADMIN, RoleType.SUPER_ADMIN])(
+      'la plataforma, sin sesión de soporte, renueva la foto de una cuenta que ya ve (%s)',
+      async (rol) => {
+        service.findAlcance.mockResolvedValue({ rol });
+        await controller.getPhoto(
+          'otro',
+          EN_JSON,
+          usuario(RoleType.SUPER_ADMIN),
+          null,
+          resp,
+        );
+        expect(photo.enlace).toHaveBeenCalledWith('otro');
+      },
+    );
+
+    it.each([RoleType.CUSTOMER, RoleType.DELIVERY])(
+      'la plataforma, sin sesión de soporte, no ve la foto de un %s (404)',
+      async (rol) => {
+        service.findAlcance.mockResolvedValue({ rol });
+        await expect(
+          controller.getPhoto(
+            'otro',
+            EN_JSON,
+            usuario(RoleType.SUPER_ADMIN),
+            null,
+            resp,
+          ),
+        ).rejects.toBeInstanceOf(NotFoundException);
+        expect(photo.enlace).not.toHaveBeenCalled();
+      },
+    );
+
+    it('en modo soporte el super admin ve las de esa empresa, como un admin (cliente incluido), y no las de otra', async () => {
+      const enSoporte = {
+        ...usuario(RoleType.SUPER_ADMIN),
+        support_session_id: 's1',
+      };
+      service.findAlcance.mockResolvedValue({ rol: RoleType.CUSTOMER });
+      await controller.getPhoto('otro', EN_JSON, enSoporte, 'd1', resp);
+      expect(service.perteneceA).toHaveBeenCalledWith('otro', 'd1');
+      expect(photo.enlace).toHaveBeenCalledWith('otro');
+      service.perteneceA.mockResolvedValue(false);
+      await expect(
+        controller.getPhoto('ajeno', EN_JSON, enSoporte, 'd1', resp),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('el admin de empresa ve la de su gente y no la de otra distribuidora (404), como antes', async () => {
+      await controller.getPhoto(
+        'otro',
+        EN_JSON,
+        usuario(RoleType.ADMIN),
+        'd1',
+        resp,
+      );
+      expect(photo.enlace).toHaveBeenCalledWith('otro');
+      expect(service.findAlcance).not.toHaveBeenCalled();
+      service.perteneceA.mockResolvedValue(false);
+      await expect(
+        controller.getPhoto(
+          'ajeno',
+          EN_JSON,
+          usuario(RoleType.ADMIN),
+          'd1',
+          resp,
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('de las fotos de usuarios, la plataforma sin sesión sólo puede LEER: subir y quitar siguen pidiendo la sesión', () => {
+      const guard = new AlcanceGuard(new Reflector());
+      const intentar = (
+        metodo: 'getPhoto' | 'uploadPhoto' | 'removePhoto',
+        verbo: string,
+      ): true | string => {
+        const ctx = {
+          getType: () => 'http',
+          switchToHttp: () => ({
+            getRequest: () => ({
+              method: verbo,
+              path: '/users/x/photo',
+              user: usuario(RoleType.SUPER_ADMIN),
+            }),
+          }),
+          getHandler: () => UsersController.prototype[metodo],
+          getClass: () => UsersController,
+        } as unknown as ExecutionContext;
+        try {
+          return guard.canActivate(ctx) as true;
+        } catch (error) {
+          return (error as { response: { code: string } }).response.code;
+        }
+      };
+      expect(intentar('getPhoto', 'GET')).toBe(true);
+      expect(intentar('uploadPhoto', 'PUT')).toBe('SUPPORT_SESSION_REQUIRED');
+      expect(intentar('removePhoto', 'DELETE')).toBe(
+        'SUPPORT_SESSION_REQUIRED',
+      );
     });
   });
 

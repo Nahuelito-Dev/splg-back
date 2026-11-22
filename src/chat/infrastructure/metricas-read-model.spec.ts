@@ -304,6 +304,7 @@ describe('MetricasReadModel', () => {
         {
           distributor_id: A,
           name: 'Gas del Sur',
+          logo_key: 'distributors/a/logo/x.png',
           conversaciones: '5',
           mensajes: '12',
         },
@@ -343,7 +344,13 @@ describe('MetricasReadModel', () => {
       },
     ]);
     expect(await lectura.usoPorEmpresa(RANGO, null)).toEqual([
-      { distributorId: A, name: 'Gas del Sur', conversations: 5, messages: 12 },
+      {
+        distributorId: A,
+        name: 'Gas del Sur',
+        logoKey: 'distributors/a/logo/x.png',
+        conversations: 5,
+        messages: 12,
+      },
     ]);
     expect(await lectura.existeLaEmpresa(A)).toBe(true);
     expect(await lectura.existeLaEmpresa(A)).toBe(false);

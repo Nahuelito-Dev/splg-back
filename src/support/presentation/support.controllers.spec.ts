@@ -1,10 +1,21 @@
 import { SupportSessionStatus } from '../domain/support-session.enums';
 import { SupportSession } from '../entities/support-session.entity';
+import { User } from '../../users/entities/user.entity';
 import type { SupportAccessService } from '../application/support-access.service';
 import type { SupportSessionsService } from '../application/support-sessions.service';
 import { CreateSupportSessionDto } from './dto/create-support-session.dto';
 import { SupportAccessController } from './support-access.controller';
 import { SupportSessionsController } from './support-sessions.controller';
+import { SupportSessionPresenter } from './support-session.presenter';
+import type { EntityPhotoService } from '../../s3/entity-photo.service';
+
+/** El presenter real con una firma de mentira: `photoKey` → URL. */
+const urlDe = jest.fn((key: string | null | undefined) =>
+  Promise.resolve(key ? `https://s3.test/${key}?firma` : null),
+);
+const presentar = new SupportSessionPresenter({
+  urlDe,
+} as unknown as EntityPhotoService);
 
 const SESION = Object.assign(new SupportSession(), {
   supportSessionId: 's1',
@@ -31,6 +42,7 @@ describe('SupportSessionsController', () => {
   };
   const controller = new SupportSessionsController(
     service as unknown as SupportSessionsService,
+    presentar,
   );
 
   it('pedir pasa el usuario y devuelve el DTO', async () => {
@@ -91,6 +103,7 @@ describe('SupportAccessController', () => {
   const controller = new SupportAccessController(
     service as unknown as SupportAccessService,
     sesiones as unknown as SupportSessionsService,
+    presentar,
   );
 
   it('todo va acotado a la distribuidora del admin', async () => {
@@ -124,5 +137,80 @@ describe('SupportAccessController', () => {
     expect(service.actualizarPolitica).toHaveBeenCalledWith('d1', {
       emergencyAllowed: false,
     });
+  });
+});
+
+describe('SupportSessionPresenter: la foto de quien pide, decide y termina', () => {
+  const persona = (photoKey: string | null) =>
+    Object.assign(new User(), { photoKey });
+  const sesion = (extra: Partial<SupportSession>) =>
+    Object.assign(new SupportSession(), SESION, extra);
+
+  beforeEach(() => urlDe.mockClear());
+
+  it('con foto: sale la URL firmada de cada persona; sin foto, null', async () => {
+    const [dto] = await presentar.sesiones([
+      sesion({
+        requestedBy: 'u1',
+        requester: persona('users/u1/a.jpg'),
+        decidedBy: 'a1',
+        decider: persona(null),
+        endedBy: 'u1',
+        ender: persona('users/u1/a.jpg'),
+      }),
+    ]);
+    expect(dto.requestedBy).toEqual({
+      userId: 'u1',
+      fullName: null,
+      photoUrl: 'https://s3.test/users/u1/a.jpg?firma',
+    });
+    expect(dto.decidedBy?.photoUrl).toBeNull();
+    expect(dto.endedBy?.photoUrl).toBe('https://s3.test/users/u1/a.jpg?firma');
+  });
+
+  it('firma una vez por persona aunque pida varias sesiones de la página (sin N+1)', async () => {
+    const dtos = await presentar.sesiones([
+      sesion({ requestedBy: 'u1', requester: persona('k1') }),
+      sesion({ requestedBy: 'u1', requester: persona('k1') }),
+      sesion({ requestedBy: 'u2', requester: persona('k2') }),
+    ]);
+    expect(urlDe).toHaveBeenCalledTimes(2);
+    expect(dtos.map((d) => d.requestedBy.photoUrl)).toEqual([
+      'https://s3.test/k1?firma',
+      'https://s3.test/k1?firma',
+      'https://s3.test/k2?firma',
+    ]);
+  });
+
+  it('una persona que no vino cargada (cuenta dada de baja): null, sin firmar', async () => {
+    const dto = await presentar.sesion(sesion({ requestedBy: 'u9' }));
+    expect(dto.requestedBy.photoUrl).toBeNull();
+    expect(urlDe).not.toHaveBeenCalled();
+  });
+
+  it('los controllers de la plataforma y de la empresa devuelven la foto', async () => {
+    const conFoto = sesion({ requestedBy: 'u1', requester: persona('k1') });
+    const plataforma = new SupportSessionsController(
+      {
+        listar: jest.fn().mockResolvedValue({ items: [conFoto], total: 1 }),
+      } as unknown as SupportSessionsService,
+      presentar,
+    );
+    const empresa = new SupportAccessController(
+      {
+        listar: jest.fn().mockResolvedValue({ items: [conFoto], total: 1 }),
+      } as unknown as SupportAccessService,
+      {} as unknown as SupportSessionsService,
+      presentar,
+    );
+    const esperado = {
+      items: [{ requestedBy: { photoUrl: 'https://s3.test/k1?firma' } }],
+    };
+    await expect(
+      plataforma.listar({ limit: 20, offset: 0 }),
+    ).resolves.toMatchObject(esperado);
+    await expect(
+      empresa.listar('d1', { limit: 20, offset: 0 }),
+    ).resolves.toMatchObject(esperado);
   });
 });
