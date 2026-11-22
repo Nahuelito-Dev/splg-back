@@ -93,6 +93,7 @@ import { TimeSlotModule } from './time-slot/time-slot.module';
 import { PdfModule } from './pdf/pdf.module';
 import { ReportsModule } from './reports/reports.module';
 import { RoutesModule } from './routes/routes.module';
+import { LiveFleetModule } from './live-fleet/live-fleet.module';
 import { HealthModule } from './health/health.module';
 import { FirebaseModule } from './firebase/firebase.module';
 import { ExportsModule } from './exports/exports.module';
@@ -269,6 +270,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     PdfModule,
     HealthModule,
     RoutesModule,
+    LiveFleetModule,
     DistributorModule,
     RatingModule,
     IncidentModule,
