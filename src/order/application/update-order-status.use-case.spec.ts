@@ -7,6 +7,7 @@ import {
 import { DispatchOfferStatus } from '../entities/dispatch-offer.entity';
 import {
   MENSAJE_PEDIDO_EN_RECORRIDO,
+  RechazoAsentado,
   UpdateOrderStatusUseCase,
 } from './update-order-status.use-case';
 import { EVENTO_PEDIDO_ENTREGADO } from '../domain/events/pedido-entregado.event';
@@ -627,6 +628,111 @@ describe('UpdateOrderStatusUseCase', () => {
         expect(queryRunner.commitTransaction).toHaveBeenCalled();
       });
 
+      it('la confirmación del chofer (punto, precisión, distancia, quién) queda en el pedido que se guarda', async () => {
+        await useCase.execute(
+          'ord-1',
+          OrderStatus.DELIVERED,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          {
+            point: { type: 'Point', coordinates: [-55.89, -27.36] },
+            accuracyM: 8.5,
+            distanceM: 42,
+            outOfRange: true,
+            byUserId: 'chofer-user-1',
+            byRole: RoleType.DELIVERY,
+          },
+        );
+        expect(orders.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            deliveryConfirmedPoint: {
+              type: 'Point',
+              coordinates: [-55.89, -27.36],
+            },
+            deliveryConfirmedAccuracyM: 8.5,
+            deliveryConfirmedDistanceM: 42,
+            deliveryConfirmedOutOfRange: true,
+            deliveryConfirmedByUserId: 'chofer-user-1',
+            deliveryConfirmedByRole: 'delivery',
+          }),
+        );
+      });
+
+      it('M2: la entrega manual del admin (PATCH status / v1) asienta quién confirmó, sin ubicación', async () => {
+        await useCase.execute(
+          'ord-1',
+          OrderStatus.DELIVERED,
+          undefined,
+          RoleType.ADMIN,
+          'admin-1',
+          'El cliente no tiene celular',
+        );
+        expect(orders.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            deliveryConfirmedPoint: null,
+            deliveryConfirmedDistanceM: null,
+            deliveryConfirmedOutOfRange: false,
+            deliveryConfirmedByUserId: 'admin-1',
+            deliveryConfirmedByRole: 'admin',
+          }),
+        );
+      });
+
+      it('A2: la verificación corre con el pedido bloqueado y su rechazo asentado se commitea sin transicionar', async () => {
+        const despues = jest.fn();
+        const verificar = jest.fn((pedido: Order) => {
+          expect(queryBuilder.setLock).toHaveBeenCalled();
+          expect(pedido.status).toBe(OrderStatus.ON_THE_WAY);
+          return Promise.reject(
+            new RechazoAsentado(new BadRequestException('código'), despues),
+          );
+        });
+        await expect(
+          useCase.execute(
+            'ord-1',
+            OrderStatus.DELIVERED,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            verificar,
+          ),
+        ).rejects.toThrow(BadRequestException);
+        expect(verificar).toHaveBeenCalledWith(
+          expect.objectContaining({ orderId: 'ord-1' }),
+          queryRunner.manager,
+        );
+        expect(queryRunner.commitTransaction).toHaveBeenCalledTimes(1);
+        expect(queryRunner.rollbackTransaction).not.toHaveBeenCalled();
+        expect(orders.save).not.toHaveBeenCalled();
+        expect(stockDelivery.onOrderDelivered).not.toHaveBeenCalled();
+        expect(eventos.emitAsync).not.toHaveBeenCalled();
+        // El aviso corre después del commit, con el lock liberado.
+        expect(despues).toHaveBeenCalledTimes(1);
+        expect(queryRunner.release.mock.invocationCallOrder[0]).toBeLessThan(
+          despues.mock.invocationCallOrder[0],
+        );
+      });
+
+      it('A2: otro error de la verificación hace rollback', async () => {
+        await expect(
+          useCase.execute(
+            'ord-1',
+            OrderStatus.DELIVERED,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            () => Promise.reject(new ForbiddenException('no asignado')),
+          ),
+        ).rejects.toThrow(ForbiddenException);
+        expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+        expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
+        expect(orders.save).not.toHaveBeenCalled();
+      });
+
       it('la entrega por QR (sin rol) no pide motivo ni escribe el asiento manual', async () => {
         await useCase.execute('ord-1', OrderStatus.DELIVERED);
         expect(queryRunner.manager.insert).not.toHaveBeenCalled();
@@ -1076,6 +1182,88 @@ describe('UpdateOrderStatusUseCase', () => {
   });
 
   describe('DELIVERED', () => {
+    it('A1: dos confirmaciones simultáneas: la segunda espera el lock, ve el pedido entregado y lo devuelve sin efectos ni pisar la prueba', async () => {
+      const pedido = makeOrder({ status: OrderStatus.ON_THE_WAY });
+      // Un lock de verdad: la 2.ª lectura con FOR UPDATE espera al commit de la 1.ª.
+      let liberarLock = () => {};
+      const lockLibre = new Promise<void>((r) => (liberarLock = r));
+      let lecturas = 0;
+      queryBuilder.getOne.mockImplementation(async () => {
+        lecturas += 1;
+        if (lecturas > 1) await lockLibre;
+        return pedido;
+      });
+      queryRunner.manager.find.mockResolvedValue([]);
+      queryRunner.commitTransaction.mockImplementation(() => {
+        liberarLock();
+        return Promise.resolve();
+      });
+      const confirmacion = (byUserId: string) => ({
+        point: { type: 'Point' as const, coordinates: [-55.89, -27.36] },
+        accuracyM: 5,
+        distanceM: 10,
+        outOfRange: false,
+        byUserId,
+        byRole: RoleType.DELIVERY as const,
+      });
+
+      const [primera, segunda] = await Promise.all([
+        useCase.execute(
+          'ord-1',
+          OrderStatus.DELIVERED,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          confirmacion('chofer-1'),
+        ),
+        useCase.execute(
+          'ord-1',
+          OrderStatus.DELIVERED,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          confirmacion('chofer-2'),
+        ),
+      ]);
+
+      expect(primera.status).toBe(OrderStatus.DELIVERED);
+      expect(segunda.status).toBe(OrderStatus.DELIVERED);
+      expect(orders.save).toHaveBeenCalledTimes(1);
+      expect(pedido.deliveryConfirmedByUserId).toBe('chofer-1');
+      expect(stockDelivery.onOrderDelivered).toHaveBeenCalledTimes(1);
+      expect(cylinderLifecycle.onOrderDelivered).toHaveBeenCalledTimes(1);
+      expect(eventos.emitAsync).toHaveBeenCalledTimes(1);
+      expect(
+        dispatch.notifyAdmins.mock.calls.filter(
+          ([evento]) => evento === 'order:delivered',
+        ),
+      ).toHaveLength(1);
+    });
+
+    it('A1: un pedido ya entregado no se vuelve a entregar (ni por PATCH del admin)', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({
+          status: OrderStatus.DELIVERED,
+          deliveryConfirmedByUserId: 'chofer-1',
+        } as Partial<Order>),
+      );
+      const r = await useCase.execute(
+        'ord-1',
+        OrderStatus.DELIVERED,
+        undefined,
+        RoleType.ADMIN,
+        'admin-1',
+        'El cliente no tiene celular',
+      );
+      expect(r.deliveryConfirmedByUserId).toBe('chofer-1');
+      expect(orders.save).not.toHaveBeenCalled();
+      expect(queryRunner.manager.insert).not.toHaveBeenCalled();
+      expect(eventos.emitAsync).not.toHaveBeenCalled();
+      expect(dispatch.notifyCustomer).not.toHaveBeenCalled();
+    });
+
     it('NO marca pagado al entregar en CASH: el cobro lo confirma el chofer', async () => {
       orders.findByIdFull.mockResolvedValue(
         makeOrder({

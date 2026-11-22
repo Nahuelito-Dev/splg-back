@@ -5,6 +5,7 @@ import { esEditable } from './domain/order-editable';
 import type { User } from '../users/entities/user.entity';
 import {
   CustomerDeOrderDto,
+  DeliveryConfirmationDto,
   OrderItemResponseDto,
   OrderResponseDto,
   ProductoDelRenglonDto,
@@ -87,8 +88,41 @@ function receptorDe(order: Order): ReceiverDeOrderDto | null {
   return dto;
 }
 
+/**
+ * `confirmedByUserId` es un dato interno (el usuario del chofer o del admin):
+ * sólo sale para el personal del panel; al cliente y al chofer, `null`.
+ */
+function confirmacionDe(
+  order: Order,
+  paraElPersonal: boolean,
+): DeliveryConfirmationDto | null {
+  if (!order.deliveryConfirmedByUserId || !order.deliveredAt) return null;
+  const punto = coordenadasDePunto(order.deliveryConfirmedPoint);
+  const dto = new DeliveryConfirmationDto();
+  dto.confirmedAt = order.deliveredAt;
+  dto.confirmedByRole =
+    (order.deliveryConfirmedByRole as DeliveryConfirmationDto['confirmedByRole']) ??
+    null;
+  dto.confirmedByUserId = paraElPersonal
+    ? order.deliveryConfirmedByUserId
+    : null;
+  dto.latitude = punto?.lat ?? null;
+  dto.longitude = punto?.lng ?? null;
+  dto.accuracyMeters = order.deliveryConfirmedAccuracyM ?? null;
+  dto.distanceMeters = order.deliveryConfirmedDistanceM ?? null;
+  dto.outOfRange = !!order.deliveryConfirmedOutOfRange;
+  return dto;
+}
+
 export class OrderMapper {
-  static toDto(order: Order): OrderResponseDto {
+  /**
+   * `paraElPersonal`: la respuesta va a un admin o super admin (suma los datos
+   * internos, como quién confirmó la entrega). Por omisión, la del cliente o el chofer.
+   */
+  static toDto(
+    order: Order,
+    { paraElPersonal = false }: { paraElPersonal?: boolean } = {},
+  ): OrderResponseDto {
     const dto = new OrderResponseDto();
 
     dto.id = order.orderId;
@@ -120,6 +154,7 @@ export class OrderMapper {
     dto.receiver = receptorDe(order);
     // El chofer sólo se agrega en la lectura individual (ver `OrderService.getOne`).
     dto.driver = null;
+    dto.deliveryConfirmation = confirmacionDe(order, paraElPersonal);
     dto.cancelledBy = null;
 
     // Status Mapping

@@ -39,6 +39,7 @@ import { CancelOrderUseCase } from './application/cancel-order.use-case';
 import { ReleaseOrderUseCase } from './application/release-order.use-case';
 import { CashCollectionUseCase } from './application/cash-collection.use-case';
 import { ConfirmDeliveryUseCase } from './application/confirm-delivery.use-case';
+import { ConfirmDeliveryV3UseCase } from './application/confirm-delivery-v3.use-case';
 import { DispatchOrchestratorService } from './application/dispatch-orchestrator.service';
 import { ExpressAvailabilityService } from './application/express-availability.service';
 import { ExpressDegradeService } from './application/express-degrade.service';
@@ -53,6 +54,7 @@ import { OrderPaymentV2Controller } from './order-payment-v2.controller';
 import { DispatchMetricsController } from './dispatch-metrics.controller';
 import { DispatchMetricsService } from './application/dispatch-metrics.service';
 import { DeliveryCodeV2Controller } from './delivery-code-v2.controller';
+import { DeliveryCodeV3Controller } from './delivery-code-v3.controller';
 import { ReservationV2Controller } from './reservation-v2.controller';
 import { ConciliacionMercadoPagoService } from './application/conciliacion-mercadopago.service';
 import { ReservationService } from './application/reservation.service';
@@ -126,6 +128,7 @@ import { VencimientoSinChoferService } from './application/vencimiento-sin-chofe
     OrderTransferReceiptController,
     ReservationV2Controller,
     DeliveryCodeV2Controller,
+    DeliveryCodeV3Controller,
     OrderPaymentV2Controller,
     DispatchMetricsController,
     CustomerPurchaseStatsController,
@@ -155,6 +158,7 @@ import { VencimientoSinChoferService } from './application/vencimiento-sin-chofe
     CancelOrderUseCase,
     ReleaseOrderUseCase,
     ConfirmDeliveryUseCase,
+    ConfirmDeliveryV3UseCase,
     CashCollectionUseCase,
     // Historial de estados: una fila por transición, en la misma transacción.
     OrderStatusHistorySubscriber,

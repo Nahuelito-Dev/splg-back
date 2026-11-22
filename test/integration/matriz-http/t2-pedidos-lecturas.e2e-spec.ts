@@ -311,7 +311,8 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
     ruta: (c: Ctx) => `/orders/${c.p[clave]}/delivery-code`,
   });
   const casosCodigo: Array<Caso<Ctx>> = [
-    codigo('chofer asignado', 'chofer', 200, {
+    codigo('chofer asignado (ya no lo ve)', 'chofer', 403),
+    codigo('administrador', 'adminA', 200, {
       verificar: (cuerpo, c) =>
         expect(cuerpo).toMatchObject({
           orderId: c.p.acc,
@@ -320,13 +321,10 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
           blocked: false,
         }),
     }),
-    codigo('administrador', 'adminA', 200),
     codigo('super en modo soporte sobre A', 'soporteA', 200),
     codigo('sin token', undefined, 401, sinToken),
     codigo('cliente', 'clienteA', 403),
-    codigo('chofer: pedido de otro chofer', 'choferA2', 403, {
-      mensaje: 'no está asignado',
-    }),
+    codigo('chofer: pedido de otro chofer', 'choferA2', 403),
     codigo('id mal formado', 'adminA', 400, {
       ruta: '/orders/xx/delivery-code',
     }),
@@ -335,7 +333,7 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
       ruta: (c) => `/orders/${c.inexistente}/delivery-code`,
     }),
     codigo('administrador de otra distribuidora', 'adminB', 404),
-    codigo('chofer de otra distribuidora', 'choferB', 404),
+    codigo('chofer de otra distribuidora', 'choferB', 403),
   ];
 
   // ============================================ GET /orders/{id}/driver-photo

@@ -542,7 +542,7 @@ describe('Pedidos del panel (e2e)', () => {
       expect(motivo?.newValue).toBe('El cliente no tiene celular');
     });
 
-    it('la entrega por QR: el admin también necesita motivo (queda en historial y auditoría); el cliente no', async () => {
+    it('la entrega por QR: el admin necesita motivo (queda en historial y auditoría); el cliente ya no confirma', async () => {
       const { a, adminA, cliente } = await escenario();
       const p = await producto(a.distributorId);
       const delAdmin = await pedidoPorApi(a.slug, cliente, p);
@@ -599,18 +599,12 @@ describe('Pedidos del panel (e2e)', () => {
           .find((d) => d.field === 'manualDeliveryReason')?.newValue,
       ).toBe('Entrega asistida por teléfono');
 
-      // el cliente escanea sin motivo y no deja asiento manual
-      await confirmar(cliente, delCliente, { code: 'QRCODE1234' }).expect(201);
-      expect(
-        await ds.query(
-          `SELECT 1 FROM order_status_history WHERE order_id = $1 AND reason IS NOT NULL`,
-          [delCliente],
-        ),
-      ).toEqual([]);
+      // el cliente ya no confirma por la v1: 403 y el pedido sigue en camino
+      await confirmar(cliente, delCliente, { code: 'QRCODE1234' }).expect(403);
       expect(
         (await ds.getRepository(Order).findOneByOrFail({ orderId: delCliente }))
           .status,
-      ).toBe('delivered');
+      ).toBe('on_the_way');
     });
 
     it('el pedido expone paymentMethodDetail, paymentStatus y editable con la regla de PATCH', async () => {

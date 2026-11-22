@@ -260,6 +260,58 @@ export class ReceiverDeOrderDto {
   relationship!: string | null;
 }
 
+/** Con qué se confirmó la entrega: quién, cuándo y (si fue el chofer) desde dónde. */
+export class DeliveryConfirmationDto {
+  @ApiProperty({
+    format: 'date-time',
+    description: 'Hora de la base al confirmar',
+  })
+  confirmedAt!: Date;
+
+  @ApiProperty({ enum: ['delivery', 'admin', 'super_admin'], nullable: true })
+  confirmedByRole!: 'delivery' | 'admin' | 'super_admin' | null;
+
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description:
+      'Usuario que confirmó (el chofer o el admin). Sólo en las respuestas al personal del panel; para el cliente y el chofer, `null`',
+  })
+  confirmedByUserId!: string | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Latitud del chofer al confirmar; null si confirmó un admin',
+  })
+  latitude!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true })
+  longitude!: number | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Precisión del GPS, en metros',
+  })
+  accuracyMeters!: number | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Metros entre el chofer y el domicilio al confirmar',
+  })
+  distanceMeters!: number | null;
+
+  @ApiProperty({
+    type: Boolean,
+    description:
+      'Confirmó más lejos del domicilio que el radio de llegada de la distribuidora (no se rechaza: se marca)',
+  })
+  outOfRange!: boolean;
+}
+
 export class OrderResponseDto {
   @ApiProperty({ name: 'order_id', format: 'uuid' })
   @Expose({ name: 'order_id' })
@@ -610,4 +662,18 @@ export class OrderResponseDto {
   @Expose({ name: 'driver' })
   @Type(() => DriverDeOrderDto)
   driver!: DriverDeOrderDto | null;
+
+  /**
+   * Prueba de la entrega confirmada: en los pedidos entregados por el chofer con
+   * el código del cliente (v3) o por un admin con motivo (v3, v1 o cambio de
+   * estado). `null` en el resto (y en los entregados antes de este registro).
+   */
+  @ApiProperty({
+    name: 'deliveryConfirmation',
+    type: DeliveryConfirmationDto,
+    nullable: true,
+  })
+  @Expose({ name: 'deliveryConfirmation' })
+  @Type(() => DeliveryConfirmationDto)
+  deliveryConfirmation!: DeliveryConfirmationDto | null;
 }

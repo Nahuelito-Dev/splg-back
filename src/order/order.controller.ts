@@ -262,7 +262,9 @@ export class OrderController {
     return {
       ...result,
       orders: await this.conFotos(
-        result.orders.map((order) => OrderMapper.toDto(order)),
+        result.orders.map((order) =>
+          OrderMapper.toDto(order, { paraElPersonal: true }),
+        ),
       ),
     };
   }
@@ -545,6 +547,7 @@ export class OrderController {
         customerScope,
         choferScope,
         user.role !== RoleType.DELIVERY,
+        esPersonal(user.role),
       ),
     );
   }
@@ -622,7 +625,9 @@ export class OrderController {
       user.user_id,
       body.reason,
     );
-    return this.conFoto(OrderMapper.toDto(order));
+    return this.conFoto(
+      OrderMapper.toDto(order, { paraElPersonal: esPersonal(user.role) }),
+    );
   }
 
   @Post(':id/reject')
@@ -658,14 +663,12 @@ export class OrderController {
 
   @Get(':id/delivery-code')
   @Permiso('pedidos.ver')
-  @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
-    summary: 'Obtener el código secreto de entrega (para el QR del chofer)',
+    summary: 'Obtener el código secreto de entrega (admin)',
     description:
-      'El chofer renderiza este código como QR y lo muestra al cliente al llegar. ' +
-      'Solo existe si el pedido ya fue aceptado. El chofer solo puede ver el de SUS pedidos. ' +
-      'Trae `attempts` (códigos incorrectos del cliente) y `blocked` (agotó los 5 intentos: hay que generar un código nuevo). ' +
-      'El chofer también se entera en vivo por el socket: `order:delivery-code-failed` en cada error y `order:delivery-code-blocked` al bloquearse.',
+      'Sólo admin y super admin (soporte): el chofer ya no puede leerlo (403) porque el código lo ve el cliente y se lo dice al chofer (`GET /api/v3/orders/:id/delivery-code`). ' +
+      'Solo existe si el pedido ya fue aceptado. Trae `attempts` (códigos incorrectos) y `blocked` (agotó los 5 intentos: hay que generar un código nuevo).',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiOkResponse({ type: CodigoDeEntregaResponseDto })
@@ -675,7 +678,8 @@ export class OrderController {
   })
   @ApiResponse({
     status: 403,
-    description: 'El pedido no está asignado a este chofer',
+    description:
+      'La cuenta no es admin: el chofer y el cliente no pueden leer el código por esta ruta',
   })
   @ApiResponse({ status: 404, description: 'Pedido no encontrado' })
   async getDeliveryCode(
@@ -689,13 +693,12 @@ export class OrderController {
 
   @Post(':id/confirm-delivery')
   @Permiso('pedidos.gestionar')
-  @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @Idempotent()
   @ApiOperation({
-    summary:
-      'Confirmar entrega escaneando el QR del chofer (prueba anti-fraude)',
+    summary: 'Confirmar la entrega con el código (admin)',
     description:
-      'El cliente escanea el QR que muestra el chofer y envía el código leído. ' +
+      'Sólo admin y super admin: el cliente ya no puede confirmar (403); la entrega la confirma el chofer con el código del cliente en `POST /api/v3/orders/:id/confirm-delivery`. ' +
       'Si coincide con `order.deliveryCode` y el pedido está ON_THE_WAY, se marca DELIVERED. ' +
       'Idempotente vía header `Idempotency-Key`: reintentos de red no re-procesan la entrega. ' +
       'Si lo confirma un admin/super_admin, `reason` es obligatorio (10 a 500 caracteres, 400 si falta) y queda ' +
@@ -718,7 +721,8 @@ export class OrderController {
   })
   @ApiResponse({
     status: 403,
-    description: 'No autorizado (pedido de otro cliente)',
+    description:
+      'La cuenta no es admin (el cliente y el chofer no pueden confirmar por esta ruta)',
   })
   @ApiResponse({ status: 404, description: 'Pedido no encontrado' })
   async confirmDelivery(
@@ -735,7 +739,7 @@ export class OrderController {
       user.role,
       body.reason,
     );
-    return this.conFoto(OrderMapper.toDto(order));
+    return this.conFoto(OrderMapper.toDto(order, { paraElPersonal: true }));
   }
 
   @Patch(':id/empties')
@@ -1391,4 +1395,9 @@ export class OrderController {
       return OrderMapper.toDto(guardado);
     }
   }
+}
+
+/** Admin o super admin: las respuestas del panel suman los datos internos del pedido. */
+function esPersonal(role: RoleType): boolean {
+  return role === RoleType.ADMIN || role === RoleType.SUPER_ADMIN;
 }

@@ -8987,11 +8987,59 @@
     },
     {
       "table": "order",
+      "column": "delivery_confirmed_point",
+      "property": "deliveryConfirmedPoint",
+      "secret": false,
+      "kind": "geo",
+      "position": 35
+    },
+    {
+      "table": "order",
+      "column": "delivery_confirmed_accuracy_m",
+      "property": "deliveryConfirmedAccuracyM",
+      "secret": false,
+      "kind": "text",
+      "position": 36
+    },
+    {
+      "table": "order",
+      "column": "delivery_confirmed_distance_m",
+      "property": "deliveryConfirmedDistanceM",
+      "secret": false,
+      "kind": "text",
+      "position": 37
+    },
+    {
+      "table": "order",
+      "column": "delivery_confirmed_out_of_range",
+      "property": "deliveryConfirmedOutOfRange",
+      "secret": false,
+      "kind": "text",
+      "position": 38
+    },
+    {
+      "table": "order",
+      "column": "delivery_confirmed_by_user_id",
+      "property": "deliveryConfirmedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 39
+    },
+    {
+      "table": "order",
+      "column": "delivery_confirmed_by_role",
+      "property": "deliveryConfirmedByRole",
+      "secret": false,
+      "kind": "text",
+      "position": 40
+    },
+    {
+      "table": "order",
       "column": "delivery_mode",
       "property": "deliveryMode",
       "secret": false,
       "kind": "text",
-      "position": 35
+      "position": 41
     },
     {
       "table": "order",
@@ -8999,7 +9047,7 @@
       "property": "expressSurchargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 36
+      "position": 42
     },
     {
       "table": "order",
@@ -9007,7 +9055,7 @@
       "property": "containerChargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 37
+      "position": 43
     },
     {
       "table": "order",
@@ -9015,7 +9063,7 @@
       "property": "expressDegradedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 38
+      "position": 44
     },
     {
       "table": "order",
@@ -9023,7 +9071,7 @@
       "property": "coverageZoneId",
       "secret": false,
       "kind": "text",
-      "position": 39
+      "position": 45
     },
     {
       "table": "order",
@@ -9031,7 +9079,7 @@
       "property": "zoneName",
       "secret": false,
       "kind": "text",
-      "position": 40
+      "position": 46
     },
     {
       "table": "order",
@@ -9039,7 +9087,7 @@
       "property": "zoneSurchargeType",
       "secret": false,
       "kind": "text",
-      "position": 41
+      "position": 47
     },
     {
       "table": "order",
@@ -9047,7 +9095,7 @@
       "property": "zoneSurchargeValue",
       "secret": false,
       "kind": "text",
-      "position": 42
+      "position": 48
     },
     {
       "table": "order",
@@ -9055,7 +9103,7 @@
       "property": "zoneSurchargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 43
+      "position": 49
     },
     {
       "table": "order",
@@ -9063,7 +9111,7 @@
       "property": "paymentSurchargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 44
+      "position": 50
     },
     {
       "table": "order",
@@ -9071,7 +9119,7 @@
       "property": "paymentSurchargePercentage",
       "secret": false,
       "kind": "text",
-      "position": 45
+      "position": 51
     },
     {
       "table": "order",
@@ -9079,7 +9127,7 @@
       "property": "subtotalItems",
       "secret": false,
       "kind": "text",
-      "position": 46
+      "position": 52
     },
     {
       "table": "order",
@@ -9087,7 +9135,7 @@
       "property": "vehicleCarId",
       "secret": false,
       "kind": "text",
-      "position": 47
+      "position": 53
     },
     {
       "table": "order",
@@ -9095,7 +9143,7 @@
       "property": "vehiclePatent",
       "secret": false,
       "kind": "text",
-      "position": 48
+      "position": 54
     },
     {
       "table": "order",
@@ -9103,7 +9151,7 @@
       "property": "vehicleBrand",
       "secret": false,
       "kind": "text",
-      "position": 49
+      "position": 55
     },
     {
       "table": "order",
@@ -9111,7 +9159,7 @@
       "property": "vehicleModel",
       "secret": false,
       "kind": "text",
-      "position": 50
+      "position": 56
     },
     {
       "table": "order_address_change",

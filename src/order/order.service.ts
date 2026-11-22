@@ -74,9 +74,13 @@ import { DispatchSettingsService } from '../distributor/dispatch-settings.servic
 import { DispatchOfferRepositoryPort } from './domain/ports/dispatch-offer.repository.port';
 import { DispatchOfferStatus } from './entities/dispatch-offer.entity';
 import {
+  DeliveryCodeError,
+  esCodigoDeSeisDigitos,
   generateDeliveryCode,
   MAX_INTENTOS_CODIGO_ENTREGA,
 } from './domain/delivery-code.util';
+import { conCodigo } from '../common/errors/con-codigo';
+import { auditContext } from '../audit/data/audit-context';
 import { bloquearChoferVigente } from '../common/locks/chofer-lock';
 import { pedidoEnHojaDeRuta } from './domain/errors/order-in-route-sheet.error';
 import {
@@ -413,6 +417,7 @@ export class OrderService {
     customerUserId?: string | null,
     choferUserId?: string | null,
     incluirChofer = false,
+    paraElPersonal = false,
   ): Promise<OrderResponseDto> {
     const order = await this.pedidoLegible(
       id,
@@ -420,7 +425,7 @@ export class OrderService {
       customerUserId,
       choferUserId,
     );
-    const dto = OrderMapper.toDto(order);
+    const dto = OrderMapper.toDto(order, { paraElPersonal });
     // Quién recibe es un dato de un tercero: un chofer lo ve sólo cuando el
     // pedido es suyo, no mientras lo mira como oferta o desde el pool.
     if (choferUserId && order.delivery?.userId !== choferUserId) {
@@ -739,9 +744,9 @@ export class OrderService {
   }
 
   /**
-   * Devuelve el código secreto de la prueba de entrega con QR, para que el
-   * chofer lo renderice en su app. Ownership: un chofer solo puede ver el
-   * código de un pedido asignado a ÉL MISMO; admin puede ver cualquiera.
+   * Devuelve el código secreto de la prueba de entrega (v1, congelada). Desde
+   * C1 sólo lo pide un admin: el chofer lo escribe y no puede leerlo (el
+   * controller lo cierra con 403); el cliente lo ve por la v3.
    */
   async getDeliveryCode(orderId: string, userId: string, role: RoleType) {
     const order = await this.findOne(orderId);
@@ -794,8 +799,127 @@ export class OrderService {
   }
 
   /**
-   * Confirma la entrega (el cliente escanea el QR del chofer). Delega en
-   * ConfirmDeliveryUseCase: valida ownership + código secreto y dispara la
+   * El código de entrega visto por quien lo muestra (v3): el cliente dueño del
+   * pedido (lo ajeno no existe: 404) o un admin. Sólo con el pedido aceptado o
+   * en camino. El chofer nunca lo ve.
+   */
+  async getDeliveryCodeParaElCliente(
+    orderId: string,
+    userId: string,
+    role: RoleType,
+  ) {
+    let order = await this.pedidoDelClienteOAdmin(orderId, userId, role);
+    if (
+      order.status !== OrderStatus.ACCEPTED &&
+      order.status !== OrderStatus.ON_THE_WAY
+    ) {
+      throw this.sinCodigoDeEntrega(order.status);
+    }
+    // Los pedidos viejos tienen un código de 10 caracteres: el chofer sólo
+    // escribe 6 dígitos, así que se cambia por uno nuevo antes de mostrarlo.
+    // Una sesión de soporte es de sólo lectura: ve el código como está.
+    if (
+      order.deliveryCode &&
+      !esCodigoDeSeisDigitos(order.deliveryCode) &&
+      !auditContext.getStore()?.soporte
+    ) {
+      await this.orders.upgradeLegacyDeliveryCode(
+        order.orderId,
+        generateDeliveryCode(),
+      );
+      // Si otra lectura lo cambió primero, se muestra el que quedó guardado.
+      order = await this.findOne(orderId);
+    }
+    if (!order.deliveryCode) throw this.sinCodigoDeEntrega(order.status);
+    return {
+      orderId: order.orderId,
+      deliveryCode: order.deliveryCode,
+      attempts: order.deliveryCodeAttempts,
+      blocked: order.deliveryCodeAttempts >= MAX_INTENTOS_CODIGO_ENTREGA,
+    };
+  }
+
+  /** 409 de un pedido sin código para mostrar, con el texto según dónde está. */
+  private sinCodigoDeEntrega(status: OrderStatus): ConflictException {
+    const message =
+      status === OrderStatus.DELIVERED
+        ? 'El pedido ya se entregó: el código de entrega ya no hace falta'
+        : status === OrderStatus.CANCELLED
+          ? 'El pedido está cancelado: no tiene código de entrega'
+          : 'El pedido todavía no tiene un código de entrega: aparece cuando un chofer lo acepta';
+    return conCodigo(
+      ConflictException,
+      409,
+      message,
+      DeliveryCodeError.SIN_CODIGO,
+    );
+  }
+
+  /**
+   * El cliente (o un admin) genera un código nuevo con el pedido en camino
+   * (v3): el viejo deja de valer y los intentos del chofer vuelven a 0.
+   */
+  async regenerateDeliveryCodeParaElCliente(
+    orderId: string,
+    userId: string,
+    role: RoleType,
+  ) {
+    const order = await this.pedidoDelClienteOAdmin(orderId, userId, role);
+    const noEnCamino = (status: OrderStatus) =>
+      conCodigo(
+        ConflictException,
+        409,
+        status === OrderStatus.DELIVERED
+          ? 'El pedido ya se entregó: no hace falta otro código'
+          : status === OrderStatus.CANCELLED
+            ? 'El pedido está cancelado: no hace falta otro código'
+            : 'El código sólo se cambia con el pedido en camino',
+        DeliveryCodeError.NO_EN_CAMINO,
+      );
+    if (order.status !== OrderStatus.ON_THE_WAY) throw noEnCamino(order.status);
+    const deliveryCode = generateDeliveryCode();
+    const quien =
+      role === RoleType.CUSTOMER ? 'el cliente' : 'un administrador';
+    if (
+      !(await this.orders.replaceDeliveryCode(
+        order.orderId,
+        deliveryCode,
+        quien,
+      ))
+    ) {
+      // Cambió de estado en el medio: se relee para decir por qué.
+      const actual = await this.findOne(orderId);
+      throw noEnCamino(actual.status);
+    }
+    return {
+      orderId: order.orderId,
+      deliveryCode,
+      attempts: 0,
+      blocked: false,
+    };
+  }
+
+  private async pedidoDelClienteOAdmin(
+    orderId: string,
+    userId: string,
+    role: RoleType,
+  ): Promise<Order> {
+    const order = await this.findOne(orderId);
+    if (role === RoleType.CUSTOMER) {
+      if (order.customerId !== userId) {
+        throw new NotFoundException('Pedido no encontrado');
+      }
+    } else if (role !== RoleType.ADMIN && role !== RoleType.SUPER_ADMIN) {
+      throw new ForbiddenException(
+        'Sólo el cliente del pedido o un administrador ven el código de entrega',
+      );
+    }
+    return order;
+  }
+
+  /**
+   * Confirma la entrega por la v1 (congelada; desde C1 sólo un admin, con
+   * motivo). Delega en ConfirmDeliveryUseCase: valida ownership + código secreto y dispara la
    * transición ON_THE_WAY → DELIVERED reutilizando UpdateOrderStatusUseCase.
    */
   async confirmDelivery(
@@ -920,7 +1044,7 @@ export class OrderService {
         }
       }
       // Repetir la asignación al MISMO chofer (reintento, doble clic) no
-      // regenera el código de entrega: el QR que ya tiene el chofer sigue
+      // regenera el código de entrega: el que ya ve el cliente sigue
       // sirviendo.
       if (
         locked.status === OrderStatus.ACCEPTED &&
@@ -1002,8 +1126,8 @@ export class OrderService {
       transitionOrder(locked, OrderStatus.ACCEPTED);
       locked.acceptedAt = await ahoraDeLaBase(queryRunner.manager);
       // Igual que cuando el chofer acepta la oferta: sin este código el
-      // cliente no puede confirmar la entrega con el QR. Si se reasigna, el
-      // código nuevo deja sin efecto el del chofer anterior.
+      // chofer no puede confirmar la entrega con el código del cliente. Si se
+      // reasigna, el código nuevo deja sin efecto el anterior.
       locked.deliveryCode = generateDeliveryCode();
 
       order = await queryRunner.manager.save(locked);
@@ -1025,7 +1149,7 @@ export class OrderService {
     }
 
     // Desde acá la asignación está confirmada: nada de lo que sigue puede tirar
-    // el request (el reintento regeneraría el código y el QR del chofer).
+    // el request (el reintento regeneraría el código que ve el cliente).
     try {
       // Best-effort, DESPUÉS del commit.
       // A los choferes a quienes se les retiró la oferta se les avisa por el
