@@ -1,0 +1,120 @@
+name: Orix al día
+
+# El Orix se apaga a veces (cortes de luz) y puede estar caído cuando corre el Deploy API. Este
+# workflow corre cada hora (minuto 23): pregunta por SSH qué commit tiene desplegado el servidor
+# («desplegar version», sólo lectura) y, si quedó atrás de main, lanza Deploy API. Si el Orix no
+# responde, termina sin avisos ni error: vuelve a probar en la próxima corrida.
+#
+# Mismos secretos y variables que deploy.yml.
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: orix-al-dia
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  al-dia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Entrar a la tailnet
+        uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3.3.0
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Clave SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          ORIX_KNOWN_HOSTS: ${{ vars.ORIX_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$ORIX_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Comparar el servidor con main
+        id: cmp
+        run: |
+          main=$(git rev-parse origin/main)
+          if ! out=$(ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              -o ConnectTimeout=15 "labs-wagners@${{ vars.ORIX_HOST }}" "desplegar version" 2>&1); then
+            echo "El Orix no responde (apagado o sin red): se reintenta en la próxima corrida."
+            echo "atrasado=no" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          sha=$(printf '%s\n' "$out" | sed -n 's/^sha=//p' | head -1)
+          health=$(printf '%s\n' "$out" | sed -n 's/^health=//p' | head -1)
+          echo "main=$main servidor=${sha:-?} health=${health:-?}"
+          # Atrasado: otro commit que el de main, o la API no da 200.
+          if [ -z "$sha" ]; then echo "atrasado=no" >> "$GITHUB_OUTPUT"
+          elif [ "$sha" != "$main" ] || [ "$health" != 200 ]; then echo "atrasado=si" >> "$GITHUB_OUTPUT"
+          else echo "atrasado=no" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Decidir
+        id: dec
+        if: steps.cmp.outputs.atrasado == 'si'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          main=$(git rev-parse origin/main)
+          echo "main=$main" >> "$GITHUB_OUTPUT"
+          activos=$(gh run list --workflow deploy.yml --status in_progress --json databaseId --jq length)
+          en_cola=$(gh run list --workflow deploy.yml --status queued --json databaseId --jq length)
+          if [ "$activos" != 0 ] || [ "$en_cola" != 0 ]; then
+            echo "Ya hay un Deploy API en curso."; echo "accion=nada" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # Tras 3 deploys fallidos del mismo commit no se insiste: se avisa una vez y se espera a que
+          # main cambie o alguien lo lance a mano. (Un solo fallo no corta: el Orix apagado a la hora
+          # del Deploy API también cuenta como fallo y justamente hay que reintentarlo.)
+          fallos=$(gh run list --workflow deploy.yml --status failure --limit 50 --json headSha |
+            jq --arg sha "$main" '[.[] | select(.headSha == $sha)] | length')
+          if [ "$fallos" -ge 3 ]; then echo "accion=fallo" >> "$GITHUB_OUTPUT"
+          else echo "accion=lanzar" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Lanzar el deploy
+        if: steps.dec.outputs.accion == 'lanzar'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAIN: ${{ steps.dec.outputs.main }}
+        run: |
+          echo "El servidor quedó atrás de main (${MAIN:0:8}): lanzo Deploy API."
+          gh workflow run deploy.yml --ref main
+
+      - name: Ya se avisó de esta falla
+        id: avisado
+        if: steps.dec.outputs.accion == 'fallo'
+        uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: .aviso-falla
+          key: aviso-falla-${{ steps.dec.outputs.main }}
+          lookup-only: true
+
+      - name: Avisar la falla (una sola vez)
+        if: steps.dec.outputs.accion == 'fallo' && steps.avisado.outputs.cache-hit != 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MAIN: ${{ steps.dec.outputs.main }}
+        run: |
+          printf '🔴 <b>Orix al día</b>: el deploy de <code>%s</code> falló 3 veces y el servidor sigue atrás de main. Hace falta intervención; no se reintenta solo hasta que main cambie o se lance Deploy API a mano.\n' "${MAIN:0:8}" | .github/scripts/telegram.sh
+          echo "avisado ${MAIN}" > .aviso-falla
+
+      - name: Recordar el aviso
+        if: steps.dec.outputs.accion == 'fallo' && steps.avisado.outputs.cache-hit != 'true'
+        uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: .aviso-falla
+          key: aviso-falla-${{ steps.dec.outputs.main }}
