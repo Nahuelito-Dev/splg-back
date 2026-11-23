@@ -20,17 +20,17 @@ describe('PaymentSurchargeSettingsService', () => {
   });
 
   it('sin distribuidora o sin configuración rigen los de omisión', async () => {
-    expect((await service.obtener(null)).transferPercentage).toBe(10);
+    expect((await service.obtener(null)).mercadoPagoPercentage).toBe(10);
     expect(configs.parametros).not.toHaveBeenCalled();
     expect(await service.porcentaje('d1', PaymentMethod.CASH)).toBe(0);
     expect(await service.porcentaje('d1', PaymentMethod.MERCADOPAGO)).toBe(10);
   });
 
   it('lee siempre de la base: un cambio rige en el acto, sin copia en memoria', async () => {
-    configs.parametros.mockResolvedValue({ transferPercentage: 7.5 });
-    expect(await service.porcentaje('d1', PaymentMethod.TRANSFER)).toBe(7.5);
-    configs.parametros.mockResolvedValue({ transferPercentage: 3 });
-    expect(await service.porcentaje('d1', PaymentMethod.TRANSFER)).toBe(3);
+    configs.parametros.mockResolvedValue({ mercadoPagoPercentage: 7.5 });
+    expect(await service.porcentaje('d1', PaymentMethod.MERCADOPAGO)).toBe(7.5);
+    configs.parametros.mockResolvedValue({ mercadoPagoPercentage: 3 });
+    expect(await service.porcentaje('d1', PaymentMethod.MERCADOPAGO)).toBe(3);
     expect(configs.parametros).toHaveBeenCalledWith(
       'd1',
       ConfigurableProcess.PAYMENT_SURCHARGES,
@@ -52,7 +52,6 @@ describe('PaymentSurchargeSettingsService', () => {
     });
     const v = await service.vigentes('d1');
     expect(v).toMatchObject({
-      transferPercentage: 10,
       mercadoPagoPercentage: 5,
       cashPercentage: 0,
       isDefault: false,
@@ -61,33 +60,18 @@ describe('PaymentSurchargeSettingsService', () => {
     });
   });
 
-  it('una configuración vieja con recargo de transferencia se sigue leyendo, y sólo eso no la saca de los valores por omisión', async () => {
+  it('una configuración vieja con recargo de transferencia no lo expone y la deja en los valores por omisión', async () => {
     configs.fila.mockResolvedValue({
       params: { transferPercentage: 5 },
       updatedAt: null,
       updatedByUserId: null,
     });
     const v = await service.vigentes('d1');
-    expect(v.transferPercentage).toBe(5);
+    expect(v).not.toHaveProperty('transferPercentage');
     expect(v.isDefault).toBe(true);
   });
 
-  it('guardar reemplaza Mercado Pago y efectivo; el recargo de transferencia que llega se ignora y queda el guardado', async () => {
-    configs.parametros.mockResolvedValue({ transferPercentage: 3 });
-    await service.guardar(
-      'd1',
-      { transferPercentage: 7.5, mercadoPagoPercentage: 10, cashPercentage: 2 },
-      'u1',
-    );
-    expect(configs.guardar).toHaveBeenCalledWith(
-      'd1',
-      ConfigurableProcess.PAYMENT_SURCHARGES,
-      { transferPercentage: 3, mercadoPagoPercentage: 10, cashPercentage: 2 },
-      'u1',
-    );
-  });
-
-  it('guardar sin recargo de transferencia en el cuerpo es válido', async () => {
+  it('guardar reemplaza Mercado Pago y efectivo y descarta lo viejo de transferencia', async () => {
     await service.guardar(
       'd1',
       { mercadoPagoPercentage: 8, cashPercentage: 1 },
@@ -96,20 +80,14 @@ describe('PaymentSurchargeSettingsService', () => {
     expect(configs.guardar).toHaveBeenCalledWith(
       'd1',
       ConfigurableProcess.PAYMENT_SURCHARGES,
-      { transferPercentage: 10, mercadoPagoPercentage: 8, cashPercentage: 1 },
+      { mercadoPagoPercentage: 8, cashPercentage: 1 },
       'u1',
     );
   });
 
   it.each([
-    [
-      {
-        transferPercentage: 10,
-        mercadoPagoPercentage: null,
-        cashPercentage: 0,
-      },
-    ],
-    [{ transferPercentage: 10, cashPercentage: 0 }],
+    [{ mercadoPagoPercentage: null, cashPercentage: 0 }],
+    [{ cashPercentage: 0 }],
     [{ mercadoPagoPercentage: 31, cashPercentage: 0 }],
   ])('guardar rechaza un cuerpo incompleto o inválido %j', async (cuerpo) => {
     await expect(

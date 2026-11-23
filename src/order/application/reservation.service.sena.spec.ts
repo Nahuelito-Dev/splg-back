@@ -17,7 +17,7 @@ describe('ReservationService.confirmDeposit: la seña entra a una caja', () => {
       orderId: 'ord-1',
       distributorId: 'd1',
       status: OrderStatus.RESERVED,
-      paymentMethod: PaymentMethod.TRANSFER,
+      paymentMethod: PaymentMethod.CASH,
       totalAmount: 4500,
       depositAmount: 1000,
       depositPaid: false,
@@ -54,26 +54,33 @@ describe('ReservationService.confirmDeposit: la seña entra a una caja', () => {
     );
   });
 
-  it('por transferencia entra a la caja de transferencias con el admin como autor', async () => {
+  it('una seña vieja por transferencia se puede confirmar, sin asentarla en caja', async () => {
+    order = reserva({ paymentMethod: PaymentMethod.TRANSFER });
+
     await service.confirmDeposit('ord-1', 'd1', 'adm-1');
 
-    expect(asentarSena).toHaveBeenCalledWith(expect.anything(), {
-      distributorId: 'd1',
-      orderId: 'ord-1',
-      amount: 1000,
-      metodo: CashMethod.TRANSFER,
-      userId: 'adm-1',
-    });
-    expect(avisarSinAsentar).toHaveBeenCalledWith('d1', 'asentado', 'ord-1');
+    expect(order.depositPaid).toBe(true);
+    expect(cajaDelPago).not.toHaveBeenCalled();
+    expect(asentarSena).not.toHaveBeenCalled();
   });
 
-  it('sin caja de transferencias configurada la seña se confirma igual y se avisa', async () => {
-    asentarSena.mockResolvedValue('sin_caja');
+  it('una reserva a cuenta corriente se confirma sin asentar como efectivo', async () => {
+    order = reserva({ paymentMethod: PaymentMethod.ACCOUNT });
 
-    const saved = await service.confirmDeposit('ord-1', 'd1', 'adm-1');
+    await service.confirmDeposit('ord-1', 'd1', 'adm-1');
 
-    expect(saved.depositPaid).toBe(true);
-    expect(avisarSinAsentar).toHaveBeenCalledWith('d1', 'sin_caja', 'ord-1');
+    expect(order.depositPaid).toBe(true);
+    expect(asentarSena).not.toHaveBeenCalled();
+  });
+
+  it('una seña que no es en efectivo con caja indicada es 400 y no confirma', async () => {
+    order = reserva({ paymentMethod: PaymentMethod.TRANSFER });
+
+    await expect(
+      service.confirmDeposit('ord-1', 'd1', 'adm-1', 'cash-1'),
+    ).rejects.toThrow(BadRequestException);
+    expect(order.depositPaid).toBe(false);
+    expect(asentarSena).not.toHaveBeenCalled();
   });
 
   it('en efectivo entra a la caja de efectivo que eligió el admin', async () => {

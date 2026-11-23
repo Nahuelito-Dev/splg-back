@@ -69,21 +69,17 @@ export class PaymentSurchargeSettingsService {
   /**
    * Guarda los porcentajes de Mercado Pago y de efectivo (reemplaza la
    * configuración). Rige para los pedidos que se cotizan o crean desde ahí: los
-   * existentes conservan el % con que se crearon. El de transferencia, si llega,
-   * se ignora: queda el ya guardado.
+   * existentes conservan el % con que se crearon.
    */
   async guardar(
     distributorId: string,
     settings: Pick<
       PaymentSurchargeSettings,
       'mercadoPagoPercentage' | 'cashPercentage'
-    > &
-      Partial<Pick<PaymentSurchargeSettings, 'transferPercentage'>>,
+    >,
     actorUserId: string,
   ): Promise<PaymentSurchargeSettingsVigentes> {
-    const guardados = await this.obtener(distributorId);
     const completos: PaymentSurchargeSettings = {
-      transferPercentage: guardados.transferPercentage,
       mercadoPagoPercentage: settings.mercadoPagoPercentage,
       cashPercentage: settings.cashPercentage,
     };

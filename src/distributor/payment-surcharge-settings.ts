@@ -6,8 +6,6 @@ import { PaymentMethod } from '../order/entities/order.entity';
  * guarda por distribuidora en `module_config` (proceso `payment_surcharges`).
  */
 export interface PaymentSurchargeSettings {
-  /** Recargo por transferencia bancaria, en %. */
-  transferPercentage: number;
   /** Recargo por Mercado Pago, en %. */
   mercadoPagoPercentage: number;
   /** Recargo por efectivo, en %. */
@@ -17,23 +15,13 @@ export interface PaymentSurchargeSettings {
 export const SURCHARGE_PERCENTAGE_MIN = 0;
 export const SURCHARGE_PERCENTAGE_MAX = 30;
 
-/**
- * Los recargos que se configuran hoy. La transferencia ya no se acepta en pedidos
- * nuevos: su porcentaje sólo se conserva para leer lo guardado y para los
- * pedidos viejos que la tienen.
- */
+/** Los recargos que se configuran. */
 export const CLAVES_DE_RECARGO: ReadonlyArray<keyof PaymentSurchargeSettings> =
   ['mercadoPagoPercentage', 'cashPercentage'];
-
-const CLAVES_GUARDADAS: ReadonlyArray<keyof PaymentSurchargeSettings> = [
-  'transferPercentage',
-  ...CLAVES_DE_RECARGO,
-];
 
 /** Lo que regía antes de que fuera configurable: +10 % online, efectivo sin recargo. */
 export function paymentSurchargeSettingsPorDefecto(): PaymentSurchargeSettings {
   return {
-    transferPercentage: 10,
     mercadoPagoPercentage: 10,
     cashPercentage: 0,
   };
@@ -58,7 +46,7 @@ export function paymentSurchargeSettingsDesde(
   const base = paymentSurchargeSettingsPorDefecto();
   if (!params) return base;
   const leido = { ...base };
-  for (const clave of CLAVES_GUARDADAS) {
+  for (const clave of CLAVES_DE_RECARGO) {
     const valor = params[clave];
     if (esPorcentajeDeRecargo(valor)) leido[clave] = valor;
   }
@@ -81,8 +69,6 @@ export function porcentajeDelMedio(
   method: PaymentMethod,
 ): number {
   switch (method) {
-    case PaymentMethod.TRANSFER:
-      return settings.transferPercentage;
     case PaymentMethod.MERCADOPAGO:
       return settings.mercadoPagoPercentage;
     case PaymentMethod.CASH:

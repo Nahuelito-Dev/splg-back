@@ -19,7 +19,7 @@ import { CashLedgerService } from './cash-ledger.service';
 /**
  * Qué pasó al intentar asentar un cobro de venta en una caja. Un cobro que no
  * se asienta NUNCA frena lo que lo origina (el webhook, la confirmación de la
- * transferencia): queda «sin asentar» y el administrador lo ve.
+ * seña): queda «sin asentar» y el administrador lo ve.
  */
 export type ResultadoDelAsiento =
   /** Entró (o salió) de la caja en esta operación. */
@@ -83,20 +83,13 @@ export interface DevolucionExterna {
   userId?: string | null;
 }
 
-export interface TransferenciaConfirmada {
-  distributorId: string;
-  orderId: string;
-  amount: Decimal.Value;
-  userId: string;
-}
-
 export interface SenaRecibida {
   distributorId: string;
   orderId: string;
   amount: Decimal.Value;
   userId: string;
-  /** Transferencia: entra a la caja de transferencias configurada. Efectivo: a `cashBoxId`. */
-  metodo: CashMethod.TRANSFER | CashMethod.CASH;
+  /** La seña se recibe en efectivo: entra a `cashBoxId`. */
+  metodo: CashMethod.CASH;
   cashBoxId?: string | null;
 }
 
@@ -106,8 +99,8 @@ const corto = (orderId: string): string => orderId.slice(-6).toUpperCase();
 /**
  * Los cobros de las ventas que no pasan por la mano del chofer entran a una
  * caja por el libro: el pago aprobado de Mercado Pago (con su comisión, para que
- * el saldo de la billetera sea el neto), su devolución, la transferencia
- * confirmada y la seña de una reserva. Cada asiento corre en la transacción de
+ * el saldo de la billetera sea el neto), su devolución y la seña de una
+ * reserva. Cada asiento corre en la transacción de
  * quien llama, dentro de un punto de guardado: si la caja lo rechaza, se deshace
  * sólo el asiento y el cobro sigue su curso. Una referencia, un movimiento
  * (índice único).
@@ -350,24 +343,9 @@ export class SalesCashService {
     );
   }
 
-  /** Ingreso de la transferencia confirmada a la caja de transferencias. */
-  async asentarTransferencia(
-    manager: EntityManager,
-    transferencia: TransferenciaConfirmada,
-  ): Promise<ResultadoDelAsiento> {
-    return this.ingresoDeUnPedido(manager, {
-      ...transferencia,
-      referenceType: CashReferenceType.ORDER_TRANSFER,
-      metodo: CashMethod.TRANSFER,
-      descripcion: `Pedido #${corto(transferencia.orderId)} — Transferencia`,
-      cashBoxId: null,
-    });
-  }
-
   /**
-   * Seña de una reserva recibida a mano: por transferencia entra a la caja de
-   * transferencias; en efectivo, a la caja de efectivo que eligió el
-   * administrador. Una sola vez por pedido.
+   * Seña de una reserva recibida en efectivo: entra a la caja de efectivo que
+   * eligió el administrador. Una sola vez por pedido.
    */
   async asentarSena(
     manager: EntityManager,
@@ -376,7 +354,7 @@ export class SalesCashService {
     return this.ingresoDeUnPedido(manager, {
       ...sena,
       referenceType: CashReferenceType.ORDER_DEPOSIT,
-      descripcion: `Pedido #${corto(sena.orderId)} — Seña de la reserva (${sena.metodo === CashMethod.CASH ? 'efectivo' : 'transferencia'})`,
+      descripcion: `Pedido #${corto(sena.orderId)} — Seña de la reserva (efectivo)`,
     });
   }
 
@@ -397,7 +375,7 @@ export class SalesCashService {
       title: 'Cobros sin asentar en una caja',
       body:
         resultado === 'sin_caja'
-          ? `El cobro del pedido #${corto(orderId)} no entró a ninguna caja: elegí la caja de Mercado Pago y la de transferencias en la configuración de caja y asentá los cobros pendientes.`
+          ? `El cobro del pedido #${corto(orderId)} no entró a ninguna caja: elegí la caja de Mercado Pago en la configuración de caja y asentá los cobros pendientes.`
           : `Un cobro o una devolución del pedido #${corto(orderId)} no se pudo asentar en la caja configurada: revisá que esté activa y asentá los cobros pendientes.`,
       link: { entity: 'cash-settings', id: distributorId },
       dedupeKey: `sales-cash-unsettled:${distributorId}:${diaArgentino()}`,
@@ -412,16 +390,12 @@ export class SalesCashService {
       amount: Decimal.Value;
       userId: string;
       referenceType: CashReferenceType;
-      metodo: CashMethod.TRANSFER | CashMethod.CASH;
+      metodo: CashMethod.CASH;
       descripcion: string;
       cashBoxId?: string | null;
     },
   ): Promise<ResultadoDelAsiento> {
-    const cajaId =
-      c.metodo === CashMethod.CASH
-        ? c.cashBoxId
-        : (await this.configuracion(manager, c.distributorId))
-            ?.transferCashBoxId;
+    const cajaId = c.cashBoxId;
     if (!cajaId) return 'sin_caja';
     if (await this.yaAsentado(manager, c.referenceType, c.orderId)) {
       return 'ya_asentado';

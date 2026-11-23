@@ -320,10 +320,6 @@ describe('Blindaje (e2e)', () => {
           .patch(`/orders/${id}/payment/register-unpaid`)
           .set(sup)
           .send(razon),
-        http()
-          .patch(`/orders/${id}/payment/confirm-transfer`)
-          .set(sup)
-          .send({ ...razon, received: true }),
         http().patch(`/orders/${id}/confirm-deposit`).set(sup),
       ];
       for (const res of await Promise.all(llamadas)) {
@@ -771,7 +767,7 @@ describe('Blindaje (e2e)', () => {
     });
   });
 
-  describe('transferencias', () => {
+  describe('transferencias (sólo lo histórico)', () => {
     async function entregadaPorTransferencia(e: E) {
       return pedido(e, {
         status: OrderStatus.DELIVERED,
@@ -785,113 +781,33 @@ describe('Blindaje (e2e)', () => {
     }
     const hoy = () => diaArgentino();
 
-    it('hasta que el admin la confirma no suma a las ventas y aparece en cobros; confirmada, sí', async () => {
+    it('un pedido viejo por transferencia sigue en cobros y no suma a las ventas', async () => {
       const e = await escenario();
-      const p = await entregadaPorTransferencia(e);
+      await entregadaPorTransferencia(e);
 
-      const antes = await http()
-        .get(`/reports/collections?from=${hoy()}&to=${hoy()}`)
-        .set(e.adminA)
-        .expect(200);
-      expect(
-        (antes.body as { pendingTransfer: { totalAmount: number } })
-          .pendingTransfer.totalAmount,
-      ).toBe(1100);
-      const ventasAntes = await http()
-        .get('/orders/stats/summary')
-        .set(e.adminA)
-        .expect(200);
-      expect(
-        (ventasAntes.body as { sales: { total: number } }).sales.total,
-      ).toBe(0);
-
-      const cuerpo = {
-        received: true,
-        reason: 'Figura en el extracto del banco',
-      };
-      const res = await http()
-        .patch(`/orders/${p.orderId}/payment/confirm-transfer`)
-        .set(e.adminA)
-        .send(cuerpo)
-        .expect(200);
-      expect(res.body).toMatchObject({
-        paymentStatus: PaymentStatus.PAID,
-        paymentConfirmedBy: e.adminAUserId,
-      });
-      // Idempotente; la decisión contraria es 409.
-      await http()
-        .patch(`/orders/${p.orderId}/payment/confirm-transfer`)
-        .set(e.adminA)
-        .send(cuerpo)
-        .expect(200);
-      await http()
-        .patch(`/orders/${p.orderId}/payment/confirm-transfer`)
-        .set(e.adminA)
-        .send({ received: false, reason: 'ahora dicen que no llegó' })
-        .expect(409);
-
-      const despues = await http()
-        .get(`/reports/collections?from=${hoy()}&to=${hoy()}`)
-        .set(e.adminA)
-        .expect(200);
-      expect(
-        (despues.body as { pendingTransfer: { totalOrders: number } })
-          .pendingTransfer.totalOrders,
-      ).toBe(0);
-      const ventas = await http()
-        .get('/orders/stats/summary')
-        .set(e.adminA)
-        .expect(200);
-      expect((ventas.body as { sales: { total: number } }).sales.total).toBe(
-        1100,
-      );
-    });
-
-    it('marcada como no recibida queda en notReceivedTransfer y no suma', async () => {
-      const e = await escenario();
-      const p = await entregadaPorTransferencia(e);
-      await http()
-        .patch(`/orders/${p.orderId}/payment/confirm-transfer`)
-        .set(e.adminA)
-        .send({ received: false, reason: 'No figura en el banco' })
-        .expect(200);
       const r = await http()
         .get(`/reports/collections?from=${hoy()}&to=${hoy()}`)
         .set(e.adminA)
         .expect(200);
       expect(
-        (r.body as { notReceivedTransfer: { totalAmount: number } })
-          .notReceivedTransfer.totalAmount,
+        (r.body as { pendingTransfer: { totalAmount: number } }).pendingTransfer
+          .totalAmount,
       ).toBe(1100);
-      expect(
-        (
-          (await http().get('/orders/stats/summary').set(e.adminA)).body as {
-            sales: { total: number };
-          }
-        ).sales.total,
-      ).toBe(0);
+      const ventas = await http()
+        .get('/orders/stats/summary')
+        .set(e.adminA)
+        .expect(200);
+      expect((ventas.body as { sales: { total: number } }).sales.total).toBe(0);
     });
 
-    it('un pedido en efectivo, el de otra distribuidora y un chofer no pueden', async () => {
+    it('confirmar la transferencia ya no existe: 404', async () => {
       const e = await escenario();
-      const efectivo = await pedido(e, { status: OrderStatus.DELIVERED });
-      const cuerpo = { received: true, reason: 'motivo suficientemente largo' };
-      await http()
-        .patch(`/orders/${efectivo.orderId}/payment/confirm-transfer`)
-        .set(e.adminA)
-        .send(cuerpo)
-        .expect(400);
       const t = await entregadaPorTransferencia(e);
       await http()
         .patch(`/orders/${t.orderId}/payment/confirm-transfer`)
-        .set(e.adminB)
-        .send(cuerpo)
+        .set(e.adminA)
+        .send({ received: true, reason: 'motivo suficientemente largo' })
         .expect(404);
-      await http()
-        .patch(`/orders/${t.orderId}/payment/confirm-transfer`)
-        .set(e.chofer1)
-        .send(cuerpo)
-        .expect(403);
     });
   });
 

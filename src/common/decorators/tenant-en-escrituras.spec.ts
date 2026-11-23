@@ -47,7 +47,6 @@ const ESCRITURAS: Array<[Clase, string[]]> = [
       'confirmCashReceived',
       'resolveUnpaid',
       'registerCash',
-      'confirmTransfer',
       'assignDelivery',
       'updateLocation',
       'update',

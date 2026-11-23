@@ -64,7 +64,7 @@ export class ReservaResponseDto {
     type: String,
     nullable: true,
     description:
-      'Enlace de pago de MercadoPago de la seña mientras esté pendiente; `null` si la seña es en efectivo o por transferencia, ya está paga o no se generó',
+      'Enlace de pago de MercadoPago de la seña mientras esté pendiente; `null` si la seña es en efectivo, ya está paga o no se generó',
   })
   paymentUrl!: string | null;
   @ApiProperty({

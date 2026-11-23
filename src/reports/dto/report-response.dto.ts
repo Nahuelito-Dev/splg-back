@@ -58,13 +58,13 @@ export class CobrosDeEfectivoDto {
   @ApiProperty({
     type: CifraDeCobroDto,
     description:
-      'Transferencias de pedidos entregados que un admin todavía no confirmó (`paymentStatus: pending`). Se confirman con `PATCH /orders/{id}/payment/confirm-transfer`',
+      'Sólo pedidos viejos: transferencias de pedidos entregados que quedaron sin confirmar (`paymentStatus: pending`). La confirmación ya no existe',
   })
   pendingTransfer!: CifraDeCobroDto;
   @ApiProperty({
     type: CifraDeCobroDto,
     description:
-      'Transferencias que un admin marcó como no recibidas (`paymentStatus: failed`). Sólo se marcan sobre pedidos entregados; si el dinero llega después, `confirm-transfer` con `received: true` lo corrige',
+      'Sólo pedidos viejos: transferencias que un admin marcó como no recibidas (`paymentStatus: failed`)',
   })
   notReceivedTransfer!: CifraDeCobroDto;
   @ApiProperty({

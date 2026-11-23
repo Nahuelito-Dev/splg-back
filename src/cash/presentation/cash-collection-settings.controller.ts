@@ -34,7 +34,7 @@ import {
 import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /**
- * A qué caja entra lo que se cobra por Mercado Pago y por transferencia, y los
+ * A qué caja entra lo que se cobra por Mercado Pago y los
  * cobros que todavía no entraron a ninguna (API v2).
  */
 @ApiTags('Finanzas · Cajas de cobro (v2)')
@@ -48,7 +48,7 @@ export class CashCollectionSettingsController {
   @ApiOperation({
     summary: 'Ver las cajas de cobro',
     description:
-      'La caja (billetera) de Mercado Pago y la caja (banco) de las transferencias. Sin caja configurada el cobro se confirma igual y queda sin asentar.',
+      'La caja (billetera) de Mercado Pago. Sin caja configurada el cobro se confirma igual y queda sin asentar.',
   })
   @ApiOkResponse({ type: CashCollectionSettingsResponseDto })
   async ver(
@@ -61,9 +61,9 @@ export class CashCollectionSettingsController {
   @Patch('cash-settings')
   @Idempotent()
   @ApiOperation({
-    summary: 'Elegir las cajas de cobro',
+    summary: 'Elegir la caja de cobro',
     description:
-      '`mercadoPagoCashBoxId` tiene que ser una caja de clase billetera y `transferCashBoxId` una de clase banco, ambas de la distribuidora y activas. `null` quita la caja; omitir el campo lo deja como está. Elegir una caja NO asienta cobros anteriores: eso lo pide `POST /cash-settings/settle-pending`.',
+      '`mercadoPagoCashBoxId` tiene que ser una caja de clase billetera de la distribuidora y activa. `null` quita la caja; omitir el campo lo deja como está. Elegir una caja NO asienta cobros anteriores: eso lo pide `POST /cash-settings/settle-pending`.',
   })
   @ApiOkResponse({ type: CashCollectionSettingsResponseDto })
   @ApiBadRequestResponse({
@@ -86,7 +86,7 @@ export class CashCollectionSettingsController {
   @ApiOperation({
     summary: 'Cobros de ventas sin asentar',
     description:
-      'Pagos aprobados de Mercado Pago y transferencias confirmadas desde `from` (por omisión, los últimos 30 días) que no tienen movimiento de caja.',
+      'Pagos aprobados de Mercado Pago (y sus devoluciones) desde `from` (por omisión, los últimos 30 días) que no tienen movimiento de caja.',
   })
   @ApiOkResponse({ type: PendingCollectionsResponseDto })
   pendientes(
@@ -102,7 +102,7 @@ export class CashCollectionSettingsController {
   @ApiOperation({
     summary: 'Asentar los cobros pendientes',
     description:
-      'Asienta en las cajas configuradas los cobros de Mercado Pago (con su comisión y devoluciones) y las transferencias confirmadas desde `from` que no tienen movimiento. Idempotente: lo que ya está asentado no se repite. Nada anterior a `from` se toca.',
+      'Asienta en las cajas configuradas los cobros de Mercado Pago (con su comisión y devoluciones) desde `from` que no tienen movimiento. Idempotente: lo que ya está asentado no se repite. Nada anterior a `from` se toca.',
   })
   @ApiOkResponse({ type: SettlePendingResponseDto })
   @ApiBadRequestResponse({ description: 'Fecha inválida' })
@@ -123,7 +123,7 @@ export class CashCollectionSettingsController {
   @ApiOperation({
     summary: 'A qué caja entró lo cobrado de un pedido',
     description:
-      'Los cobros del pedido por Mercado Pago o transferencia, cada uno con su movimiento de caja o `settled: false` si quedó sin asentar.',
+      'Los cobros del pedido por Mercado Pago (y, en pedidos viejos, por transferencia), cada uno con su movimiento de caja o `settled: false` si quedó sin asentar.',
   })
   @ApiParam({ name: 'orderId', description: 'Pedido UUID' })
   @ApiOkResponse({ type: OrderCashSettlementResponseDto })
@@ -143,10 +143,6 @@ export class CashCollectionSettingsController {
     dto.mercadoPagoCashBoxId = config?.mercadoPagoCashBoxId ?? null;
     dto.mercadoPagoCashBoxName = dto.mercadoPagoCashBoxId
       ? (nombres.get(dto.mercadoPagoCashBoxId) ?? null)
-      : null;
-    dto.transferCashBoxId = config?.transferCashBoxId ?? null;
-    dto.transferCashBoxName = dto.transferCashBoxId
-      ? (nombres.get(dto.transferCashBoxId) ?? null)
       : null;
     dto.updatedAt = config?.updatedAt ?? null;
     return dto;

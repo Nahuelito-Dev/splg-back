@@ -6,8 +6,6 @@ import { Distributor } from './entities/distributor.entity';
 import { ModuleConfig } from './entities/module-config.entity';
 import { DistributorLogoService } from './distributor-logo.service';
 import { ModuleConfigService } from './module-config.service';
-import { DistributorBankController } from './distributor-bank.controller';
-import { DistributorBankService } from './distributor-bank.service';
 import { ExpressConfigController } from './express-config.controller';
 import { ExpressSettingsService } from './express-settings.service';
 import { PaymentSurchargeConfigController } from './payment-surcharge-config.controller';
@@ -51,7 +49,6 @@ import { CompanyThemeController } from './theme/company-theme.controller';
   // `/module-config/express_dispatch` tiene que ganarle a `/module-config/:process`.
   controllers: [
     DistributorController,
-    DistributorBankController,
     ExpressConfigController,
     PaymentSurchargeConfigController,
     ContainerChargeConfigController,
@@ -62,7 +59,6 @@ import { CompanyThemeController } from './theme/company-theme.controller';
   providers: [
     DistributorService,
     DistributorLogoService,
-    DistributorBankService,
     ModuleConfigService,
     DispatchSettingsService,
     ScheduledTasksSettingsService,
@@ -77,7 +73,6 @@ import { CompanyThemeController } from './theme/company-theme.controller';
   ],
   exports: [
     DistributorService,
-    DistributorBankService,
     ModuleConfigService,
     DispatchSettingsService,
     ScheduledTasksSettingsService,

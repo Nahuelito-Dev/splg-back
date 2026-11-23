@@ -8,9 +8,8 @@ import {
 } from './payment-surcharge-settings';
 
 describe('recargo por medio de pago: parámetros', () => {
-  it('por omisión rige lo de siempre: transferencia 10, Mercado Pago 10, efectivo 0', () => {
+  it('por omisión rige lo de siempre: Mercado Pago 10, efectivo 0', () => {
     expect(paymentSurchargeSettingsPorDefecto()).toEqual({
-      transferPercentage: 10,
       mercadoPagoPercentage: 10,
       cashPercentage: 0,
     });
@@ -44,7 +43,6 @@ describe('recargo por medio de pago: parámetros', () => {
         cashPercentage: 'x',
       }),
     ).toEqual({
-      transferPercentage: 7.5,
       mercadoPagoPercentage: 10,
       cashPercentage: 0,
     });
@@ -52,11 +50,10 @@ describe('recargo por medio de pago: parámetros', () => {
 
   it('cada medio toma su propio porcentaje y la cuenta corriente no lleva recargo', () => {
     const s = {
-      transferPercentage: 5,
       mercadoPagoPercentage: 12.5,
       cashPercentage: 2,
     };
-    expect(porcentajeDelMedio(s, PaymentMethod.TRANSFER)).toBe(5);
+    expect(porcentajeDelMedio(s, PaymentMethod.TRANSFER)).toBe(0);
     expect(porcentajeDelMedio(s, PaymentMethod.MERCADOPAGO)).toBe(12.5);
     expect(porcentajeDelMedio(s, PaymentMethod.CASH)).toBe(2);
     expect(porcentajeDelMedio(s, PaymentMethod.ACCOUNT)).toBe(0);

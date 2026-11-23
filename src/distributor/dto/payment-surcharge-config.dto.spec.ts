@@ -1,4 +1,4 @@
-import { BadRequestException, ValidationPipe } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { PaymentSurchargeConfigDto } from './payment-surcharge-config.dto';
@@ -52,24 +52,12 @@ describe('PaymentSurchargeConfigDto', () => {
     ).toContain(campo);
   });
 
-  it('transferPercentage ya no se admite: 400 PAYMENT_METHOD_NOT_ACCEPTED', async () => {
+  it('transferPercentage ya no es parte del contrato: se descarta', async () => {
     const pipe = new ValidationPipe({ transform: true, whitelist: true });
-    const error: unknown = await pipe
-      .transform(
-        {
-          transferPercentage: 10,
-          mercadoPagoPercentage: 10,
-          cashPercentage: 0,
-        },
-        { type: 'body', metatype: PaymentSurchargeConfigDto },
-      )
-      .catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(BadRequestException);
-    expect((error as BadRequestException).getResponse()).toMatchObject({
-      statusCode: 400,
-      code: 'PAYMENT_METHOD_NOT_ACCEPTED',
-      message:
-        'La distribuidora ya no acepta transferencias. Elegí efectivo o Mercado Pago.',
-    });
+    const dto = (await pipe.transform(
+      { transferPercentage: 10, mercadoPagoPercentage: 10, cashPercentage: 0 },
+      { type: 'body', metatype: PaymentSurchargeConfigDto },
+    )) as object;
+    expect(dto).not.toHaveProperty('transferPercentage');
   });
 });

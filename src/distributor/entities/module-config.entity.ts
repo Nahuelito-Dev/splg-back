@@ -30,7 +30,7 @@ export enum ConfigurableProcess {
   DISPATCH = 'dispatch',
   /** Frecuencia de las tareas programadas (CU-173). */
   SCHEDULED_TASKS = 'scheduled_tasks',
-  /** Recargo por medio de pago, en % (transferencia, Mercado Pago, efectivo). */
+  /** Recargo por medio de pago, en % (Mercado Pago, efectivo). */
   PAYMENT_SURCHARGES = 'payment_surcharges',
   /** Cobro de los envases que no posee el cliente. */
   CONTAINER_CHARGE = 'container_charge',

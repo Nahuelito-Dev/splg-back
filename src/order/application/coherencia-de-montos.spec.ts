@@ -18,13 +18,12 @@ import type { GasCylinder } from '../../gascylinder/entities/gascylinder.entity'
 const pricing = new OrderPricingService();
 
 /** Recargo por medio de pago de la distribuidora de la prueba. */
-let recargos = { transfer: 10, mercadopago: 10, cash: 0 };
+let recargos = { mercadopago: 10, cash: 0 };
 const useCase = Object.assign(Object.create(CreateOrderUseCase.prototype), {
   pricing,
   paymentSurcharges: new PaymentSurchargeSettingsService({
     parametros: () =>
       Promise.resolve({
-        transferPercentage: recargos.transfer,
         mercadoPagoPercentage: recargos.mercadopago,
         cashPercentage: recargos.cash,
       }),
@@ -103,24 +102,20 @@ describe('coherencia de montos: carrito, cotización, pedido y pasarela', () => 
     });
 
     describe.each([
-      ['0 %', { transfer: 0, mercadopago: 0, cash: 0 }],
-      ['10 % (el de siempre)', { transfer: 10, mercadopago: 10, cash: 0 }],
-      ['7,5 %', { transfer: 7.5, mercadopago: 7.5, cash: 0 }],
-      ['distinto por medio', { transfer: 5, mercadopago: 12.34, cash: 2 }],
+      ['0 %', { mercadopago: 0, cash: 0 }],
+      ['10 % (el de siempre)', { mercadopago: 10, cash: 0 }],
+      ['7,5 %', { mercadopago: 7.5, cash: 0 }],
+      ['distinto por medio', { mercadopago: 12.34, cash: 2 }],
     ])('recargo %s', (_n, config) => {
       beforeEach(() => {
         recargos = config;
       });
 
-      it.each([
-        PaymentMethod.CASH,
-        PaymentMethod.TRANSFER,
-        PaymentMethod.MERCADOPAGO,
-      ])(
+      it.each([PaymentMethod.CASH, PaymentMethod.MERCADOPAGO])(
         '%s: cotización, pedido, remito, caja y pasarela dan el mismo monto',
         async (medio) => {
           const porcentaje = await useCase.porcentajeDeRecargo('d1', medio);
-          const esperado = config[medio as 'cash' | 'transfer' | 'mercadopago'];
+          const esperado = config[medio as 'cash' | 'mercadopago'];
           expect(porcentaje).toBe(esperado);
 
           const { totalAmount, paymentSurchargeAmount } =

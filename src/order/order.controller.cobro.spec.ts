@@ -37,7 +37,6 @@ describe('OrderController · respuesta tras el cobro', () => {
       confirmReceived: jest.fn().mockResolvedValue(resultado),
       resolveUnpaid: jest.fn().mockResolvedValue(resultado),
       registerCashByAdmin: jest.fn().mockResolvedValue(resultado),
-      confirmTransfer: jest.fn().mockResolvedValue(resultado),
     };
     controller = new OrderController(
       orderService as never,
@@ -81,18 +80,13 @@ describe('OrderController · respuesta tras el cobro', () => {
     expect(r).toMatchObject({ id: 'o1', alreadyResolved: false });
   });
 
-  it('register-cash y confirm-transfer también', async () => {
+  it('register-cash también, y confirm-transfer ya no existe', async () => {
     const motivo = { reason: 'motivo suficiente' };
     await expect(
       controller.registerCash(usuario, 'o1', motivo, 'd1'),
     ).resolves.toMatchObject({ id: 'o1' });
-    await expect(
-      controller.confirmTransfer(
-        usuario,
-        'o1',
-        { ...motivo, received: true },
-        'd1',
-      ),
-    ).resolves.toMatchObject({ id: 'o1' });
+    expect(
+      (controller as unknown as Record<string, unknown>).confirmTransfer,
+    ).toBeUndefined();
   });
 });

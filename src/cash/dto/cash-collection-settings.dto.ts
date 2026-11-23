@@ -14,15 +14,6 @@ export class CashCollectionSettingsResponseDto {
   mercadoPagoCashBoxName!: string | null;
   @ApiProperty({
     type: String,
-    format: 'uuid',
-    nullable: true,
-    description: 'Banco al que entran las transferencias confirmadas',
-  })
-  transferCashBoxId!: string | null;
-  @ApiProperty({ type: String, nullable: true, example: 'Banco Nación' })
-  transferCashBoxName!: string | null;
-  @ApiProperty({
-    type: String,
     format: 'date-time',
     nullable: true,
     description: 'Null mientras nunca se configuró',
@@ -42,18 +33,6 @@ export class UpdateCashCollectionSettingsDto {
   @ValidateIf((_, valor) => valor !== null)
   @IsUUID()
   mercadoPagoCashBoxId?: string | null;
-
-  @ApiPropertyOptional({
-    type: String,
-    format: 'uuid',
-    nullable: true,
-    description:
-      'Caja de clase banco (`bank`) de la distribuidora. `null` la quita: las transferencias confirmadas quedan sin asentar. Omitirla la deja como está.',
-  })
-  @IsOptional()
-  @ValidateIf((_, valor) => valor !== null)
-  @IsUUID()
-  transferCashBoxId?: string | null;
 }
 
 export class PendingCollectionsQueryDto {
@@ -88,13 +67,6 @@ export class PendingCollectionsResponseDto {
   @ApiProperty({ example: 78300 }) amount!: number;
   @ApiProperty({ type: PendingCollectionsDetailDto })
   mercadoPago!: PendingCollectionsDetailDto;
-  @ApiProperty({ type: PendingCollectionsDetailDto })
-  transfer!: PendingCollectionsDetailDto;
-  @ApiProperty({
-    type: PendingCollectionsDetailDto,
-    description: 'Señas de reservas confirmadas por transferencia sin asentar',
-  })
-  deposits!: PendingCollectionsDetailDto;
   @ApiProperty({
     type: PendingCollectionsDetailDto,
     description:
@@ -148,10 +120,11 @@ export class SettlePendingResponseDto {
 
 export class OrderCollectionEntryDto {
   @ApiProperty({
-    enum: ['mercadopago', 'transfer', 'deposit'],
-    description: '`deposit` es la seña de una reserva recibida a mano',
+    enum: ['mercadopago', 'deposit'],
+    description:
+      '`deposit` es la seña de una reserva recibida a mano. Los pedidos viejos por transferencia no tienen entradas',
   })
-  kind!: 'mercadopago' | 'transfer' | 'deposit';
+  kind!: 'mercadopago' | 'deposit';
   @ApiProperty({ example: 12000 }) amount!: number;
   @ApiProperty({ format: 'date-time', nullable: true, type: String })
   collectedAt!: Date | null;
@@ -172,7 +145,7 @@ export class OrderCashSettlementResponseDto {
   @ApiProperty({
     type: [OrderCollectionEntryDto],
     description:
-      'Los cobros del pedido por Mercado Pago o transferencia; vacío si no tiene (efectivo, cuenta corriente o todavía sin cobrar)',
+      'Los cobros del pedido por Mercado Pago, la seña recibida a mano y, en pedidos viejos, la transferencia; vacío si no tiene (efectivo, cuenta corriente o todavía sin cobrar)',
   })
   entries!: OrderCollectionEntryDto[];
 }

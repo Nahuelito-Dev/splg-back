@@ -44,7 +44,7 @@ import {
   ResolveUnpaidDto,
   ResolveUnpaidResponseDto,
 } from './dto/resolve-unpaid.dto';
-import { ConfirmTransferDto, RegisterCashDto } from './dto/payment-admin.dto';
+import { RegisterCashDto } from './dto/payment-admin.dto';
 import { ReservationService } from './application/reservation.service';
 import {
   cancelledByDe,
@@ -897,41 +897,6 @@ export class OrderController {
     return this.pedidoTrasElCobro(id, distributorId, order);
   }
 
-  @Patch(':id/payment/confirm-transfer')
-  @Permiso('pedidos.gestionar')
-  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @Idempotent()
-  @ApiOperation({
-    summary: 'El admin confirma (o marca como no recibida) una transferencia',
-    description:
-      'Sólo pedidos con medio `transfer`, no cancelados, con el pago `pending`. `received: true` pasa el pago a `paid` (registra `paymentConfirmedAt/By`) y recién ahí el pedido entregado cuenta como venta en los reportes; `received: false` lo deja en `failed` (aparece en `GET /reports/collections` como `notReceivedTransfer`). `reason` obligatorio (10 a 500 caracteres): queda en `paymentResolutionNote`, en el historial de estados y en la auditoría. Repetir la misma decisión devuelve el pedido tal cual; la contraria sobre algo ya decidido es 409. `X-Distributor` es obligatorio para el super admin.',
-  })
-  @ApiOkResponse({ type: OrderResponseDto })
-  @ApiBadRequestResponse({
-    description:
-      'Datos inválidos, el pedido no es una transferencia o está cancelado, o falta la distribuidora',
-  })
-  @ApiConflictResponse({
-    description: 'La transferencia ya se resolvió con la decisión contraria',
-  })
-  @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
-  async confirmTransfer(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: ConfirmTransferDto,
-    @CurrentDistributor({ required: true }) distributorId: string,
-  ) {
-    await this.orderService.assertDeLaDistribuidora(id, distributorId);
-    const { order } = await this.cashCollection.confirmTransfer(
-      id,
-      user.user_id,
-      dto.received,
-      dto.reason,
-      distributorId,
-    );
-    return this.pedidoTrasElCobro(id, distributorId, order);
-  }
-
   @Patch(':id/assign/:deliveryId')
   @Idempotent({ sinCuerpo: true })
   @Permiso('despacho.gestionar')
@@ -1301,10 +1266,9 @@ export class OrderController {
   @Permiso('pedidos.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
-    summary:
-      'Confirmar la seña de una reserva cobrada en efectivo o por transferencia',
+    summary: 'Confirmar la seña de una reserva cobrada en efectivo',
     description:
-      'Marca deposit_paid=true para una seña recibida en efectivo o por transferencia. Habilita la ' +
+      'Marca deposit_paid=true para una seña recibida en efectivo o una seña anterior por transferencia o cuenta corriente (sin asentarla en caja). Habilita la ' +
       'activación AUTOMÁTICA de la reserva (el cron la despacha el día agendado). La seña por ' +
       'MercadoPago se confirma sola vía webhook: confirmarla a mano es 400.',
   })

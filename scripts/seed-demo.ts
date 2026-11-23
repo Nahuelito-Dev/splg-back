@@ -687,6 +687,13 @@ async function main() {
     productos,
     franjas,
     choferes,
+    (fn) =>
+      ds.transaction(async (m) => {
+        // Sólo para la historia de la demo: la base rechaza pedidos nuevos con
+        // transferencia (migr. 159); este bypass vale dentro de esta transacción.
+        await m.query(`SET LOCAL splg.bypass_transferencia = 'on'`);
+        return fn((sql, params = []) => m.query(sql, params));
+      }),
   );
   await bloquearAlgunosClientes(q, clientes, pedidos);
   await sembrarReclamos(q, distId, pedidos);
@@ -1367,9 +1374,9 @@ const PEDIDOS_DE_HOY: Array<{
   estado: 'accepted' | 'on_the_way' | 'pending' | 'reserved' | 'delivered';
   dia: number;
   chofer: boolean;
-  medio?: 'cash' | 'transfer';
+  medio?: 'cash';
   /** Entregado y con el cobro todavía sin resolver. */
-  cobro?: 'unpaid' | 'pending';
+  cobro?: 'unpaid';
 }> = [
   { estado: 'accepted', dia: 0, chofer: true },
   { estado: 'on_the_way', dia: 0, chofer: true },
@@ -1381,16 +1388,13 @@ const PEDIDOS_DE_HOY: Array<{
   { estado: 'reserved', dia: 1, chofer: false },
   { estado: 'reserved', dia: 3, chofer: false },
   { estado: 'delivered', dia: 1, chofer: true, medio: 'cash', cobro: 'unpaid' },
-  {
-    estado: 'delivered',
-    dia: 1,
-    chofer: true,
-    medio: 'transfer',
-    cobro: 'pending',
-  },
+  { estado: 'delivered', dia: 1, chofer: true, medio: 'cash' },
 ];
 
 const MEDIOS = ['cash', 'cash', 'cash', 'mercadopago', 'transfer'] as const;
+
+/** Días desde los que la historia de la demo puede incluir pedidos viejos por transferencia. */
+const DIAS_HISTORIA_CON_TRANSFERENCIA = 3;
 
 async function sembrarPedidos(
   q: Q,
@@ -1400,6 +1404,7 @@ async function sembrarPedidos(
   productos: Array<{ id: string; type: string; price: number; weight: number }>,
   franjas: string[],
   choferes: ChoferSembrado[],
+  enTransaccion: <T>(fn: (qt: Q) => Promise<T>) => Promise<T>,
 ): Promise<PedidoSembrado[]> {
   const pedidos: PedidoSembrado[] = [];
   let items = 0;
@@ -1467,9 +1472,15 @@ async function sembrarPedidos(
       subtotal += linea;
       return { producto: p, cantidad, unitario: p.price, subtotal: linea };
     });
-    const metodo =
+    const sorteado =
       forzado?.medio ??
       (estado === 'reserved' ? 'mercadopago' : alguno([...MEDIOS]));
+    // La transferencia ya no existe: sólo queda en la historia (pedidos viejos,
+    // insertados con el bypass de la base). Hoy y los últimos días, nunca.
+    const metodo =
+      sorteado === 'transfer' && dia < DIAS_HISTORIA_CON_TRANSFERENCIA
+        ? 'cash'
+        : sorteado;
     const tipoPago = metodo === 'cash' ? 'cash' : 'online';
     // Igual que el back: el pago online lleva +10 % sobre ítems + zona, guardado
     // aparte (`payment_surcharge_amount`), y el total es la suma exacta de las partes.
@@ -1527,7 +1538,7 @@ async function sembrarPedidos(
           confirmadoPor = chofer?.userId ?? null;
         }
       } else if (metodo === 'transfer') {
-        if (forzado?.cobro === 'pending' || (reciente && quizas(0.1))) {
+        if (!reciente && quizas(0.05)) {
           estadoPago = 'pending';
         } else {
           estadoPago = 'paid';
@@ -1562,8 +1573,13 @@ async function sembrarPedidos(
     const canceladoEl =
       estado === 'cancelled' ? masMinutos(creado, entre(10, 600)) : null;
 
-    const [o] = await q(
-      `INSERT INTO "order"
+    const insertarPedido =
+      metodo === 'transfer'
+        ? enTransaccion
+        : (fn: (qt: Q) => Promise<any>) => fn(q);
+    const [o] = await insertarPedido((qp) =>
+      qp(
+        `INSERT INTO "order"
          (distributor_id, customer_id, delivery_id, time_slot_id, scheduled_date,
           deposit_amount, deposit_paid, address_id, status, "paymentMethod",
           "paymentType", "paymentStatus", "totalAmount", notes, "deliveryInstructions",
@@ -1579,52 +1595,53 @@ async function sembrarPedidos(
                $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'fixed',$28,$28,
                $29,$30,$31,$32,$33,$34,$35,$36,$37,$38)
        RETURNING order_id`,
-      [
-        distId,
-        cliente.userId,
-        aceptado ? chofer!.deliveryId : null,
-        quizas(0.85) ? alguno(franjas) : null,
-        esReserva ? soloFecha(diasAtras(-entre(1, 12))) : null,
-        sena,
-        senaPaga,
-        dir.id,
-        estado,
-        metodo,
-        tipoPago,
-        estadoPago,
-        total,
-        quizas(0.25)
-          ? alguno([
-              'Tocar bocina',
-              'Dejar con el encargado',
-              'Urgente, se quedaron sin gas',
-            ])
-          : null,
-        quizas(0.3) ? alguno(INDICACIONES) : null,
-        dir.lat.toFixed(6),
-        dir.lng.toFixed(6),
-        aceptado,
-        enCamino,
-        entregado,
-        creado,
-        canceladoEl ?? entregado ?? aceptado ?? creado,
-        estado === 'cancelled' ? alguno(MOTIVOS_CANCELACION) : null,
-        aceptado ? generateDeliveryCode() : null,
-        subtotal,
-        dir.zonaId,
-        dir.zona,
-        dir.recargo,
-        recargoOnline,
-        aceptado ? chofer!.carId : null,
-        aceptado ? chofer!.patente : null,
-        aceptado ? chofer!.marca : null,
-        aceptado ? chofer!.modelo : null,
-        confirmadoEl,
-        confirmadoPor,
-        resueltoEl,
-        resueltoPor,
-        notaDeResolucion,
-      ],
+        [
+          distId,
+          cliente.userId,
+          aceptado ? chofer!.deliveryId : null,
+          quizas(0.85) ? alguno(franjas) : null,
+          esReserva ? soloFecha(diasAtras(-entre(1, 12))) : null,
+          sena,
+          senaPaga,
+          dir.id,
+          estado,
+          metodo,
+          tipoPago,
+          estadoPago,
+          total,
+          quizas(0.25)
+            ? alguno([
+                'Tocar bocina',
+                'Dejar con el encargado',
+                'Urgente, se quedaron sin gas',
+              ])
+            : null,
+          quizas(0.3) ? alguno(INDICACIONES) : null,
+          dir.lat.toFixed(6),
+          dir.lng.toFixed(6),
+          aceptado,
+          enCamino,
+          entregado,
+          creado,
+          canceladoEl ?? entregado ?? aceptado ?? creado,
+          estado === 'cancelled' ? alguno(MOTIVOS_CANCELACION) : null,
+          aceptado ? generateDeliveryCode() : null,
+          subtotal,
+          dir.zonaId,
+          dir.zona,
+          dir.recargo,
+          recargoOnline,
+          aceptado ? chofer!.carId : null,
+          aceptado ? chofer!.patente : null,
+          aceptado ? chofer!.marca : null,
+          aceptado ? chofer!.modelo : null,
+          confirmadoEl,
+          confirmadoPor,
+          resueltoEl,
+          resueltoPor,
+          notaDeResolucion,
+        ],
+      ),
     );
 
     for (const d of detalle) {

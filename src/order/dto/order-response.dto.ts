@@ -365,14 +365,14 @@ export class OrderResponseDto {
     name: 'payment_method',
     enum: ['cash', 'online', 'account'],
     description:
-      'Tipo de pago: efectivo, online (MercadoPago, transferencia) o cuenta corriente (`account`: no se cobra en la entrega)',
+      'Tipo de pago: efectivo, online (MercadoPago; transferencia sólo en pedidos viejos) o cuenta corriente (`account`: no se cobra en la entrega)',
   })
   @Expose({ name: 'payment_method' })
   paymentMethod!: string; // mapped value (online/cash)
 
   @ApiProperty({
     enum: PaymentMethod,
-    example: 'transfer',
+    example: 'cash',
     description:
       'Medio de pago real del pedido (`payment_method` agrupa como online todo lo que no es efectivo)',
   })
@@ -409,7 +409,7 @@ export class OrderResponseDto {
     format: 'date-time',
     nullable: true,
     description:
-      'Cuándo un admin resolvió el impago (`paid` o `written_off`), o registró el cobro manual (`register-cash`, `confirm-transfer`). Con `paymentStatus: unpaid` es cuándo el admin lo registró (`register-unpaid`); `resolve-unpaid` lo reemplaza. `null` si nadie lo tocó.',
+      'Cuándo un admin resolvió el impago (`paid` o `written_off`), o registró el cobro manual (`register-cash`). Con `paymentStatus: unpaid` es cuándo el admin lo registró (`register-unpaid`); `resolve-unpaid` lo reemplaza. `null` si nadie lo tocó.',
   })
   paymentResolvedAt!: Date | null;
 

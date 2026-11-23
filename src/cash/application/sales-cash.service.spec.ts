@@ -41,7 +41,6 @@ describe('SalesCashService', () => {
     config = {
       distributorId: DIST,
       mercadoPagoCashBoxId: 'wallet-1',
-      transferCashBoxId: 'bank-1',
       updatedByUserId: 'adm-1',
     };
     asentados = [];
@@ -231,54 +230,10 @@ describe('SalesCashService', () => {
     });
   });
 
-  describe('asentarTransferencia', () => {
-    const transferencia = {
-      distributorId: DIST,
-      orderId: ORDER,
-      amount: 4500,
-      userId: 'adm-7',
-    };
-
-    it('entra a la caja de transferencias con el medio transferencia', async () => {
-      expect(await service.asentarTransferencia(manager, transferencia)).toBe(
-        'asentado',
-      );
-
-      expect(registrar.mock.calls[0][1]).toMatchObject({
-        cashBoxId: 'bank-1',
-        direction: CashDirection.IN,
-        categoryId: `cat-${CashSystemCode.ORDER_PAYMENT}`,
-        method: CashMethod.TRANSFER,
-        referenceType: CashReferenceType.ORDER_TRANSFER,
-        referenceId: ORDER,
-        userId: 'adm-7',
-      });
-    });
-
-    it('se asienta una sola vez por pedido', async () => {
-      await service.asentarTransferencia(manager, transferencia);
-      expect(await service.asentarTransferencia(manager, transferencia)).toBe(
-        'ya_asentado',
-      );
-      expect(registrar).toHaveBeenCalledTimes(1);
-    });
-
-    it('sin caja de transferencias, no asienta', async () => {
-      config = { ...config, transferCashBoxId: null };
-      expect(await service.asentarTransferencia(manager, transferencia)).toBe(
-        'sin_caja',
-      );
-      expect(registrar).not.toHaveBeenCalled();
-    });
-
-    it('un saldo a cobrar de cero no asienta', async () => {
-      expect(
-        await service.asentarTransferencia(manager, {
-          ...transferencia,
-          amount: 0,
-        }),
-      ).toBe('sin_efecto');
-    });
+  it('ya no existe el asiento de transferencias', () => {
+    expect(
+      (service as unknown as Record<string, unknown>).asentarTransferencia,
+    ).toBeUndefined();
   });
 
   describe('autor y comisión pendiente', () => {
@@ -563,18 +518,19 @@ describe('SalesCashService', () => {
   });
 
   describe('asentarSena', () => {
-    it('por transferencia entra a la caja de transferencias y sólo una vez', async () => {
+    it('en efectivo entra a la caja elegida y sólo una vez', async () => {
       const sena = {
         distributorId: DIST,
         orderId: ORDER,
         amount: 1000,
         userId: 'adm-1',
-        metodo: CashMethod.TRANSFER as const,
+        metodo: CashMethod.CASH as const,
+        cashBoxId: 'cash-1',
       };
       expect(await service.asentarSena(manager, sena)).toBe('asentado');
       expect(registrar.mock.calls[0][1]).toMatchObject({
-        cashBoxId: 'bank-1',
-        method: CashMethod.TRANSFER,
+        cashBoxId: 'cash-1',
+        method: CashMethod.CASH,
         referenceType: CashReferenceType.ORDER_DEPOSIT,
         referenceId: ORDER,
       });
@@ -597,15 +553,14 @@ describe('SalesCashService', () => {
       });
     });
 
-    it('por transferencia sin caja configurada queda sin asentar', async () => {
-      config = { ...config, transferCashBoxId: null };
+    it('sin caja elegida queda sin asentar', async () => {
       expect(
         await service.asentarSena(manager, {
           distributorId: DIST,
           orderId: ORDER,
           amount: 1000,
           userId: 'adm-1',
-          metodo: CashMethod.TRANSFER,
+          metodo: CashMethod.CASH,
         }),
       ).toBe('sin_caja');
     });

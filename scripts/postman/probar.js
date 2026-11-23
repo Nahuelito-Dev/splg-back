@@ -14,13 +14,34 @@ function arg(nombre, defecto) {
   return encontrado ? encontrado.slice(prefijo.length) : defecto;
 }
 
-const coleccion = path.resolve(BASE, arg('coleccion', 'postman/SPLG.postman_collection.json'));
-const entorno = path.resolve(BASE, arg('entorno', 'postman/SPLG-local.postman_environment.json'));
+const coleccion = path.resolve(
+  BASE,
+  arg('coleccion', 'postman/SPLG.postman_collection.json'),
+);
+const entorno = path.resolve(
+  BASE,
+  arg('entorno', 'postman/SPLG-local.postman_environment.json'),
+);
 const reporte = path.resolve(BASE, arg('reporte', '.orq/newman-reporte.json'));
 const baseUrl = arg('base-url', null);
 
-const carpetas = JSON.parse(fs.readFileSync(coleccion, 'utf8')).item.map((i) => i.name).filter((n) => n !== 'Manual');
-const args = ['-y', NEWMAN, 'run', coleccion, '-e', entorno, '-r', 'cli,json', '--reporter-json-export', reporte, '--timeout-request', '20000'];
+const carpetas = JSON.parse(fs.readFileSync(coleccion, 'utf8'))
+  .item.map((i) => i.name)
+  .filter((n) => n !== 'Manual');
+const args = [
+  '-y',
+  NEWMAN,
+  'run',
+  coleccion,
+  '-e',
+  entorno,
+  '-r',
+  'cli,json',
+  '--reporter-json-export',
+  reporte,
+  '--timeout-request',
+  '20000',
+];
 if (baseUrl) args.push('--env-var', `baseUrl=${baseUrl}`);
 for (const nombre of carpetas) args.push('--folder', nombre);
 

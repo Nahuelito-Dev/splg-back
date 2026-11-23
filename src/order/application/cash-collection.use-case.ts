@@ -10,10 +10,6 @@ import { DataSource, EntityManager } from 'typeorm';
 
 import { CashCategoryService } from '../../cash/application/cash-category.service';
 import { CashLedgerService } from '../../cash/application/cash-ledger.service';
-import {
-  ResultadoDelAsiento,
-  SalesCashService,
-} from '../../cash/application/sales-cash.service';
 import { saldoACobrar } from '../../truck-load/domain/truck-load-rules';
 import {
   CashBoxKind,
@@ -70,7 +66,6 @@ export class CashCollectionUseCase {
     private readonly dataSource: DataSource,
     private readonly cashLedger: CashLedgerService,
     private readonly categorias: CashCategoryService,
-    private readonly ventasEnCaja: SalesCashService,
   ) {}
 
   /** El chofer asignado confirma que cobró el efectivo. */
@@ -148,7 +143,7 @@ export class CashCollectionUseCase {
   ): Promise<ResultadoDeCobro> {
     return this.dataSource.transaction(async (manager) => {
       const order = await this.lock(manager, orderId, distributorId);
-      this.exigirEntregadoEnEfectivo(order);
+      this.exigirEntregadoEnEfectivo(order, true);
       if (order.paymentStatus === PaymentStatus.PAID) {
         return { order, changed: false, extra: undefined as never };
       }
@@ -193,7 +188,7 @@ export class CashCollectionUseCase {
   ): Promise<ResultadoDeCobro<T>> {
     return this.dataSource.transaction(async (manager) => {
       const order = await this.lock(manager, orderId, distributorId);
-      this.exigirEntregadoEnEfectivo(order);
+      this.exigirEntregadoEnEfectivo(order, true);
       await this.exigirSinRendir(manager, order);
       const changed = await this.pasarAImpago(manager, order, {
         adminUserId,
@@ -212,104 +207,10 @@ export class CashCollectionUseCase {
   }
 
   /**
-   * Un administrador confirma que la transferencia llegó (`received: true`,
-   * el pago pasa a `paid` y el pedido empieza a contar como venta) o que no
-   * llegó (`received: false`, queda `failed`). Sólo para pedidos con medio
-   * `transfer`, no cancelados.
-   *
-   * - `received: true` vale desde `pending` y también desde `failed` (el dinero
-   *   llegó después: se corrige con motivo).
-   * - `received: false` vale sólo desde `pending` y sólo sobre un pedido ya
-   *   ENTREGADO: marcar "no recibida" antes de entregar no frenaría nada, y lo
-   *   que se quiere registrar es una entrega sin cobro.
-   * - Repetir la misma decisión es un no-op; `paid` → `failed` es 409.
-   *
-   * Al confirmar que llegó, el importe entra a la caja de transferencias en la
-   * misma transacción (una sola vez por pedido). Sin caja configurada, o si la
-   * caja lo rechaza, la confirmación sigue igual: el cobro queda sin asentar y
-   * se avisa a la bandeja. Como `paid` → `failed` es 409, ninguna confirmación
-   * se deshace, y no hay contraasiento que asentar.
-   */
-  async confirmTransfer(
-    orderId: string,
-    adminUserId: string,
-    received: boolean,
-    reason: string,
-    distributorId?: string | null,
-  ): Promise<ResultadoDeCobro> {
-    let asiento: ResultadoDelAsiento | undefined;
-    const resultado = await this.dataSource.transaction(async (manager) => {
-      const order = await this.lock(manager, orderId, distributorId);
-      if (order.paymentMethod !== PaymentMethod.TRANSFER) {
-        throw new BadRequestException(
-          'Sólo se confirman los pedidos pagados por transferencia',
-        );
-      }
-      if (order.status === OrderStatus.CANCELLED) {
-        throw new BadRequestException(
-          'El pedido está cancelado: no se confirma su transferencia',
-        );
-      }
-      const destino = received ? PaymentStatus.PAID : PaymentStatus.FAILED;
-      if (order.paymentStatus === destino) {
-        return { order, changed: false, extra: undefined as never };
-      }
-      const corrigeNoRecibida =
-        received && order.paymentStatus === PaymentStatus.FAILED;
-      if (order.paymentStatus !== PaymentStatus.PENDING && !corrigeNoRecibida) {
-        throw new ConflictException(
-          'La transferencia ya se confirmó: no se cambia',
-        );
-      }
-      if (!received && order.status !== OrderStatus.DELIVERED) {
-        throw new ConflictException(
-          'Sólo se marca como no recibida la transferencia de un pedido entregado',
-        );
-      }
-      const ahora = new Date();
-      order.paymentStatus = destino;
-      if (received) {
-        order.paymentConfirmedAt = ahora;
-        order.paymentConfirmedBy = adminUserId;
-      }
-      order.paymentResolvedAt = ahora;
-      order.paymentResolvedBy = adminUserId;
-      order.paymentResolutionNote = reason;
-      await manager.save(order);
-      await this.asentarEnElHistorial(
-        manager,
-        order,
-        adminUserId,
-        `Transferencia ${received ? 'confirmada' : 'marcada como no recibida'} por un administrador: ${reason}`,
-      );
-      if (received) {
-        asiento = await this.ventasEnCaja.asentarTransferencia(manager, {
-          distributorId: order.distributorId,
-          orderId: order.orderId,
-          amount: saldoACobrar(
-            Number(order.totalAmount),
-            order.depositPaid ? Number(order.depositAmount) : 0,
-          ),
-          userId: adminUserId,
-        });
-      }
-      return { order, changed: true, extra: undefined as never };
-    });
-    if (asiento) {
-      this.ventasEnCaja.avisarSinAsentar(
-        resultado.order.distributorId,
-        asiento,
-        orderId,
-      );
-    }
-    return resultado;
-  }
-
-  /**
    * PENDING → UNPAID; `false` si ya estaba impago (no se toca nada, tampoco la
    * anotación). 409 si ya no está pendiente. Con `anotacion` (el admin que lo
    * registra) el motivo queda en el pedido, en `paymentResolved*` igual que en
-   * `register-cash` y `confirm-transfer`; `resolve-unpaid` los reemplaza cuando
+   * `register-cash`; `resolve-unpaid` los reemplaza cuando
    * el impago se cierra. Como sólo se llega desde `pending`, no hay una
    * resolución previa que pisar.
    */
@@ -460,6 +361,16 @@ export class CashCollectionUseCase {
     order: Order,
     cashBoxId?: string | null,
   ): Promise<void> {
+    if (order.paymentMethod === PaymentMethod.TRANSFER) {
+      // Lo cobrado por transferencia entró al banco, no a una caja de efectivo:
+      // no se asienta (el movimiento bancario se registra aparte).
+      if (cashBoxId) {
+        throw new BadRequestException(
+          'Una transferencia anterior no entra a una caja de efectivo: no indiques caja',
+        );
+      }
+      return;
+    }
     if (cashBoxId) {
       const filas: Array<{ kind: CashBoxKind }> = await manager.query(
         `SELECT "kind" FROM "cash_box"
@@ -500,7 +411,7 @@ export class CashCollectionUseCase {
     adminUserId: string,
     cashBoxId?: string | null,
   ): Promise<void> {
-    if (!cashBoxId) return;
+    if (!cashBoxId || order.paymentMethod === PaymentMethod.TRANSFER) return;
     const importe = new Decimal(
       saldoACobrar(
         Number(order.totalAmount),
@@ -570,11 +481,27 @@ export class CashCollectionUseCase {
     return order;
   }
 
-  private exigirEntregadoEnEfectivo(order: Order): void {
+  /**
+   * Con `incluyeTransferenciaVieja` (sólo los endpoints del administrador) un
+   * pedido histórico por transferencia también se puede resolver: la
+   * transferencia ya no se ofrece, pero los pedidos viejos que quedaron
+   * entregados con el cobro pendiente tienen que poder cerrarse. Nunca se crea
+   * uno nuevo por esta vía.
+   */
+  private exigirEntregadoEnEfectivo(
+    order: Order,
+    incluyeTransferenciaVieja = false,
+  ): void {
     if (order.status !== OrderStatus.DELIVERED) {
       throw new BadRequestException(
         'El cobro se informa sobre un pedido ya entregado',
       );
+    }
+    if (
+      incluyeTransferenciaVieja &&
+      order.paymentMethod === PaymentMethod.TRANSFER
+    ) {
+      return;
     }
     if (order.paymentMethod !== PaymentMethod.CASH) {
       throw new BadRequestException(

@@ -614,9 +614,9 @@ describe('Cuentas corrientes (e2e)', () => {
       const pago = cuerpo<Asiento>(
         await pagar(e.headers, cuenta.accountId, {
           amount: 3500,
-          method: 'transfer',
+          method: 'card',
           cashBoxId: cajaId,
-          description: 'Transferencia octubre',
+          description: 'Tarjeta octubre',
         }).expect(201),
       );
       expect(pago).toMatchObject({

@@ -260,16 +260,6 @@ describe('Matriz HTTP T4: distribuidoras y rutas (e2e)', () => {
   ];
   correrMatriz('distribuidoras', ver, cases);
 
-  const bank = endpoint<EscenarioT4>(
-    'get',
-    '/v2/distributor/bank-details',
-    '/v2/distributor/bank-details',
-  );
-  const putBank = endpoint<EscenarioT4>(
-    'put',
-    '/v2/distributor/bank-details',
-    '/v2/distributor/bank-details',
-  );
   const mp = endpoint<EscenarioT4>(
     'get',
     '/v2/distributor/mercadopago-credentials',
@@ -286,33 +276,6 @@ describe('Matriz HTTP T4: distribuidoras y rutas (e2e)', () => {
     '/v2/distributor/mercadopago-credentials/deactivate',
   );
   correrMatriz('datos de cobro', ver, [
-    bank('admin', 'adminA', 200),
-    bank('sin token', undefined, 401),
-    bank('cliente', 'clienteA', 403),
-    bank('super sin tenant (sin sesión de soporte)', 'super', 403, {
-      code: 'SUPPORT_SESSION_REQUIRED',
-    }),
-    putBank('guarda y relee', 'adminA', 200, {
-      body: { alias: 'garrafas.t4', holder: 'Distribuidora T4' },
-      verificar: async (_b, c) =>
-        expect(
-          (await llamar(c, 'get', '/v2/distributor/bank-details', 'adminA'))
-            .body,
-        ).toMatchObject({ alias: 'garrafas.t4', holder: 'Distribuidora T4' }),
-    }),
-    putBank('alias inválido', 'adminA', 400, { body: { alias: 'x' } }),
-    putBank('CBU inválido', 'adminA', 400, {
-      body: { cbu: '0170099220000067797371' },
-    }),
-    putBank('titular corto', 'adminA', 400, { body: { holder: 'x' } }),
-    putBank('tipo inválido', 'adminA', 400, { body: { alias: 1 } }),
-    putBank('campo extra', 'adminA', 400, { body: { ajeno: true } }),
-    putBank('sin token', undefined, 401),
-    putBank('cliente', 'clienteA', 403),
-    putBank('chofer', 'chofer', 403),
-    putBank('super sin tenant (sin sesión de soporte)', 'super', 403, {
-      code: 'SUPPORT_SESSION_REQUIRED',
-    }),
     mp('admin', 'adminA', 200),
     mp('sin token', undefined, 401),
     mp('cliente', 'clienteA', 403),
@@ -424,6 +387,6 @@ describe('Matriz HTTP T4: distribuidoras y rutas (e2e)', () => {
   correrMatriz(
     'super admin en modo soporte',
     ver,
-    casosEnModoSoporte(bank, putBank),
+    casosEnModoSoporte(mp, putMp),
   );
 });

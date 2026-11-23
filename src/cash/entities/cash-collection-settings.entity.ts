@@ -15,10 +15,9 @@ import { CashBox } from './cash-box.entity';
 
 /**
  * A qué caja entra lo que se cobra por las ventas sin pasar por la mano del
- * chofer: los pagos aprobados de Mercado Pago (una billetera) y las
- * transferencias confirmadas (un banco). Una fila por distribuidora; sin fila o
- * con la columna en null, ese medio no asienta nada y el cobro queda «sin
- * asentar». Las cajas se validan por clase (un trigger de la base) y por
+ * chofer: los pagos aprobados de Mercado Pago (una billetera). Una fila por
+ * distribuidora; sin fila o con la columna en null, no se asienta nada y el cobro queda «sin
+ * asentar». La caja se valida por clase (un trigger de la base) y por
  * distribuidora (clave foránea compuesta).
  */
 @ForeignKey(
@@ -27,15 +26,6 @@ import { CashBox } from './cash-box.entity';
   ['cash_box_id', 'distributor_id'],
   {
     name: 'FK_cash_collection_settings_mercadopago_cash_box_distribuidora',
-    onDelete: 'NO ACTION',
-  },
-)
-@ForeignKey(
-  () => CashBox,
-  ['transfer_cash_box_id', 'distributor_id'],
-  ['cash_box_id', 'distributor_id'],
-  {
-    name: 'FK_cash_collection_settings_transfer_cash_box_distribuidora',
     onDelete: 'NO ACTION',
   },
 )
@@ -54,10 +44,6 @@ export class CashCollectionSettings {
   /** Billetera (`wallet`) a la que entran los pagos de Mercado Pago. */
   @Column({ name: 'mercadopago_cash_box_id', type: 'uuid', nullable: true })
   mercadoPagoCashBoxId!: string | null;
-
-  /** Banco (`bank`) al que entran las transferencias confirmadas. */
-  @Column({ name: 'transfer_cash_box_id', type: 'uuid', nullable: true })
-  transferCashBoxId!: string | null;
 
   /**
    * El administrador que dejó la configuración vigente: es el autor de los
