@@ -1,6 +1,7 @@
 import { EntityManager } from 'typeorm';
 import {
   choferesConPedidosSinRendir,
+  efectivoSinRendirPorChofer,
   pedidosSinRendir,
 } from './settlement-orders';
 
@@ -91,5 +92,74 @@ describe('settlement-orders', () => {
       });
       expect(consultas[0].sql).not.toContain('FOR UPDATE');
     });
+  });
+});
+
+describe('efectivoSinRendirPorChofer', () => {
+  const ahora = new Date('2026-11-22T23:00:00Z');
+  const fila = (
+    delivery: string,
+    nombre: string,
+    total: string,
+    sena: string,
+    entregado: string,
+  ) => ({
+    delivery_id: delivery,
+    driver_name: nombre,
+    total,
+    sena,
+    delivered_at: new Date(entregado),
+  });
+  const armar = (filas: unknown[]) =>
+    ({
+      query: jest.fn().mockResolvedValue(filas),
+    }) as unknown as EntityManager;
+
+  it('agrupa por chofer, descuenta la seña paga y ordena del más viejo al más nuevo', async () => {
+    const r = await efectivoSinRendirPorChofer(
+      armar([
+        fila('ch1', 'Ana', '10000', '0', '2026-11-20T12:00:00Z'),
+        fila('ch2', 'Beto', '9000', '0', '2026-11-19T12:00:00Z'),
+        fila('ch1', 'Ana', '8000', '3000', '2026-11-21T12:00:00Z'),
+      ]),
+      'd1',
+      { ahora },
+    );
+
+    expect(r.map((c) => c.deliveryId)).toEqual(['ch2', 'ch1']);
+    expect(r[1]).toMatchObject({
+      driverName: 'Ana',
+      orders: 2,
+      amount: 15000,
+      ageHours: 59,
+    });
+  });
+
+  it('con masViejosDeHoras sólo cuenta lo entregado hace al menos esas horas', async () => {
+    const r = await efectivoSinRendirPorChofer(
+      armar([
+        fila('ch1', 'Ana', '10000', '0', '2026-11-20T12:00:00Z'),
+        fila('ch1', 'Ana', '5000', '0', '2026-11-22T20:00:00Z'),
+        fila('ch2', 'Beto', '7000', '0', '2026-11-22T21:00:00Z'),
+      ]),
+      'd1',
+      { ahora, masViejosDeHoras: 24 },
+    );
+
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ deliveryId: 'ch1', orders: 1, amount: 10000 });
+  });
+
+  it('la consulta excluye lo que una rendición ya tomó y lo que resolvió el admin', async () => {
+    const manager = armar([]);
+    await efectivoSinRendirPorChofer(manager, 'd1');
+    const [sql, params] = (manager.query as jest.Mock).mock.calls[0] as [
+      string,
+      unknown[],
+    ];
+    expect(sql).toContain('NOT EXISTS');
+    expect(sql).toContain('"driver_settlement_order"');
+    expect(sql).toContain('"payment_resolved_by" IS NULL');
+    expect(params).toEqual(['d1']);
   });
 });

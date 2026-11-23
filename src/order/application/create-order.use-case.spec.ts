@@ -229,7 +229,6 @@ describe('CreateOrderUseCase', () => {
   describe('lo cotizado es lo cobrado (expectedTotal)', () => {
     it.each([
       [PaymentMethod.CASH, 2000],
-      [PaymentMethod.TRANSFER, 2200],
       [PaymentMethod.MERCADOPAGO, 2200],
     ])('%s con el total vigente (%s): crea el pedido', async (medio, total) => {
       const result = await useCase.execute({
@@ -246,7 +245,7 @@ describe('CreateOrderUseCase', () => {
       await expect(
         useCase.execute({
           ...baseDto,
-          paymentMethod: PaymentMethod.TRANSFER,
+          paymentMethod: PaymentMethod.MERCADOPAGO,
           expectedTotal: 2200,
         }),
       ).rejects.toThrow(
@@ -284,6 +283,54 @@ describe('CreateOrderUseCase', () => {
         expect.any(Object),
         expect.any(String),
       );
+    });
+  });
+
+  describe('aviso del efectivo al confirmar (C4)', () => {
+    it('un pedido en efectivo le dice al cliente cuánto paga al recibirlo', async () => {
+      await useCase.execute({ ...baseDto, paymentMethod: PaymentMethod.CASH });
+
+      const efectivo = (
+        notificationService.sendOrderConfirmation.mock.calls[0] as unknown[]
+      )[3];
+      expect(efectivo).toEqual({
+        monto: expect.any(Number) as number,
+        senaDescontada: 0,
+      });
+      expect((efectivo as { monto: number }).monto).toBeGreaterThan(0);
+    });
+
+    it('una reserva con seña en efectivo avisa lo que se paga al entregar, con la seña ya descontada aunque no esté confirmada', async () => {
+      await useCase.execute({
+        ...baseDto,
+        paymentMethod: PaymentMethod.CASH,
+        isReservation: true,
+        depositAmount: 100,
+        scheduledDate: '2099-01-01',
+      });
+
+      const [orden] = orderRepository.create.mock.calls[0] as unknown as [
+        { totalAmount: number },
+      ];
+      const efectivo = (
+        notificationService.sendOrderConfirmation.mock.calls[0] as unknown[]
+      )[3];
+      expect(efectivo).toEqual({
+        monto: orden.totalAmount - 100,
+        senaDescontada: 100,
+      });
+    });
+
+    it('un pedido online no menciona efectivo', async () => {
+      await useCase.execute({
+        ...baseDto,
+        paymentMethod: PaymentMethod.MERCADOPAGO,
+      });
+
+      const efectivo = (
+        notificationService.sendOrderConfirmation.mock.calls[0] as unknown[]
+      )[3];
+      expect(efectivo).toBeNull();
     });
   });
 
@@ -396,11 +443,11 @@ describe('CreateOrderUseCase', () => {
       expect(queryRunner.manager.save).not.toHaveBeenCalled();
     });
 
-    it('una reserva por MercadoPago o transferencia guarda el recargo online aparte y el total cierra', async () => {
+    it('una reserva por MercadoPago guarda el recargo online aparte y el total cierra', async () => {
       pricing.applyPaymentSurcharge.mockImplementation((monto: Decimal) =>
         monto.times(1.1),
       );
-      for (const medio of [PaymentMethod.MERCADOPAGO, PaymentMethod.TRANSFER]) {
+      for (const medio of [PaymentMethod.MERCADOPAGO]) {
         orderRepository.create.mockClear();
         await useCase.execute({
           ...baseDto,
@@ -438,12 +485,75 @@ describe('CreateOrderUseCase', () => {
       orderRepository.create.mockClear();
       await useCase.execute({
         ...baseDto,
-        paymentMethod: PaymentMethod.TRANSFER,
+        paymentMethod: PaymentMethod.MERCADOPAGO,
         isReservation: true,
         depositAmount: 100,
         scheduledDate: '2099-01-01',
       });
       expect(creadas()[0][0].availableSince).toBeNull();
+    });
+
+    describe('la transferencia ya no se acepta', () => {
+      const rechaza = async (cuerpo: Record<string, unknown>) => {
+        const error = await useCase
+          .execute({ ...baseDto, ...cuerpo } as never)
+          .then(
+            () => null,
+            (e: unknown) => e as BadRequestException,
+          );
+        return error;
+      };
+      const respuesta = {
+        statusCode: 400,
+        message:
+          'La distribuidora ya no acepta transferencias. Elegí efectivo o Mercado Pago.',
+        code: 'PAYMENT_METHOD_NOT_ACCEPTED',
+      };
+      const nadaSeCreo = () => {
+        expect(queryRunner.manager.save).not.toHaveBeenCalled();
+        expect(orderRepository.create).not.toHaveBeenCalled();
+        expect(paymentsService.createCheckout).not.toHaveBeenCalled();
+      };
+
+      it('un pedido normal es 400 con código y no crea nada', async () => {
+        const error = await rechaza({ paymentMethod: PaymentMethod.TRANSFER });
+        expect(error).toBeInstanceOf(BadRequestException);
+        expect(error?.getResponse()).toMatchObject(respuesta);
+        nadaSeCreo();
+      });
+
+      it('una reserva con seña es 400 con código y no crea nada', async () => {
+        const error = await rechaza({
+          paymentMethod: PaymentMethod.TRANSFER,
+          isReservation: true,
+          depositAmount: 100,
+          scheduledDate: '2099-01-01',
+        });
+        expect(error?.getResponse()).toMatchObject(respuesta);
+        nadaSeCreo();
+      });
+
+      it('una compra express (mismo alta) es 400', async () => {
+        const error = await rechaza({
+          paymentMethod: PaymentMethod.TRANSFER,
+          deliveryMode: OrderDeliveryMode.EXPRESS,
+        });
+        expect(error?.getResponse()).toMatchObject(respuesta);
+        nadaSeCreo();
+      });
+
+      it('lo rechaza antes de buscar la distribuidora o tocar la base', async () => {
+        const error = await rechaza({ paymentMethod: PaymentMethod.TRANSFER });
+        expect(error).toBeInstanceOf(BadRequestException);
+        expect(dataSource.createQueryRunner).not.toHaveBeenCalled();
+      });
+
+      it('efectivo y Mercado Pago siguen entrando', async () => {
+        for (const medio of [PaymentMethod.CASH, PaymentMethod.MERCADOPAGO]) {
+          const r = await useCase.execute({ ...baseDto, paymentMethod: medio });
+          expect(r.order.orderId).toBe('ord-1');
+        }
+      });
     });
 
     it('una reserva no se paga con cuenta corriente', async () => {

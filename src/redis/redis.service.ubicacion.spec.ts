@@ -6,6 +6,7 @@ describe('RedisService · última ubicación del chofer', () => {
     setex: jest.Mock;
     geopos: jest.Mock;
     get: jest.Mock;
+    mget: jest.Mock;
     zrem: jest.Mock;
     del: jest.Mock;
   };
@@ -17,6 +18,7 @@ describe('RedisService · última ubicación del chofer', () => {
       setex: jest.fn().mockResolvedValue('OK'),
       geopos: jest.fn(),
       get: jest.fn(),
+      mget: jest.fn(),
       zrem: jest.fn().mockResolvedValue(1),
       del: jest.fn().mockResolvedValue(1),
     };
@@ -66,6 +68,61 @@ describe('RedisService · última ubicación del chofer', () => {
     client.geopos.mockResolvedValue([null]);
     await expect(service.getDriverLastLocation('u1')).resolves.toBeNull();
     expect(client.get).not.toHaveBeenCalled();
+  });
+
+  describe('getDriversLastLocations (por lote)', () => {
+    it('lee a todos con un GEOPOS y un MGET, sin importar cuántos sean', async () => {
+      client.geopos.mockResolvedValue([
+        ['-58.4012', '-34.6101'],
+        null,
+        ['-55.9', '-27.36'],
+      ]);
+      client.mget.mockResolvedValue(['2026-10-12T20:15:00.000Z', null]);
+      const r = await service.getDriversLastLocations(['u1', 'u2', 'u3']);
+      expect(client.geopos).toHaveBeenCalledTimes(1);
+      expect(client.geopos).toHaveBeenCalledWith(
+        'drivers:locations',
+        'u1',
+        'u2',
+        'u3',
+      );
+      // La hora sólo de los que están en el radar, en el mismo orden.
+      expect(client.mget).toHaveBeenCalledTimes(1);
+      expect(client.mget).toHaveBeenCalledWith(
+        'driver:location-at:u1',
+        'driver:location-at:u3',
+      );
+      expect(client.get).not.toHaveBeenCalled();
+      expect([...r.entries()]).toEqual([
+        [
+          'u1',
+          { lat: -34.6101, lng: -58.4012, at: '2026-10-12T20:15:00.000Z' },
+        ],
+        ['u3', { lat: -27.36, lng: -55.9, at: null }],
+      ]);
+    });
+
+    it('da lo mismo que la lectura de a uno', async () => {
+      client.geopos.mockResolvedValue([['-58.4012', '-34.6101']]);
+      client.get.mockResolvedValue('2026-10-12T20:15:00.000Z');
+      client.mget.mockResolvedValue(['2026-10-12T20:15:00.000Z']);
+      const uno = await service.getDriverLastLocation('u1');
+      const lote = await service.getDriversLastLocations(['u1']);
+      expect(lote.get('u1')).toEqual(uno);
+    });
+
+    it('sin choferes no consulta; con ninguno en el radar no pide las horas; los repetidos van una vez', async () => {
+      await expect(service.getDriversLastLocations([])).resolves.toEqual(
+        new Map(),
+      );
+      expect(client.geopos).not.toHaveBeenCalled();
+      client.geopos.mockResolvedValue([null]);
+      await expect(
+        service.getDriversLastLocations(['u1', 'u1']),
+      ).resolves.toEqual(new Map());
+      expect(client.geopos).toHaveBeenCalledWith('drivers:locations', 'u1');
+      expect(client.mget).not.toHaveBeenCalled();
+    });
   });
 
   it('sacarlo del radar borra también la hora', async () => {

@@ -1,68 +1,261 @@
-import { ConfigService } from '@nestjs/config';
-import {
-  HealthCheckService,
-  TypeOrmHealthIndicator,
-  MemoryHealthIndicator,
-  DiskHealthIndicator,
-} from '@nestjs/terminus';
+import { INestApplication, ServiceUnavailableException } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import { HealthCheckService, TypeOrmHealthIndicator } from '@nestjs/terminus';
+import request from 'supertest';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { Server } from 'node:http';
+import { ChequeosService } from './chequeos.service';
 import { HealthController } from './health.controller';
+import { ModeloPagina } from './pagina-estado.modelo';
+import { PaginaEstadoService } from './pagina-estado.service';
 import { RedisHealthIndicator } from './redis.health';
+import { HistorialComponente } from './disponibilidad';
 
-/** `HealthIndicatorFunction` no tipa bien para un mock de test: basta con
- * que `health.check` invoque cada función que le pasamos, como hace Nest. */
-type Chequeo = () => unknown;
+const HISTORIAL_VACIO: HistorialComponente = {
+  dias: [],
+  disponibilidad: null,
+  incidentes: [],
+};
 
-/**
- * H-53: `/health` exigía RSS < 300 MB fijo, el umbral de un proceso recién
- * levantado. Con tráfico real (la batería de Postman, por ejemplo) lo supera
- * y el chequeo daba 503 aunque el proceso estuviera sano. Ahora el umbral
- * sale de `HEALTH_MEMORY_RSS_THRESHOLD_MB` (default 512, ver joi.validation).
- */
-describe('HealthController — umbral de memoria (H-53)', () => {
-  let memory: { checkRSS: jest.Mock };
-  let health: { check: jest.Mock };
-  let config: { getOrThrow: jest.Mock };
+function modelo(general: ModeloPagina['general']): ModeloPagina {
+  return {
+    general,
+    verificadoEn: Date.parse('2026-11-22T18:00:00Z'),
+    version: '1.2.3',
+    historialDisponible: true,
+    componentes: [
+      {
+        id: 'api',
+        nombre: 'API',
+        detalle: 'x',
+        actual: 'up',
+        historial: HISTORIAL_VACIO,
+      },
+    ],
+  };
+}
 
-  function crearController(thresholdMb: number): HealthController {
-    config = { getOrThrow: jest.fn().mockReturnValue(thresholdMb) };
-    const db = { pingCheck: jest.fn() };
-    memory = { checkRSS: jest.fn() };
-    const disk = { checkStorage: jest.fn() };
-    const redis = { isHealthy: jest.fn() };
-    health = {
-      check: jest.fn((checks: Chequeo[]) =>
-        Promise.all(checks.map((fn) => fn())),
-      ),
+const JSON_SANO = {
+  status: 'ok',
+  info: { postgres: { status: 'up' } },
+  error: {},
+  details: { postgres: { status: 'up' } },
+};
+
+describe('GET /health: JSON para máquinas, HTML para navegadores', () => {
+  let app: INestApplication;
+  let server: Server;
+  let check: jest.Mock;
+  let modeloActual: jest.Mock;
+
+  beforeEach(async () => {
+    check = jest.fn().mockResolvedValue(JSON_SANO);
+    modeloActual = jest.fn().mockResolvedValue(modelo('ok'));
+    const moduleRef = await Test.createTestingModule({
+      controllers: [HealthController],
+      providers: [
+        { provide: ChequeosService, useValue: { check } },
+        { provide: PaginaEstadoService, useValue: { modelo: modeloActual } },
+        { provide: HealthCheckService, useValue: { check: jest.fn() } },
+        { provide: TypeOrmHealthIndicator, useValue: {} },
+        { provide: RedisHealthIndicator, useValue: {} },
+      ],
+    }).compile();
+    app = moduleRef.createNestApplication();
+    await app.init();
+    server = app.getHttpServer() as Server;
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('sin Accept (curl, wget, healthcheck de Docker): JSON de siempre', async () => {
+    const res = await request(server)
+      .get('/health')
+      .set('Accept', '')
+      .expect(200);
+    expect(res.headers['content-type']).toContain('application/json');
+    expect(res.body).toEqual(JSON_SANO);
+    expect(modeloActual).not.toHaveBeenCalled();
+  });
+
+  it('con Accept: */* sigue siendo JSON', async () => {
+    const res = await request(server)
+      .get('/health')
+      .set('Accept', '*/*')
+      .expect(200);
+    expect(res.headers['content-type']).toContain('application/json');
+  });
+
+  it('con Accept: application/json sigue siendo JSON', async () => {
+    const res = await request(server)
+      .get('/health')
+      .set('Accept', 'application/json')
+      .expect(200);
+    expect(res.body).toEqual(JSON_SANO);
+  });
+
+  it('JSON con 503 y detalle cuando un componente falla (sin Accept html)', async () => {
+    const cuerpo = {
+      status: 'error',
+      details: { redis: { status: 'down' } },
     };
-    return new HealthController(
-      health as unknown as HealthCheckService,
-      db as unknown as TypeOrmHealthIndicator,
-      memory as unknown as MemoryHealthIndicator,
-      disk as unknown as DiskHealthIndicator,
-      redis as unknown as RedisHealthIndicator,
-      config as unknown as ConfigService,
-    );
-  }
+    check.mockRejectedValue(new ServiceUnavailableException(cuerpo));
+    const res = await request(server)
+      .get('/health')
+      .set('Accept', 'application/json')
+      .expect(503);
+    expect(res.body).toMatchObject(cuerpo);
+  });
 
-  it('usa el umbral configurado (512 MB por default), no 300 MB fijo', async () => {
-    const controller = crearController(512);
-    await controller.check();
-    expect(memory.checkRSS).toHaveBeenCalledWith(
-      'memory_rss',
-      512 * 1024 * 1024,
-    );
-    expect(memory.checkRSS).not.toHaveBeenCalledWith(
-      'memory_rss',
-      300 * 1024 * 1024,
+  it('con Accept de navegador devuelve la página HTML', async () => {
+    const res = await request(server)
+      .get('/health')
+      .set(
+        'Accept',
+        'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      )
+      .expect(200);
+    expect(res.headers['content-type']).toContain('text/html');
+    expect(res.text).toContain('Estado de la API');
+    expect(res.text).toContain('Todo funcionando');
+    expect(res.headers['cache-control']).toBe('private, max-age=15');
+    expect(res.headers.vary).toContain('Accept');
+    expect(check).not.toHaveBeenCalled();
+  });
+
+  it('la CSP es estricta, con nonce, y coincide con el de la página', async () => {
+    const res = await request(server)
+      .get('/health')
+      .set('Accept', 'text/html')
+      .expect(200);
+    const csp = res.headers['content-security-policy'];
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).not.toContain('unsafe-inline');
+    expect(csp).not.toContain('http');
+    const nonce = /nonce-([^']+)'/.exec(csp)?.[1];
+    expect(nonce).toBeDefined();
+    expect(res.text).toContain(`<style nonce="${nonce}">`);
+    expect(res.text).toContain(`<script nonce="${nonce}">`);
+  });
+
+  it('cada respuesta HTML trae un nonce distinto', async () => {
+    const a = await request(server).get('/health').set('Accept', 'text/html');
+    const b = await request(server).get('/health').set('Accept', 'text/html');
+    expect(a.headers['content-security-policy']).not.toBe(
+      b.headers['content-security-policy'],
     );
   });
 
-  it('un umbral distinto (env) cambia el chequeo real, no queda fijo en el código', async () => {
-    const controller = crearController(2048);
-    await controller.check();
-    expect(memory.checkRSS).toHaveBeenCalledWith(
-      'memory_rss',
-      2048 * 1024 * 1024,
-    );
+  it('con algo caído la página igual se muestra, con 503', async () => {
+    modeloActual.mockResolvedValue(modelo('parcial'));
+    const res = await request(server)
+      .get('/health')
+      .set('Accept', 'text/html')
+      .expect(503);
+    expect(res.headers['content-type']).toContain('text/html');
+    expect(res.text).toContain('Funcionamiento parcial');
+  });
+
+  it('con la base caída la página dice Caída', async () => {
+    modeloActual.mockResolvedValue(modelo('caida'));
+    const res = await request(server)
+      .get('/health')
+      .set('Accept', 'text/html')
+      .expect(503);
+    expect(res.text).toContain('Caída');
+  });
+
+  it('?format=json fuerza el JSON aunque el cliente prefiera HTML', async () => {
+    const res = await request(server)
+      .get('/health?format=json')
+      .set('Accept', 'text/html')
+      .expect(200);
+    expect(res.headers['content-type']).toContain('application/json');
+    expect(res.body).toEqual(JSON_SANO);
+  });
+
+  it('/health/live no cambia', async () => {
+    const res = await request(server)
+      .get('/health/live')
+      .set('Accept', 'text/html')
+      .expect(200);
+    expect(res.body).toMatchObject({ status: 'ok' });
+  });
+
+  describe('contrato para máquinas (curl, wget, healthcheck de Docker)', () => {
+    const CUERPO_503 = {
+      status: 'error',
+      info: { postgres: { status: 'up' } },
+      error: { redis: { status: 'down' } },
+      details: {
+        postgres: { status: 'up' },
+        redis: { status: 'down' },
+      },
+    };
+
+    /** Sin el header Accept (no vacío: ausente), como wget. */
+    const sinAccept = () => request(server).get('/health');
+
+    it('200: sin Accept y con */* dan el mismo status y el mismo cuerpo exacto que la variante JSON', async () => {
+      const json = await request(server)
+        .get('/health')
+        .set('Accept', 'application/json');
+      const ausente = await sinAccept();
+      const cualquiera = await request(server)
+        .get('/health')
+        .set('Accept', '*/*');
+      for (const res of [ausente, cualquiera]) {
+        expect(res.status).toBe(200);
+        expect(res.headers['content-type']).toBe(json.headers['content-type']);
+        expect(res.text).toBe(json.text);
+        expect(res.body).toEqual(JSON_SANO);
+      }
+    });
+
+    it('503: sin Accept y con */* dan el mismo status y el mismo cuerpo exacto que la variante JSON', async () => {
+      check.mockRejectedValue(new ServiceUnavailableException(CUERPO_503));
+      const json = await request(server)
+        .get('/health')
+        .set('Accept', 'application/json');
+      const ausente = await sinAccept();
+      const cualquiera = await request(server)
+        .get('/health')
+        .set('Accept', '*/*');
+      expect(json.status).toBe(503);
+      for (const res of [ausente, cualquiera]) {
+        expect(res.status).toBe(503);
+        expect(res.headers['content-type']).toBe(json.headers['content-type']);
+        expect(res.text).toBe(json.text);
+        expect(res.body).toMatchObject(CUERPO_503);
+      }
+      expect(modeloActual).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Swagger', () => {
+    it('/health documenta JSON y text/html en el 200 y en el 503', () => {
+      const documento = SwaggerModule.createDocument(
+        app,
+        new DocumentBuilder().setTitle('t').build(),
+      );
+      const get = documento.paths['/health'].get;
+      expect(get).toBeDefined();
+      for (const codigo of ['200', '503']) {
+        const respuesta = get?.responses[codigo] as {
+          content?: Record<string, unknown>;
+        };
+        expect(Object.keys(respuesta.content ?? {}).sort()).toEqual([
+          'application/json',
+          'text/html',
+        ]);
+      }
+      expect(get?.parameters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'format', in: 'query' }),
+        ]),
+      );
+    });
   });
 });

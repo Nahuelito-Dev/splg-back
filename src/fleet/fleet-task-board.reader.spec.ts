@@ -7,6 +7,8 @@ import {
   MaintenanceTaskStatus,
 } from './entities/maintenance-task.entity';
 import { FleetTaskBoardReader } from './fleet-task-board.reader';
+import { CarPhotoService } from '../car/car-photo.service';
+import { Car } from '../car/entities/car.entity';
 
 /**
  * Un query builder de mentira que anota cada condición (también las de los
@@ -85,8 +87,19 @@ describe('FleetTaskBoardReader', () => {
   let filas: MaintenanceTask[];
   let reader: FleetTaskBoardReader;
   let adjuntos: { createQueryBuilder: jest.Mock };
+  let fotos: { firmar: jest.Mock };
 
   beforeEach(() => {
+    fotos = {
+      firmar: jest.fn((cars: Car[]) => {
+        for (const c of cars) {
+          c.photoSignedUrl = c.photoKey
+            ? `https://s3.test/${c.photoKey}`
+            : null;
+        }
+        return Promise.resolve();
+      }),
+    };
     creados = [];
     filas = [];
     const tasks = {
@@ -107,6 +120,7 @@ describe('FleetTaskBoardReader', () => {
     reader = new FleetTaskBoardReader(
       tasks as unknown as Repository<MaintenanceTask>,
       adjuntos as unknown as Repository<MaintenanceTaskAttachment>,
+      fotos as unknown as CarPhotoService,
     );
   });
 
@@ -202,6 +216,32 @@ describe('FleetTaskBoardReader', () => {
     expect(ids(BoardColumn.DONE)).toEqual(['g', 'f']);
     expect(columnas[BoardColumn.SCHEDULED][0].attachmentsCount).toBe(3);
     expect(columnas[BoardColumn.FORECAST][0].attachmentsCount).toBe(0);
+  });
+
+  it('firma la foto de los vehículos de todas las tarjetas en una sola pasada (sin firmar las tareas sin vehículo)', async () => {
+    filas = [
+      tarea('a', MaintenanceTaskStatus.FORECAST, {
+        car: { carId: 'c1', photoKey: 'k1.jpg' } as Car,
+      }),
+      tarea('b', MaintenanceTaskStatus.SCHEDULED, {
+        car: { carId: 'c2', photoKey: null } as Car,
+      }),
+      tarea('c', MaintenanceTaskStatus.SCHEDULED),
+    ];
+    const { columnas } = await reader.tablero('d1', {});
+    expect(fotos.firmar).toHaveBeenCalledTimes(1);
+    expect(fotos.firmar).toHaveBeenCalledWith([
+      expect.objectContaining({ carId: 'c1' }),
+      expect.objectContaining({ carId: 'c2' }),
+    ]);
+    const porId = new Map(
+      Object.values(columnas)
+        .flat()
+        .map((t) => [t.task.taskId, t.task.car?.photoSignedUrl]),
+    );
+    expect(porId.get('a')).toBe('https://s3.test/k1.jpg');
+    expect(porId.get('b')).toBeNull();
+    expect(porId.get('c')).toBeUndefined();
   });
 
   it('una tarjeta: por id y empresa, o null', async () => {

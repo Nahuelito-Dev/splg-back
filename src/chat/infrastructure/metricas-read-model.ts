@@ -87,6 +87,8 @@ export interface TicketDelPeriodo {
 export interface UsoDeLaEmpresa {
   distributorId: string;
   name: string;
+  /** Key del logo en el bucket (`distributor.logo_key`); la firma quien arma la respuesta. */
+  logoKey: string | null;
   conversations: number;
   messages: number;
 }
@@ -359,6 +361,7 @@ export class MetricasReadModel {
     const filas: Array<{
       distributor_id: string;
       name: string;
+      logo_key: string | null;
       conversaciones: string;
       mensajes: string;
     }> = await this.dataSource.query(SQL_USO_POR_EMPRESA, [
@@ -369,6 +372,7 @@ export class MetricasReadModel {
     return filas.map((f) => ({
       distributorId: f.distributor_id,
       name: f.name,
+      logoKey: f.logo_key ?? null,
       conversations: Number(f.conversaciones),
       messages: Number(f.mensajes),
     }));
@@ -547,7 +551,7 @@ export const SQL_USO_POR_EMPRESA = `WITH conv AS (
        AND c."channel" IN ${BANDEJA} AND m."created_at" >= $2 AND m."created_at" < $3
        AND m."sender_party" <> 'system' AND m."visibility" = 'all' AND m."deleted_at" IS NULL
      GROUP BY 1)
-SELECT d."distributor_id", ${nombreVisibleDeLaEmpresa('d')} AS "name",
+SELECT d."distributor_id", ${nombreVisibleDeLaEmpresa('d')} AS "name", d."logo_key",
        COALESCE(conv.n, 0) AS conversaciones, COALESCE(msg.n, 0) AS mensajes
   FROM "distributor" d
   LEFT JOIN conv ON conv."distributor_id" = d."distributor_id"

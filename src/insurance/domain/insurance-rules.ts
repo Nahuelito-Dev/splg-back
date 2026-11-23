@@ -1,5 +1,9 @@
 import { sumarDias } from '../../common/utils/dias-argentina';
-import { InstallmentStatus, PolicyStatus } from './insurance.enums';
+import {
+  InstallmentApprovalStatus,
+  InstallmentStatus,
+  PolicyStatus,
+} from './insurance.enums';
 
 /** Estado de la póliza hoy (`YYYY-MM-DD`): `[validFrom, validTo)`. */
 export function estadoDeLaPoliza(
@@ -43,4 +47,52 @@ export function polizaPorVencer(
     poliza.validTo >= hoy &&
     poliza.validTo <= sumarDias(hoy, dias)
   );
+}
+
+/**
+ * El aviso de los 5 días pide la aprobación a la cuota pendiente que todavía no la
+ * pidió y que vence entre hoy y dentro de `dias` días. Una ya vencida no entra
+ * (no se arma una ola de pedidos de golpe): igual pide su aprobación cuando se la quiere pagar.
+ */
+export function debePedirAprobacion(
+  cuota: {
+    status: InstallmentStatus;
+    approvalStatus: InstallmentApprovalStatus;
+    dueDate: string;
+  },
+  hoy: string,
+  dias: number,
+): boolean {
+  return (
+    cuota.status === InstallmentStatus.PENDING &&
+    cuota.approvalStatus === InstallmentApprovalStatus.NONE &&
+    cuota.dueDate >= hoy &&
+    cuota.dueDate <= sumarDias(hoy, dias)
+  );
+}
+
+/** Se aprueba el pago de una cuota pendiente que todavía no está aprobada (haya o no pedido el aviso). */
+export function puedeAprobarse(cuota: {
+  status: InstallmentStatus;
+  approvalStatus: InstallmentApprovalStatus;
+}): boolean {
+  return (
+    cuota.status === InstallmentStatus.PENDING &&
+    cuota.approvalStatus !== InstallmentApprovalStatus.APPROVED
+  );
+}
+
+/** Todo pago requiere la aprobación del admin: sin ella (pedida o no) no se registra. */
+export function pagoBloqueadoPorAprobacion(cuota: {
+  approvalStatus: InstallmentApprovalStatus;
+}): boolean {
+  return cuota.approvalStatus !== InstallmentApprovalStatus.APPROVED;
+}
+
+/** El importe aprobado es el de la cuota: no se paga más que eso sin volver a aprobar. */
+export function superaElImporteAprobado(
+  cuota: { amount: number },
+  importe: number,
+): boolean {
+  return importe > cuota.amount;
 }

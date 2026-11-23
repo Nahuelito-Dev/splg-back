@@ -7098,6 +7098,38 @@
       "position": 14
     },
     {
+      "table": "insurance_installment",
+      "column": "approval_status",
+      "property": "approvalStatus",
+      "secret": false,
+      "kind": "text",
+      "position": 15
+    },
+    {
+      "table": "insurance_installment",
+      "column": "approval_requested_at",
+      "property": "approvalRequestedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 16
+    },
+    {
+      "table": "insurance_installment",
+      "column": "approved_at",
+      "property": "approvedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 17
+    },
+    {
+      "table": "insurance_installment",
+      "column": "approved_by_user_id",
+      "property": "approvedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 18
+    },
+    {
       "table": "insurance_policy",
       "column": "policy_id",
       "property": "policyId",
@@ -7675,11 +7707,43 @@
     },
     {
       "table": "maintenance_task",
+      "column": "first_corrected_due_at",
+      "property": "firstCorrectedDueAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 12
+    },
+    {
+      "table": "maintenance_task",
+      "column": "first_predicted_at",
+      "property": "firstPredictedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 13
+    },
+    {
+      "table": "maintenance_task",
+      "column": "first_predicted_odometer_km",
+      "property": "firstPredictedOdometerKm",
+      "secret": false,
+      "kind": "text",
+      "position": 14
+    },
+    {
+      "table": "maintenance_task",
+      "column": "forecast_deviation_days",
+      "property": "forecastDeviationDays",
+      "secret": false,
+      "kind": "text",
+      "position": 15
+    },
+    {
+      "table": "maintenance_task",
       "column": "scheduled_at",
       "property": "scheduledAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 12
+      "position": 16
     },
     {
       "table": "maintenance_task",
@@ -7687,7 +7751,7 @@
       "property": "performedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 13
+      "position": 17
     },
     {
       "table": "maintenance_task",
@@ -7695,7 +7759,7 @@
       "property": "odometerKm",
       "secret": false,
       "kind": "text",
-      "position": 14
+      "position": 18
     },
     {
       "table": "maintenance_task",
@@ -7703,7 +7767,7 @@
       "property": "cost",
       "secret": false,
       "kind": "text",
-      "position": 15
+      "position": 19
     },
     {
       "table": "maintenance_task",
@@ -7711,7 +7775,7 @@
       "property": "cashMovementId",
       "secret": false,
       "kind": "text",
-      "position": 16
+      "position": 20
     },
     {
       "table": "maintenance_task",
@@ -7719,7 +7783,7 @@
       "property": "paidAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 17
+      "position": 21
     },
     {
       "table": "maintenance_task",
@@ -7727,7 +7791,7 @@
       "property": "paidAmount",
       "secret": false,
       "kind": "text",
-      "position": 18
+      "position": 22
     },
     {
       "table": "maintenance_task",
@@ -7735,7 +7799,7 @@
       "property": "provider",
       "secret": false,
       "kind": "text",
-      "position": 19
+      "position": 23
     },
     {
       "table": "maintenance_task",
@@ -7743,7 +7807,7 @@
       "property": "referenceNumber",
       "secret": false,
       "kind": "text",
-      "position": 20
+      "position": 24
     },
     {
       "table": "maintenance_task",
@@ -7751,7 +7815,7 @@
       "property": "category",
       "secret": false,
       "kind": "text",
-      "position": 21
+      "position": 25
     },
     {
       "table": "maintenance_task",
@@ -7759,7 +7823,7 @@
       "property": "notes",
       "secret": false,
       "kind": "text",
-      "position": 22
+      "position": 26
     },
     {
       "table": "maintenance_task",
@@ -7767,7 +7831,7 @@
       "property": "assigneeEmployeeId",
       "secret": false,
       "kind": "text",
-      "position": 23
+      "position": 27
     },
     {
       "table": "maintenance_task",
@@ -7775,7 +7839,7 @@
       "property": "boardPosition",
       "secret": false,
       "kind": "text",
-      "position": 24
+      "position": 28
     },
     {
       "table": "maintenance_task_attachment",
@@ -8923,11 +8987,59 @@
     },
     {
       "table": "order",
+      "column": "delivery_confirmed_point",
+      "property": "deliveryConfirmedPoint",
+      "secret": false,
+      "kind": "geo",
+      "position": 35
+    },
+    {
+      "table": "order",
+      "column": "delivery_confirmed_accuracy_m",
+      "property": "deliveryConfirmedAccuracyM",
+      "secret": false,
+      "kind": "text",
+      "position": 36
+    },
+    {
+      "table": "order",
+      "column": "delivery_confirmed_distance_m",
+      "property": "deliveryConfirmedDistanceM",
+      "secret": false,
+      "kind": "text",
+      "position": 37
+    },
+    {
+      "table": "order",
+      "column": "delivery_confirmed_out_of_range",
+      "property": "deliveryConfirmedOutOfRange",
+      "secret": false,
+      "kind": "text",
+      "position": 38
+    },
+    {
+      "table": "order",
+      "column": "delivery_confirmed_by_user_id",
+      "property": "deliveryConfirmedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 39
+    },
+    {
+      "table": "order",
+      "column": "delivery_confirmed_by_role",
+      "property": "deliveryConfirmedByRole",
+      "secret": false,
+      "kind": "text",
+      "position": 40
+    },
+    {
+      "table": "order",
       "column": "delivery_mode",
       "property": "deliveryMode",
       "secret": false,
       "kind": "text",
-      "position": 35
+      "position": 41
     },
     {
       "table": "order",
@@ -8935,7 +9047,7 @@
       "property": "expressSurchargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 36
+      "position": 42
     },
     {
       "table": "order",
@@ -8943,7 +9055,7 @@
       "property": "containerChargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 37
+      "position": 43
     },
     {
       "table": "order",
@@ -8951,7 +9063,7 @@
       "property": "expressDegradedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 38
+      "position": 44
     },
     {
       "table": "order",
@@ -8959,7 +9071,7 @@
       "property": "coverageZoneId",
       "secret": false,
       "kind": "text",
-      "position": 39
+      "position": 45
     },
     {
       "table": "order",
@@ -8967,7 +9079,7 @@
       "property": "zoneName",
       "secret": false,
       "kind": "text",
-      "position": 40
+      "position": 46
     },
     {
       "table": "order",
@@ -8975,7 +9087,7 @@
       "property": "zoneSurchargeType",
       "secret": false,
       "kind": "text",
-      "position": 41
+      "position": 47
     },
     {
       "table": "order",
@@ -8983,7 +9095,7 @@
       "property": "zoneSurchargeValue",
       "secret": false,
       "kind": "text",
-      "position": 42
+      "position": 48
     },
     {
       "table": "order",
@@ -8991,7 +9103,7 @@
       "property": "zoneSurchargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 43
+      "position": 49
     },
     {
       "table": "order",
@@ -8999,7 +9111,7 @@
       "property": "paymentSurchargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 44
+      "position": 50
     },
     {
       "table": "order",
@@ -9007,7 +9119,7 @@
       "property": "paymentSurchargePercentage",
       "secret": false,
       "kind": "text",
-      "position": 45
+      "position": 51
     },
     {
       "table": "order",
@@ -9015,7 +9127,7 @@
       "property": "subtotalItems",
       "secret": false,
       "kind": "text",
-      "position": 46
+      "position": 52
     },
     {
       "table": "order",
@@ -9023,7 +9135,7 @@
       "property": "vehicleCarId",
       "secret": false,
       "kind": "text",
-      "position": 47
+      "position": 53
     },
     {
       "table": "order",
@@ -9031,7 +9143,7 @@
       "property": "vehiclePatent",
       "secret": false,
       "kind": "text",
-      "position": 48
+      "position": 54
     },
     {
       "table": "order",
@@ -9039,7 +9151,7 @@
       "property": "vehicleBrand",
       "secret": false,
       "kind": "text",
-      "position": 49
+      "position": 55
     },
     {
       "table": "order",
@@ -9047,7 +9159,7 @@
       "property": "vehicleModel",
       "secret": false,
       "kind": "text",
-      "position": 50
+      "position": 56
     },
     {
       "table": "order_address_change",

@@ -651,6 +651,71 @@ describe('FleetTaskService', () => {
       expect(cerrada.odometerKm).toBe(50000);
     });
 
+    describe('autocalibración: desvío del pronóstico de uso', () => {
+      const pronosticada = (over: Partial<MaintenanceTask> = {}) =>
+        ({
+          ...abierta(),
+          dueAt: null,
+          dueKm: 15_000,
+          odometerKm: null,
+          firstPredictedAt: new Date('2026-06-01T15:00:00Z'),
+          firstPredictedOdometerKm: 10_000,
+          // 5000 km a 100 km/día = 50 días
+          firstPredictedDueAt: new Date('2026-07-21T15:00:00Z'),
+          ...over,
+        }) as MaintenanceTask;
+
+      it('se mide con el odómetro del cierre, no con la fecha del taller: un taller adelantado con el ritmo exacto da 0', async () => {
+        enLaBase(pronosticada());
+        // Taller a los 45 días (5 antes de lo proyectado) con 100 km/día reales.
+        const cerrada = await service.close(
+          't1',
+          { performedAt: '2026-07-16T15:00:00.000Z', odometerKm: 14_500 },
+          'd1',
+        );
+        expect(cerrada.forecastDeviationDays).toBe(0);
+      });
+
+      it('un vehículo que anda 20 % más de lo estimado da desvío negativo', async () => {
+        enLaBase(pronosticada());
+        const cerrada = await service.close(
+          't1',
+          { performedAt: '2026-07-16T15:00:00.000Z', odometerKm: 15_400 },
+          'd1',
+        );
+        // 45 días y 5400 km = 120 km/día: llega en 42 días contra 50 pronosticados.
+        expect(cerrada.forecastDeviationDays).toBe(-8);
+      });
+
+      it('si mandó la fecha fija no guarda desvío', async () => {
+        enLaBase(pronosticada({ dueAt: new Date('2026-07-10T00:00:00Z') }));
+        const cerrada = await service.close(
+          't1',
+          { performedAt: '2026-07-16T15:00:00.000Z', odometerKm: 14_500 },
+          'd1',
+        );
+        expect(cerrada.forecastDeviationDays ?? null).toBeNull();
+      });
+
+      it('sin odómetro en el cierre o sin el pronóstico guardado no se mide', async () => {
+        enLaBase(pronosticada());
+        const sinOdometro = await service.close(
+          't1',
+          { performedAt: '2026-07-16T15:00:00.000Z' },
+          'd1',
+        );
+        expect(sinOdometro.forecastDeviationDays ?? null).toBeNull();
+
+        enLaBase(pronosticada({ firstPredictedAt: null }));
+        const sinPronostico = await service.close(
+          't1',
+          { performedAt: '2026-07-16T15:00:00.000Z', odometerKm: 14_500 },
+          'd1',
+        );
+        expect(sinPronostico.forecastDeviationDays ?? null).toBeNull();
+      });
+    });
+
     it('cerrar lee la tarea con la fila bloqueada, dentro de la transacción', async () => {
       enLaBase(abierta());
       await service.close(

@@ -126,4 +126,87 @@ describe('proyectarVencimiento', () => {
     expect(r.kmFaltantes).toBeNull();
     expect(r.fecha).toBeNull();
   });
+
+  describe('con corrección por el desvío del vehículo', () => {
+    const correccion = (correctionDays: number) => ({
+      correctionDays,
+      averageDeviationDays: correctionDays,
+      samples: 4,
+      capped: false,
+      source: 'vehicle_task_type' as const,
+    });
+    const base = { dueAt: null, dueKm: 10_500, odometerKm: 10_000, hoy: HOY };
+
+    it('corre la fecha por kilometraje y deja la original', () => {
+      const r = proyectarVencimiento({
+        ...base,
+        kmPorDia: 50,
+        correccion: correccion(5),
+      });
+      expect(r.porKilometrajeSinCorregir).toEqual(dia(10));
+      expect(r.porKilometraje).toEqual(dia(15));
+      expect(r.fecha).toEqual(dia(15));
+      expect(r.correccion).toEqual(correccion(5));
+    });
+
+    it('un desvío negativo adelanta pero nunca antes de hoy', () => {
+      const r = proyectarVencimiento({
+        ...base,
+        kmPorDia: 50,
+        correccion: correccion(-30),
+      });
+      expect(r.porKilometraje).toEqual(HOY);
+    });
+
+    it('informa lo efectivamente aplicado cuando la fecha no puede ir antes de hoy', () => {
+      const r = proyectarVencimiento({
+        ...base,
+        kmPorDia: 50,
+        correccion: correccion(-30),
+      });
+      expect(r.correccion?.correctionDays).toBe(-10);
+    });
+
+    it('no informa corrección si manda la fecha fija', () => {
+      const r = proyectarVencimiento({
+        ...base,
+        dueAt: dia(12),
+        kmPorDia: 50,
+        correccion: correccion(5),
+      });
+      expect(r.fecha).toEqual(dia(12));
+      expect(r.correccion).toBeNull();
+    });
+
+    it('no toca la fecha fija: vence la primera que llegue', () => {
+      const r = proyectarVencimiento({
+        ...base,
+        dueAt: dia(12),
+        kmPorDia: 50,
+        correccion: correccion(5),
+      });
+      expect(r.fecha).toEqual(dia(12));
+    });
+
+    it('un kilometraje ya alcanzado no se corrige', () => {
+      const r = proyectarVencimiento({
+        ...base,
+        odometerKm: 10_600,
+        kmPorDia: 50,
+        correccion: correccion(5),
+      });
+      expect(r.porKilometraje).toEqual(HOY);
+      expect(r.correccion).toBeNull();
+    });
+
+    it('sin consumo no hay fecha que corregir', () => {
+      const r = proyectarVencimiento({
+        ...base,
+        kmPorDia: null,
+        correccion: correccion(5),
+      });
+      expect(r.porKilometraje).toBeNull();
+      expect(r.correccion).toBeNull();
+    });
+  });
 });

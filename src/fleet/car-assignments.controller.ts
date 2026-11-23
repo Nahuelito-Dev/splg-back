@@ -17,6 +17,7 @@ import {
 import { VehicleAssignmentService } from '../car/vehicle-assignment.service';
 import { VehicleAssignmentMapper } from './vehicle-assignment.mapper';
 import { VehicleAssignmentHistoryResponseDto } from './dto/vehicle-assignment-response.dto';
+import { CarPhotoService } from '../car/car-photo.service';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { ApiTotal, informarTotal } from '../common/http/total';
 import { Auth } from '../common/decorators/auth.decorator';
@@ -33,7 +34,10 @@ import { Permiso } from '../common/decorators/permiso.decorator';
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller('car')
 export class CarAssignmentsController {
-  constructor(private readonly vehicleAssignments: VehicleAssignmentService) {}
+  constructor(
+    private readonly vehicleAssignments: VehicleAssignmentService,
+    private readonly fotosDeVehiculos: CarPhotoService,
+  ) {}
 
   @Permiso('flota.ver')
   @Get(':id/assignments')
@@ -54,6 +58,7 @@ export class CarAssignmentsController {
       pagination,
     );
     informarTotal(res, total);
+    await this.fotosDeVehiculos.firmar(filas.map((f) => f.car));
     return filas.map((f) => VehicleAssignmentMapper.toHistoryDto(f));
   }
 }

@@ -24,6 +24,7 @@ import { FechaCalendario } from '../../employee/dto/fecha-calendario.decorator';
 import { MotivoObligatorio } from '../../purchase/dto/motivo.decorator';
 import {
   DIAS_DE_GRACIA_POR_OMISION,
+  InstallmentApprovalStatus,
   InstallmentStatus,
   PolicyStatus,
 } from '../domain/insurance.enums';
@@ -177,6 +178,22 @@ export class InsuranceInstallmentResponseDto {
 
   @ApiProperty({ type: String, format: 'uuid', nullable: true })
   receiptAttachmentId!: string | null;
+
+  @ApiProperty({
+    enum: InstallmentApprovalStatus,
+    description:
+      '`none`: sin pedir aprobación; `awaiting`: el aviso de los 5 días la pidió («pendiente de aprobación»); `approved`: aprobada. Una cuota se paga sólo si está `approved`',
+  })
+  approvalStatus!: InstallmentApprovalStatus;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  approvalRequestedAt!: Date | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  approvedAt!: Date | null;
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  approvedByUserId!: string | null;
 
   @ApiProperty({ type: String, format: 'date-time' })
   createdAt!: Date;

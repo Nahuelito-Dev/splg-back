@@ -183,6 +183,32 @@ describe('QuoteOrderUseCase', () => {
     });
   });
 
+  it('cotizar un alta por transferencia es 400 con código PAYMENT_METHOD_NOT_ACCEPTED, también desde el carrito', async () => {
+    for (const extra of [{ items }, { fromCart: true }]) {
+      const error = await casoDeUso
+        .execute(
+          {
+            addressId: 'dir-1',
+            paymentMethod: PaymentMethod.TRANSFER,
+            ...extra,
+          },
+          DIST,
+          CLIENTE,
+        )
+        .then(
+          () => null,
+          (e: unknown) => e as BadRequestException,
+        );
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect(error?.getResponse()).toMatchObject({
+        statusCode: 400,
+        message:
+          'La distribuidora ya no acepta transferencias. Elegí efectivo o Mercado Pago.',
+        code: 'PAYMENT_METHOD_NOT_ACCEPTED',
+      });
+    }
+  });
+
   it('el +10% del medio de pago se aplica sobre subtotal + recargo de zona', async () => {
     zona = {
       id: 'z1',
@@ -191,7 +217,7 @@ describe('QuoteOrderUseCase', () => {
       value: 5,
     };
     const r = await casoDeUso.execute(
-      { items, addressId: 'dir-1', paymentMethod: PaymentMethod.TRANSFER },
+      { items, addressId: 'dir-1', paymentMethod: PaymentMethod.MERCADOPAGO },
       DIST,
       CLIENTE,
     );
@@ -224,10 +250,9 @@ describe('QuoteOrderUseCase', () => {
   });
 
   it.each([
-    [0, PaymentMethod.TRANSFER, 0],
-    [7.5, PaymentMethod.TRANSFER, 1500],
+    [0, PaymentMethod.MERCADOPAGO, 0],
     [7.5, PaymentMethod.MERCADOPAGO, 1500],
-    [12.34, PaymentMethod.TRANSFER, 2468],
+    [12.34, PaymentMethod.MERCADOPAGO, 2468],
     [30, PaymentMethod.MERCADOPAGO, 6000],
   ])(
     'el recargo sale del parámetro de la distribuidora: %s %% con %s',
@@ -726,16 +751,35 @@ describe('QuoteOrderUseCase', () => {
     });
 
     it('cambiar de medio de pago toma el % vigente del medio nuevo', async () => {
-      parametrosDeRecargo = { transferPercentage: 3 };
+      parametrosDeRecargo = { cashPercentage: 4 };
+      manager.findOne.mockResolvedValue(
+        pedido({
+          paymentMethod: PaymentMethod.TRANSFER,
+          paymentSurchargePercentage: 7.5,
+        }),
+      );
+      const r = await cotizar({ paymentMethod: PaymentMethod.CASH });
+      expect(r.paymentSurchargePercentage).toBe(4);
+      expect(r.total).toBe(20800);
+    });
+
+    it('pasar un pedido a transferencia es 400 con código; el que ya la tiene la conserva', async () => {
       manager.findOne.mockResolvedValue(
         pedido({
           paymentMethod: PaymentMethod.CASH,
           paymentSurchargePercentage: 0,
         }),
       );
-      const r = await cotizar({ paymentMethod: PaymentMethod.TRANSFER });
-      expect(r.paymentSurchargePercentage).toBe(3);
-      expect(r.total).toBe(20600);
+      const error = await cotizar({
+        paymentMethod: PaymentMethod.TRANSFER,
+      }).then(
+        () => null,
+        (e: unknown) => e as BadRequestException,
+      );
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect(error?.getResponse()).toMatchObject({
+        code: 'PAYMENT_METHOD_NOT_ACCEPTED',
+      });
     });
 
     it('con la seña paga, un total por debajo de la seña es 409', async () => {

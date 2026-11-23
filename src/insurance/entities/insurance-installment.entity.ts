@@ -16,7 +16,10 @@ import { CashMovement } from '../../cash/entities/cash-movement.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { User } from '../../users/entities/user.entity';
-import { InstallmentStatus } from '../domain/insurance.enums';
+import {
+  InstallmentApprovalStatus,
+  InstallmentStatus,
+} from '../domain/insurance.enums';
 import { InsurancePolicy } from './insurance-policy.entity';
 
 /**
@@ -33,6 +36,10 @@ import { InsurancePolicy } from './insurance-policy.entity';
 @Check(
   'CHK_insurance_installment_pagada',
   `("status" = 'paid' AND num_nonnulls("paid_at", "paid_amount", "paid_by_user_id", "cash_movement_id", "receipt_attachment_id") = 5 AND "paid_amount" > 0) OR ("status" <> 'paid' AND num_nonnulls("paid_at", "paid_amount", "operation_number", "paid_by_user_id", "cash_movement_id", "receipt_attachment_id") = 0)`,
+)
+@Check(
+  'CHK_insurance_installment_aprobacion',
+  `("approval_status" = 'none' AND num_nonnulls("approval_requested_at", "approved_at", "approved_by_user_id") = 0) OR ("approval_status" = 'awaiting' AND "approval_requested_at" IS NOT NULL AND num_nonnulls("approved_at", "approved_by_user_id") = 0) OR ("approval_status" = 'approved' AND num_nonnulls("approval_requested_at", "approved_at", "approved_by_user_id") = 3)`,
 )
 @ForeignKey(
   () => InsurancePolicy,
@@ -162,6 +169,34 @@ export class InsuranceInstallment {
 
   @Column({ name: 'receipt_attachment_id', type: 'uuid', nullable: true })
   receiptAttachmentId!: string | null;
+
+  /** Aprobación del admin antes de registrar el pago (ver `InstallmentApprovalStatus`). */
+  @Column({
+    name: 'approval_status',
+    type: 'enum',
+    enum: InstallmentApprovalStatus,
+    enumName: 'insurance_installment_approval_status_enum',
+    default: InstallmentApprovalStatus.NONE,
+  })
+  approvalStatus!: InstallmentApprovalStatus;
+
+  /** Cuándo el aviso de los 5 días pidió la aprobación. */
+  @Column({
+    name: 'approval_requested_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  approvalRequestedAt!: Date | null;
+
+  @Column({ name: 'approved_at', type: 'timestamptz', nullable: true })
+  approvedAt!: Date | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'approved_by_user_id' })
+  approvedBy?: User | null;
+
+  @Column({ name: 'approved_by_user_id', type: 'uuid', nullable: true })
+  approvedByUserId!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;

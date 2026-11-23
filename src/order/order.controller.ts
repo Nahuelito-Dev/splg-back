@@ -81,6 +81,8 @@ import type { Response } from 'express';
 import { DownloadQueryDto } from '../s3/dto/download-link.dto';
 import { ApiVerFoto, responderFoto } from '../s3/photo-http';
 import { OrderDriverPhotoService } from './application/order-driver-photo.service';
+import { OrderVehiclePhotoService } from './application/order-vehicle-photo.service';
+import { OrderProductPhotoService } from './application/order-product-photo.service';
 import { RoleType } from '../common/constants/role-type.enum';
 import { TruckLoadGatePort } from './domain/ports/truck-load-gate.port';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -116,6 +118,8 @@ export class OrderController {
     private readonly changeAddressUseCase: ChangeOrderAddressUseCase,
     private readonly setReceiverUseCase: SetOrderReceiverUseCase,
     private readonly declareEmpties: DeclareEmptiesUseCase,
+    private readonly vehiclePhoto: OrderVehiclePhotoService,
+    private readonly productPhoto: OrderProductPhotoService,
   ) {}
 
   @Post()
@@ -182,7 +186,7 @@ export class OrderController {
       () => this.orderService.create(createOrderDto, distributorId),
       { context: 'OrderService.create' },
     );
-    const dto = OrderMapper.toDto(order);
+    const dto = await this.conFoto(OrderMapper.toDto(order));
     // Solo presente para paymentMethod MERCADOPAGO (checkout de Checkout Pro).
     dto.paymentUrl = paymentUrl;
     return dto;
@@ -208,7 +212,7 @@ export class OrderController {
   @ApiOperation({
     summary: 'Cotizar un pedido',
     description:
-      'Mismo cuerpo que `POST /orders` (sólo `items` y `paymentMethod` son obligatorios). Devuelve el desglose que cobrará el alta: renglones con la promoción por volumen, `subtotal`, recargo de zona (con `addressId`; el admin además manda `customerId`), recargo por medio de pago (`paymentSurchargePercentage` % sobre subtotal + zona: parámetro de la distribuidora por medio de pago, por omisión 10 en `mercadopago` y `transfer` y 0 en `cash`), `deposit` (si `isReservation`), `total` y `balance` (`total - deposit`). El `total` es exactamente el del pedido que se crea con el mismo cuerpo. No escribe nada ni reserva stock; sí rechaza lo que el alta rechazaría (producto de otra distribuidora, sin stock, dirección fuera de cobertura). Cliente sin `X-Distributor`: distribuidora por defecto, igual que el alta. Con `orderId` cotiza la EDICIÓN de ese pedido (mismas reglas que `PATCH /orders/:id`): pedido ajeno o inexistente 404, no editable 409, stock por diferencia contra lo ya reservado, franja y fecha sólo si cambian.',
+      'Mismo cuerpo que `POST /orders` (sólo `items` y `paymentMethod` son obligatorios). Devuelve el desglose que cobrará el alta: renglones con la promoción por volumen, `subtotal`, recargo de zona (con `addressId`; el admin además manda `customerId`), recargo por medio de pago (`paymentSurchargePercentage` % sobre subtotal + zona: parámetro de la distribuidora por medio de pago, por omisión 10 en `mercadopago` y 0 en `cash`; la transferencia ya no se acepta: 400 `PAYMENT_METHOD_NOT_ACCEPTED`), `deposit` (si `isReservation`), `total` y `balance` (`total - deposit`). El `total` es exactamente el del pedido que se crea con el mismo cuerpo. No escribe nada ni reserva stock; sí rechaza lo que el alta rechazaría (producto de otra distribuidora, sin stock, dirección fuera de cobertura). Cliente sin `X-Distributor`: distribuidora por defecto, igual que el alta. Con `orderId` cotiza la EDICIÓN de ese pedido (mismas reglas que `PATCH /orders/:id`): pedido ajeno o inexistente 404, no editable 409, stock por diferencia contra lo ya reservado, franja y fecha sólo si cambian.',
   })
   @ApiOkResponse({ type: QuoteResponseDto })
   @ApiBadRequestResponse({
@@ -257,7 +261,11 @@ export class OrderController {
     const result = await this.orderService.findAll(queryDto, distributorId);
     return {
       ...result,
-      orders: result.orders.map((order) => OrderMapper.toDto(order)),
+      orders: await this.conFotos(
+        result.orders.map((order) =>
+          OrderMapper.toDto(order, { paraElPersonal: true }),
+        ),
+      ),
     };
   }
 
@@ -295,7 +303,9 @@ export class OrderController {
     );
     return {
       ...result,
-      orders: result.orders.map((order) => OrderMapper.toDto(order)),
+      orders: await this.conFotos(
+        result.orders.map((order) => OrderMapper.toDto(order)),
+      ),
     };
   }
 
@@ -323,7 +333,7 @@ export class OrderController {
       res.status(HttpStatus.NO_CONTENT);
       return undefined;
     }
-    return order;
+    return this.conFoto(order);
   }
 
   @Get('delivery/:deliveryId')
@@ -349,7 +359,9 @@ export class OrderController {
     );
     return {
       ...result,
-      orders: result.orders.map((order) => OrderMapper.toDto(order)),
+      orders: await this.conFotos(
+        result.orders.map((order) => OrderMapper.toDto(order)),
+      ),
     };
   }
 
@@ -401,11 +413,13 @@ export class OrderController {
     return {
       ...result,
       // El pool es de pedidos sin chofer: quién recibe todavía no es de nadie.
-      orders: result.orders.map((order) => {
-        const dto = OrderMapper.toDto(order);
-        dto.receiver = null;
-        return dto;
-      }),
+      orders: await this.conFotos(
+        result.orders.map((order) => {
+          const dto = OrderMapper.toDto(order);
+          dto.receiver = null;
+          return dto;
+        }),
+      ),
       openLoadRequired: false,
       message: null,
     };
@@ -526,12 +540,15 @@ export class OrderController {
       user.role === RoleType.CUSTOMER ? user.user_id : undefined;
     const choferScope =
       user.role === RoleType.DELIVERY ? user.user_id : undefined;
-    return await this.orderService.getOne(
-      id,
-      distributorId,
-      customerScope,
-      choferScope,
-      user.role !== RoleType.DELIVERY,
+    return this.conFoto(
+      await this.orderService.getOne(
+        id,
+        distributorId,
+        customerScope,
+        choferScope,
+        user.role !== RoleType.DELIVERY,
+        esPersonal(user.role),
+      ),
     );
   }
 
@@ -608,7 +625,9 @@ export class OrderController {
       user.user_id,
       body.reason,
     );
-    return OrderMapper.toDto(order);
+    return this.conFoto(
+      OrderMapper.toDto(order, { paraElPersonal: esPersonal(user.role) }),
+    );
   }
 
   @Post(':id/reject')
@@ -644,14 +663,12 @@ export class OrderController {
 
   @Get(':id/delivery-code')
   @Permiso('pedidos.ver')
-  @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
-    summary: 'Obtener el código secreto de entrega (para el QR del chofer)',
+    summary: 'Obtener el código secreto de entrega (admin)',
     description:
-      'El chofer renderiza este código como QR y lo muestra al cliente al llegar. ' +
-      'Solo existe si el pedido ya fue aceptado. El chofer solo puede ver el de SUS pedidos. ' +
-      'Trae `attempts` (códigos incorrectos del cliente) y `blocked` (agotó los 5 intentos: hay que generar un código nuevo). ' +
-      'El chofer también se entera en vivo por el socket: `order:delivery-code-failed` en cada error y `order:delivery-code-blocked` al bloquearse.',
+      'Sólo admin y super admin (soporte): el chofer ya no puede leerlo (403) porque el código lo ve el cliente y se lo dice al chofer (`GET /api/v3/orders/:id/delivery-code`). ' +
+      'Solo existe si el pedido ya fue aceptado. Trae `attempts` (códigos incorrectos) y `blocked` (agotó los 5 intentos: hay que generar un código nuevo).',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiOkResponse({ type: CodigoDeEntregaResponseDto })
@@ -661,7 +678,8 @@ export class OrderController {
   })
   @ApiResponse({
     status: 403,
-    description: 'El pedido no está asignado a este chofer',
+    description:
+      'La cuenta no es admin: el chofer y el cliente no pueden leer el código por esta ruta',
   })
   @ApiResponse({ status: 404, description: 'Pedido no encontrado' })
   async getDeliveryCode(
@@ -675,13 +693,12 @@ export class OrderController {
 
   @Post(':id/confirm-delivery')
   @Permiso('pedidos.gestionar')
-  @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @Idempotent()
   @ApiOperation({
-    summary:
-      'Confirmar entrega escaneando el QR del chofer (prueba anti-fraude)',
+    summary: 'Confirmar la entrega con el código (admin)',
     description:
-      'El cliente escanea el QR que muestra el chofer y envía el código leído. ' +
+      'Sólo admin y super admin: el cliente ya no puede confirmar (403); la entrega la confirma el chofer con el código del cliente en `POST /api/v3/orders/:id/confirm-delivery`. ' +
       'Si coincide con `order.deliveryCode` y el pedido está ON_THE_WAY, se marca DELIVERED. ' +
       'Idempotente vía header `Idempotency-Key`: reintentos de red no re-procesan la entrega. ' +
       'Si lo confirma un admin/super_admin, `reason` es obligatorio (10 a 500 caracteres, 400 si falta) y queda ' +
@@ -704,7 +721,8 @@ export class OrderController {
   })
   @ApiResponse({
     status: 403,
-    description: 'No autorizado (pedido de otro cliente)',
+    description:
+      'La cuenta no es admin (el cliente y el chofer no pueden confirmar por esta ruta)',
   })
   @ApiResponse({ status: 404, description: 'Pedido no encontrado' })
   async confirmDelivery(
@@ -721,7 +739,7 @@ export class OrderController {
       user.role,
       body.reason,
     );
-    return OrderMapper.toDto(order);
+    return this.conFoto(OrderMapper.toDto(order, { paraElPersonal: true }));
   }
 
   @Patch(':id/empties')
@@ -750,8 +768,15 @@ export class OrderController {
     @Body() body: DeclareEmptiesDto,
     @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ) {
-    return OrderMapper.toDto(
-      await this.declareEmpties.execute(id, user.user_id, distributorId, body),
+    return this.conFoto(
+      OrderMapper.toDto(
+        await this.declareEmpties.execute(
+          id,
+          user.user_id,
+          distributorId,
+          body,
+        ),
+      ),
     );
   }
 
@@ -946,7 +971,7 @@ export class OrderController {
       deliveryId,
       distributorId,
     );
-    return OrderMapper.toDto(order);
+    return this.conFoto(OrderMapper.toDto(order));
   }
 
   @Patch(':id/location')
@@ -981,7 +1006,7 @@ export class OrderController {
       body.lng,
       user.user_id,
     );
-    return OrderMapper.toDto(order);
+    return this.conFoto(OrderMapper.toDto(order));
   }
 
   @Get('stats/summary')
@@ -1011,7 +1036,7 @@ export class OrderController {
       '`items` reemplazan a los actuales: se devuelve el stock viejo y se ' +
       'reserva el nuevo con los precios y recargos vigentes (mismas reglas ' +
       'que el alta). Fuera de `pending`, o con un pedido de Mercado Pago, responde 409; ' +
-      'pasar un pedido a Mercado Pago es 400 (la transferencia sí se edita). ' +
+      'pasar un pedido a Mercado Pago es 400 (pasar a transferencia también es 400 `PAYMENT_METHOD_NOT_ACCEPTED`; un pedido viejo con transferencia la conserva si el medio no cambia). ' +
       'Para eliminar un pedido: `PATCH /orders/:id/cancel`.',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
@@ -1042,7 +1067,7 @@ export class OrderController {
         ),
       { context: 'OrderService.update' },
     );
-    return OrderMapper.toDto(order);
+    return this.conFoto(OrderMapper.toDto(order));
   }
 
   @Patch(':id/address')
@@ -1084,7 +1109,7 @@ export class OrderController {
         this.changeAddressUseCase.execute(id, dto, user.user_id, distributorId),
       { context: 'OrderService.changeAddress' },
     );
-    return OrderMapper.toDto(order);
+    return this.conFoto(OrderMapper.toDto(order));
   }
 
   @Patch(':id/receiver')
@@ -1114,7 +1139,9 @@ export class OrderController {
     @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ) {
     await this.setReceiverUseCase.execute(id, dto, user.user_id, distributorId);
-    return this.orderService.getOne(id, distributorId, user.user_id);
+    return this.conFoto(
+      await this.orderService.getOne(id, distributorId, user.user_id),
+    );
   }
 
   @Delete(':id')
@@ -1298,7 +1325,7 @@ export class OrderController {
       distributorId,
       user.user_id,
     );
-    return OrderMapper.toDto(order);
+    return this.conFoto(OrderMapper.toDto(order));
   }
 
   @Get('stats/chart')
@@ -1325,12 +1352,30 @@ export class OrderController {
    * posterior. Si el chofer "cancela" el pedido vuelve a pendiente: no está
    * cancelado y `cancelledBy` queda `null`.
    */
-  private pedidoCancelado(order: Order, actor: CancelActor): OrderResponseDto {
+  private async pedidoCancelado(
+    order: Order,
+    actor: CancelActor,
+  ): Promise<OrderResponseDto> {
     const dto = OrderMapper.toDto(order);
     if (order.status === OrderStatus.CANCELLED) {
       dto.cancelledBy = cancelledByDe(actor);
     }
+    return this.conFoto(dto);
+  }
+
+  /** Completa la foto del vehículo del pedido (una lectura por lista, nunca una por pedido). */
+  private async conFoto(dto: OrderResponseDto): Promise<OrderResponseDto> {
+    await this.vehiclePhoto.completar([dto]);
+    await this.productPhoto.completar([dto]);
     return dto;
+  }
+
+  private async conFotos(
+    dtos: OrderResponseDto[],
+  ): Promise<OrderResponseDto[]> {
+    await this.vehiclePhoto.completar(dtos);
+    await this.productPhoto.completar(dtos);
+    return dtos;
   }
 
   private async pedidoTrasElCobro(
@@ -1339,7 +1384,9 @@ export class OrderController {
     guardado: Order,
   ): Promise<OrderResponseDto> {
     try {
-      return await this.orderService.getOne(id, distributorId);
+      return await this.conFoto(
+        await this.orderService.getOne(id, distributorId),
+      );
     } catch (error) {
       this.logger.error(
         `No se pudo releer el pedido ${id} tras el cobro: ${errorMessage(error)}`,
@@ -1348,4 +1395,9 @@ export class OrderController {
       return OrderMapper.toDto(guardado);
     }
   }
+}
+
+/** Admin o super admin: las respuestas del panel suman los datos internos del pedido. */
+function esPersonal(role: RoleType): boolean {
+  return role === RoleType.ADMIN || role === RoleType.SUPER_ADMIN;
 }

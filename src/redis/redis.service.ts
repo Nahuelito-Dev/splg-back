@@ -341,6 +341,39 @@ export class RedisService implements OnModuleInit, OnApplicationShutdown {
     return { lat: Number(pos[1]), lng: Number(pos[0]), at };
   }
 
+  /**
+   * Lo mismo que `getDriverLastLocation` para varios choferes, en dos idas a
+   * Redis sin importar cuántos sean: un `GEOPOS` con todos y un `MGET` con la
+   * hora de los que están en el radar. Los que no están no vienen en el mapa.
+   */
+  async getDriversLastLocations(
+    driverIds: readonly string[],
+  ): Promise<Map<string, { lat: number; lng: number; at: string | null }>> {
+    const resultado = new Map<
+      string,
+      { lat: number; lng: number; at: string | null }
+    >();
+    const ids = [...new Set(driverIds)];
+    if (ids.length === 0) return resultado;
+    const posiciones = await this.client.geopos('drivers:locations', ...ids);
+    const enRadar = ids.flatMap((id, i) => {
+      const pos = posiciones[i];
+      return pos ? [{ id, pos }] : [];
+    });
+    if (enRadar.length === 0) return resultado;
+    const horas = await this.client.mget(
+      ...enRadar.map(({ id }) => this.driverLocationAtKey(id)),
+    );
+    enRadar.forEach(({ id, pos }, i) => {
+      resultado.set(id, {
+        lat: Number(pos[1]),
+        lng: Number(pos[0]),
+        at: horas[i] ?? null,
+      });
+    });
+    return resultado;
+  }
+
   private driverLocationAtKey(driverId: string): string {
     return `driver:location-at:${driverId}`;
   }

@@ -212,17 +212,27 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
       },
     ),
     crear(
-      'cliente por transferencia: suma el recargo del medio',
+      'cliente por transferencia: la distribuidora ya no la acepta',
       'clienteA',
-      201,
+      400,
       {
         body: alta({ paymentMethod: 'transfer' }),
-        verificar: (cuerpo) =>
-          expect(cuerpo).toMatchObject({
-            total_amount: 1210,
-          }),
+        code: 'PAYMENT_METHOD_NOT_ACCEPTED',
       },
     ),
+    crear('administrador por transferencia: también 400', 'adminA', 400, {
+      body: alta({ paymentMethod: 'transfer' }),
+      code: 'PAYMENT_METHOD_NOT_ACCEPTED',
+    }),
+    crear('reserva con seña por transferencia: 400', 'clienteA', 400, {
+      body: alta({
+        paymentMethod: 'transfer',
+        isReservation: true,
+        depositAmount: 100,
+        scheduledDate: '2099-01-01',
+      }),
+      code: 'PAYMENT_METHOD_NOT_ACCEPTED',
+    }),
     crear('varias unidades', 'clienteA', 201, {
       body: (c) =>
         alta({
@@ -562,9 +572,14 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
           zone: { name: 'Norte' },
         }),
     }),
-    cotizar('transferencia: suma el recargo del medio', 'clienteA', 200, {
+    cotizar('transferencia: ya no se acepta', 'clienteA', 400, {
       body: (c) =>
         cotiza({ addressId: c.dirCentro, paymentMethod: 'transfer' })(c),
+      code: 'PAYMENT_METHOD_NOT_ACCEPTED',
+    }),
+    cotizar('Mercado Pago: suma el recargo del medio', 'clienteA', 200, {
+      body: (c) =>
+        cotiza({ addressId: c.dirCentro, paymentMethod: 'mercadopago' })(c),
       verificar: (cuerpo) =>
         expect(cuerpo).toMatchObject({
           zoneSurcharge: 200,
@@ -720,10 +735,20 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
           expect(cuerpo).toMatchObject({ total_amount: 1250 }),
       },
     ),
-    editar('cliente dueño cambia el medio de pago', 'clienteA', 200, {
+    editar('cliente dueño pasa a transferencia: 400', 'clienteA', 400, {
       antes: nuevo('e'),
       body: { paymentMethod: 'transfer' },
+      code: 'PAYMENT_METHOD_NOT_ACCEPTED',
     }),
+    editar(
+      'cliente dueño de un pedido viejo por transferencia pasa a efectivo',
+      'clienteA',
+      200,
+      {
+        antes: nuevo('e', { metodo: PaymentMethod.TRANSFER }),
+        body: { paymentMethod: 'cash' },
+      },
+    ),
     editar('administrador', 'adminA', 200, {
       antes: nuevo('e'),
       body: { notes: 'Llamar antes' },
@@ -1724,147 +1749,120 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
   ];
 
   // ====================================== POST /orders/{id}/confirm-delivery
+  // v1 congelada: sólo la confirma un admin con motivo (el cliente y el chofer
+  // reciben 403: la entrega la confirma el chofer por la v3).
   const SW_CONF = '/orders/{id}/confirm-delivery';
   const confirmar = endpoint<Ctx>('post', SW_CONF, ruta(SW_CONF, 'f'));
-  const codigoBueno = { body: { code: '123456' } };
-  const equivocado = (n: number) => async (c: Ctx) => {
-    for (let i = 0; i < n; i += 1) {
-      await llamar(c, 'post', `/orders/${c.p.f}/confirm-delivery`, 'clienteA', {
-        code: '000000',
-      });
-    }
-  };
+  const MOTIVO = 'El cliente no tiene celular: confirmó por teléfono';
+  const conMotivo = { body: { code: '123456', reason: MOTIVO } };
+  const enCaminoF = nuevo('f', { estado: E.ON_THE_WAY });
   const casosConfirmar: Array<Caso<Ctx>> = [
-    confirmar('cliente con el código del chofer', 'clienteA', 201, {
-      antes: nuevo('f', { estado: E.ON_THE_WAY }),
-      ...codigoBueno,
+    confirmar('administrador con motivo', 'adminA', 201, {
+      antes: enCaminoF,
+      ...conMotivo,
       verificar: (cuerpo) =>
         expect(cuerpo).toMatchObject({ status: 'delivered' }),
     }),
-    confirmar('administrador con motivo', 'adminA', 201, {
-      antes: nuevo('f', { estado: E.ON_THE_WAY }),
-      body: {
-        code: '123456',
-        reason: 'El cliente no tiene celular: confirmó por teléfono',
-      },
-    }),
     confirmar('super en modo soporte sobre A', 'soporteA', 403, {
-      antes: nuevo('f', { estado: E.ON_THE_WAY }),
-      body: {
-        code: '123456',
-        reason: 'El cliente no tiene celular: confirmó por teléfono',
-      },
+      antes: enCaminoF,
+      ...conMotivo,
       code: 'SUPPORT_READ_ONLY',
     }),
     confirmar('sin token', undefined, 401, {
       ...sinTokenCliente,
       ruta: idInexistente(SW_CONF),
-      ...codigoBueno,
+      ...conMotivo,
+    }),
+    confirmar('cliente (ya no confirma por la v1)', 'clienteA', 403, {
+      antes: enCaminoF,
+      body: { code: '123456' },
+      verificar: async (_cuerpo, c) =>
+        expect((await pedidoDe(c, 'f')).status).toBe(E.ON_THE_WAY),
     }),
     confirmar('chofer', 'chofer', 403, {
-      antes: nuevo('f', { estado: E.ON_THE_WAY }),
-      ...codigoBueno,
+      antes: enCaminoF,
+      body: { code: '123456' },
     }),
-    confirmar('cliente de otro pedido', 'clienteB', 404, {
-      antes: nuevo('f', { estado: E.ON_THE_WAY }),
-      ...codigoBueno,
+    confirmar('cliente de otro pedido', 'clienteB', 403, {
+      antes: enCaminoF,
+      body: { code: '123456' },
     }),
-    confirmar('id mal formado', 'clienteA', 400, {
+    confirmar('id mal formado', 'adminA', 400, {
       ruta: idMalo(SW_CONF),
-      ...codigoBueno,
+      ...conMotivo,
     }),
-    confirmar('sin código', 'clienteA', 400, {
-      antes: nuevo('f', { estado: E.ON_THE_WAY }),
-      body: {},
+    confirmar('sin código', 'adminA', 400, {
+      antes: enCaminoF,
+      body: { reason: MOTIVO },
     }),
-    confirmar('código vacío', 'clienteA', 400, {
-      antes: nuevo('f', { estado: E.ON_THE_WAY }),
-      body: { code: '' },
+    confirmar('código vacío', 'adminA', 400, {
+      antes: enCaminoF,
+      body: { code: '', reason: MOTIVO },
     }),
-    confirmar('código que no es texto', 'clienteA', 400, {
-      antes: nuevo('f', { estado: E.ON_THE_WAY }),
-      body: { code: 123456 },
+    confirmar('código que no es texto', 'adminA', 400, {
+      antes: enCaminoF,
+      body: { code: 123456, reason: MOTIVO },
     }),
-    confirmar('campo desconocido', 'clienteA', 400, {
-      antes: nuevo('f', { estado: E.ON_THE_WAY }),
-      body: { code: '123456', foo: 1 },
+    confirmar('campo desconocido', 'adminA', 400, {
+      antes: enCaminoF,
+      body: { code: '123456', reason: MOTIVO, foo: 1 },
     }),
-    confirmar('código incorrecto', 'clienteA', 400, {
-      antes: nuevo('f', { estado: E.ON_THE_WAY }),
-      body: { code: '999999' },
+    confirmar('código incorrecto', 'adminA', 400, {
+      antes: enCaminoF,
+      body: { code: '999999', reason: MOTIVO },
       code: 'DELIVERY_CODE_INCORRECTO',
     }),
-    confirmar('código mal leído', 'clienteA', 400, {
-      antes: nuevo('f', { estado: E.ON_THE_WAY }),
-      body: { code: 'no es un código' },
+    confirmar('código mal leído', 'adminA', 400, {
+      antes: enCaminoF,
+      body: { code: 'no es un código', reason: MOTIVO },
       code: 'DELIVERY_CODE_FORMATO',
     }),
-    confirmar('código de otro pedido en camino del cliente', 'clienteA', 400, {
-      antes: async (c) => {
-        await nuevo('f', { estado: E.ON_THE_WAY })(c);
-        const otro = await sembrarPedido(c, { estado: E.ON_THE_WAY });
-        await c.app
-          .get(DataSource)
-          .getRepository(Order)
-          .update({ orderId: otro }, { deliveryCode: '654321' });
-      },
-      body: { code: '654321' },
-      code: 'DELIVERY_CODE_OTRO_PEDIDO',
-    }),
-    confirmar('el pedido no está en camino', 'clienteA', 400, {
+    confirmar('el pedido no está en camino', 'adminA', 400, {
       antes: nuevo('f', { estado: E.ACCEPTED }),
-      ...codigoBueno,
+      ...conMotivo,
     }),
-    confirmar('pedido pendiente', 'clienteA', 400, {
+    confirmar('pedido pendiente', 'adminA', 400, {
       antes: nuevo('f'),
-      ...codigoBueno,
+      ...conMotivo,
     }),
     confirmar('administrador sin motivo', 'adminA', 400, {
-      antes: nuevo('f', { estado: E.ON_THE_WAY }),
-      ...codigoBueno,
+      antes: enCaminoF,
+      body: { code: '123456' },
     }),
     confirmar('administrador con motivo corto', 'adminA', 400, {
-      antes: nuevo('f', { estado: E.ON_THE_WAY }),
+      antes: enCaminoF,
       body: { code: '123456', reason: 'corto' },
     }),
     confirmar('super sin X-Distributor (sin sesión de soporte)', 'super', 403, {
-      antes: nuevo('f', { estado: E.ON_THE_WAY }),
+      antes: enCaminoF,
       body: { code: '123456', reason: 'El cliente no tiene celular' },
       code: 'SUPPORT_SESSION_REQUIRED',
     }),
-    confirmar('inexistente', 'clienteA', 404, {
+    confirmar('inexistente', 'adminA', 404, {
       ruta: idInexistente(SW_CONF),
-      ...codigoBueno,
+      ...conMotivo,
     }),
     confirmar('administrador de otra distribuidora', 'adminB', 404, {
-      antes: nuevo('f', { estado: E.ON_THE_WAY }),
-      body: { code: '123456', reason: 'El cliente no tiene celular' },
+      antes: enCaminoF,
+      ...conMotivo,
       verificar: async (_cuerpo, c) => {
         const r = await llamar(c, 'get', `/orders/${c.p.f}`, 'adminA');
         expect(r.body).toMatchObject({ status: 'out_for_delivery' });
       },
     }),
-    confirmar('se agotaron los 5 intentos', 'clienteA', 409, {
+    confirmar('la misma clave con otro cuerpo', 'adminA', 422, {
       antes: async (c) => {
-        await nuevo('f', { estado: E.ON_THE_WAY })(c);
-        await equivocado(5)(c);
-      },
-      ...codigoBueno,
-      code: 'DELIVERY_CODE_BLOQUEADO',
-    }),
-    confirmar('la misma clave con otro cuerpo', 'clienteA', 422, {
-      antes: async (c) => {
-        await nuevo('f', { estado: E.ON_THE_WAY })(c);
+        await enCaminoF(c);
         c.p.clave = await usarClave(
           c,
           'post',
           `/orders/${c.p.f}/confirm-delivery`,
-          'clienteA',
-          { code: '123456' },
+          'adminA',
+          { code: '123456', reason: MOTIVO },
         );
       },
       cabeceras: (c) => ({ 'Idempotency-Key': c.p.clave }),
-      body: { code: '111111' },
+      body: { code: '123456', reason: 'Otro motivo distinto del primero' },
       code: 'IDEMPOTENCY_KEY_REUSED',
     }),
   ];
@@ -1877,7 +1875,12 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
     (c) => `/v2${ruta(SW_REG, 'g')(c)}`,
   );
   const casosRegenerar: Array<Caso<Ctx>> = [
-    regenerar('chofer asignado: código nuevo y sin intentos', 'chofer', 201, {
+    regenerar('chofer (ya no: se vería el código)', 'chofer', 403, {
+      antes: nuevo('g', { estado: E.ON_THE_WAY }),
+      verificar: async (_cuerpo, c) =>
+        expect((await pedidoDe(c, 'g')).deliveryCode).toBe('123456'),
+    }),
+    regenerar('administrador: código nuevo y sin intentos', 'adminA', 201, {
       antes: nuevo('g', { estado: E.ON_THE_WAY }),
       verificar: (cuerpo, c) => {
         const r = cuerpo as { orderId: string; deliveryCode: string };
@@ -1890,41 +1893,6 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
         expect(r.deliveryCode).not.toBe('123456');
       },
     }),
-    regenerar(
-      'después de agotar los intentos el cliente puede confirmar',
-      'chofer',
-      201,
-      {
-        antes: async (c) => {
-          await nuevo('g', { estado: E.ON_THE_WAY })(c);
-          for (let i = 0; i < 5; i += 1) {
-            await llamar(
-              c,
-              'post',
-              `/orders/${c.p.g}/confirm-delivery`,
-              'clienteA',
-              {
-                code: '000000',
-              },
-            );
-          }
-        },
-        verificar: async (cuerpo, c) => {
-          const nuevoCodigo = (cuerpo as { deliveryCode: string }).deliveryCode;
-          const r = await llamar(
-            c,
-            'post',
-            `/orders/${c.p.g}/confirm-delivery`,
-            'clienteA',
-            { code: nuevoCodigo },
-          );
-          expect(r.status).toBe(201);
-        },
-      },
-    ),
-    regenerar('administrador', 'adminA', 201, {
-      antes: nuevo('g', { estado: E.ON_THE_WAY }),
-    }),
     regenerar('sin token', undefined, 401, {
       ...sinTokenChofer,
       ruta: (c) => `/v2/orders/${c.inexistente}/delivery-code/regenerate`,
@@ -1935,10 +1903,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
     regenerar('chofer de otro pedido', 'choferA2', 403, {
       antes: nuevo('g', { estado: E.ON_THE_WAY }),
     }),
-    regenerar('id mal formado', 'chofer', 400, {
+    regenerar('id mal formado', 'adminA', 400, {
       ruta: '/v2/orders/xx/delivery-code/regenerate',
     }),
-    regenerar('inexistente', 'chofer', 404, {
+    regenerar('inexistente', 'adminA', 404, {
       ruta: (c) => `/v2/orders/${c.inexistente}/delivery-code/regenerate`,
     }),
     regenerar('administrador de otra distribuidora', 'adminB', 404, {
@@ -1949,7 +1917,7 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
       verificar: async (_cuerpo, c) =>
         expect((await pedidoDe(c, 'g')).deliveryCode).toBe(c.p.codigoG),
     }),
-    regenerar('chofer de otra distribuidora', 'choferB', 404, {
+    regenerar('chofer de otra distribuidora', 'choferB', 403, {
       antes: async (c) => {
         await nuevo('g', { estado: E.ON_THE_WAY })(c);
         c.p.codigoG = (await pedidoDe(c, 'g')).deliveryCode ?? '';
@@ -1957,10 +1925,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
       verificar: async (_cuerpo, c) =>
         expect((await pedidoDe(c, 'g')).deliveryCode).toBe(c.p.codigoG),
     }),
-    regenerar('pedido aceptado, todavía no en camino', 'chofer', 409, {
+    regenerar('pedido aceptado, todavía no en camino', 'adminA', 409, {
       antes: nuevo('g', { estado: E.ACCEPTED }),
     }),
-    regenerar('pedido entregado', 'chofer', 409, {
+    regenerar('pedido entregado', 'adminA', 409, {
       antes: nuevo('g', { estado: E.DELIVERED }),
     }),
   ];

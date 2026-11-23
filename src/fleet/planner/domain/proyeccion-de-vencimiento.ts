@@ -1,3 +1,5 @@
+import { CorreccionDeVencimiento } from './autocalibracion';
+
 const MS_POR_DIA = 86_400_000;
 
 export interface EntradaDeProyeccion {
@@ -8,6 +10,8 @@ export interface EntradaDeProyeccion {
   /** Consumo diario estimado; `null` si no se pudo estimar. */
   kmPorDia: number | null;
   hoy: Date;
+  /** Corrección por el desvío histórico del vehículo; se suma a la fecha por kilometraje. */
+  correccion?: CorreccionDeVencimiento | null;
 }
 
 export interface ProyeccionDeVencimiento {
@@ -15,6 +19,10 @@ export interface ProyeccionDeVencimiento {
   fecha: Date | null;
   /** Fecha en que el vehículo llega al kilometraje de la tarea. */
   porKilometraje: Date | null;
+  /** La fecha por kilometraje antes de la corrección; es la que se mide contra lo real. */
+  porKilometrajeSinCorregir: Date | null;
+  /** La corrección que se aplicó a `porKilometraje`; `null` si no hubo. */
+  correccion: CorreccionDeVencimiento | null;
   /** Kilómetros que faltan; negativo si ya se pasó. */
   kmFaltantes: number | null;
   /**
@@ -35,6 +43,7 @@ export function proyectarVencimiento({
   odometerKm,
   kmPorDia,
   hoy,
+  correccion = null,
 }: EntradaDeProyeccion): ProyeccionDeVencimiento {
   const tieneKm = dueKm !== null && odometerKm !== null;
   const kmFaltantes = tieneKm ? dueKm - odometerKm : null;
@@ -50,6 +59,31 @@ export function proyectarVencimiento({
     }
   }
 
+  const sinCorregir = porKilometraje;
+  let aplicada: CorreccionDeVencimiento | null = null;
+  // Sólo se corrige una fecha estimada: un kilometraje ya alcanzado vence hoy.
+  if (
+    correccion &&
+    correccion.correctionDays !== 0 &&
+    porKilometraje !== null &&
+    kmFaltantes !== null &&
+    kmFaltantes > 0
+  ) {
+    const corrida =
+      porKilometraje.getTime() + correccion.correctionDays * MS_POR_DIA;
+    porKilometraje = new Date(Math.max(hoy.getTime(), corrida));
+    // Lo que de verdad se movió (la fecha no pasa de hoy hacia atrás), y nada si
+    // manda la fecha fija: no se informa una corrección que no cambió el vencimiento.
+    const efectiva = Math.round(
+      (porKilometraje.getTime() - (sinCorregir as Date).getTime()) / MS_POR_DIA,
+    );
+    const mandaLaFechaFija =
+      dueAt !== null && dueAt.getTime() <= porKilometraje.getTime();
+    if (efectiva !== 0 && !mandaLaFechaFija) {
+      aplicada = { ...correccion, correctionDays: efectiva };
+    }
+  }
+
   const candidatas = [dueAt, porKilometraje].filter(
     (d): d is Date => d !== null,
   );
@@ -60,6 +94,8 @@ export function proyectarVencimiento({
   return {
     fecha,
     porKilometraje,
+    porKilometrajeSinCorregir: sinCorregir,
+    correccion: aplicada,
     kmFaltantes,
     enObservacion: dueAt === null && dueKm !== null && porKilometraje === null,
   };

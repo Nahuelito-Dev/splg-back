@@ -73,13 +73,27 @@ describe('FleetTaskBoardMapper.toCard', () => {
       dueAt: new Date('2026-12-31T00:00:00.000Z'),
       dueKm: null,
       scheduledAt: null,
-      car: { id: 'c1', plate: 'AB123CD', label: 'Ford Cargo' },
+      car: { id: 'c1', plate: 'AB123CD', label: 'Ford Cargo', photoUrl: null },
       assignee: { employeeId: 'e1', name: 'Pérez, Juan' },
       attachmentsCount: 2,
       cost: 185000.5,
       position: 2048,
       updatedAt: AHORA,
     });
+  });
+
+  it('el vehículo de la tarjeta lleva la foto firmada del auto', () => {
+    const card = FleetTaskBoardMapper.toCard(
+      leida({
+        car: {
+          carId: 'c1',
+          carPatent: 'AB1',
+          photoSignedUrl: 'https://s3.test/c1.jpg',
+        } as Car,
+      }),
+      AHORA,
+    );
+    expect(card.car?.photoUrl).toBe('https://s3.test/c1.jpg');
   });
 
   it('sin marca ni modelo, la etiqueta del vehículo es el tipo o la patente', () => {

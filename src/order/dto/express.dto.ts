@@ -10,6 +10,7 @@ import {
 } from 'class-validator';
 import { OrderDeliveryMode, PaymentMethod } from '../entities/order.entity';
 import { QuoteResponseDto } from './quote-order.dto';
+import { RechazarTransferenciaEnDto } from '../domain/medio-de-pago-aceptado';
 
 /** Query de `GET /orders/delivery-options` (CU-148). */
 export class DeliveryOptionsQueryDto {
@@ -79,7 +80,13 @@ export class DeliveryOptionsResponseDto {
 
 /** Cuerpo de `POST /orders/express` y `POST /orders/express/quote` (CU-147). */
 export class ExpressPurchaseDto {
-  @ApiProperty({ enum: PaymentMethod, example: PaymentMethod.CASH })
+  @ApiProperty({
+    enum: Object.values(PaymentMethod).filter(
+      (m) => m !== PaymentMethod.TRANSFER,
+    ),
+    example: PaymentMethod.CASH,
+  })
+  @RechazarTransferenciaEnDto()
   @IsEnum(PaymentMethod)
   paymentMethod!: PaymentMethod;
 

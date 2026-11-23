@@ -10,6 +10,11 @@ function cumple(fila: Fila, where: Condicion): boolean {
     if (esperado instanceof FindOperator) {
       const valor = esperado.value as unknown;
       if (esperado.type === 'in') return (valor as unknown[]).includes(actual);
+      if (esperado.type === 'isNull')
+        return actual === null || actual === undefined;
+      if (esperado.type === 'not') {
+        return !cumple({ x: actual }, { x: valor });
+      }
       if (esperado.type === 'lessThanOrEqual') {
         return (actual as Date).getTime() <= (valor as Date).getTime();
       }

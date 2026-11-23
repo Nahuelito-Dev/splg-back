@@ -46,9 +46,18 @@ export const PROCESOS_AUTOMATICOS = [
   ConfigurableProcess.CYLINDER_RECOVERY,
   ConfigurableProcess.ROUTE_PLANNING,
   ConfigurableProcess.DOCUMENT_READING,
+  ConfigurableProcess.CASH_ALERTS,
 ] as const;
 
 export type ProcesoAutomatico = (typeof PROCESOS_AUTOMATICOS)[number];
+
+/**
+ * Procesos del núcleo: configurables por la empresa pero que no son un módulo
+ * de la plataforma (no hay nada que habilitarle).
+ */
+export const PROCESOS_DEL_NUCLEO: readonly ProcesoAutomatico[] = [
+  ConfigurableProcess.CASH_ALERTS,
+];
 
 export function esProcesoAutomatico(valor: string): valor is ProcesoAutomatico {
   return (PROCESOS_AUTOMATICOS as readonly string[]).includes(valor);
@@ -229,6 +238,24 @@ export const ESQUEMAS: Record<ProcesoAutomatico, EsquemaDeProceso> = {
         0,
         null,
         'Mandar también un correo al chofer cuando se le propone una ventana (0 no, 1 sí)',
+      ),
+      campo(
+        'calibrationClosures',
+        'integer',
+        3,
+        20,
+        5,
+        'cierres',
+        'Cuántos de los últimos cierres de un vehículo y tipo de tarea se promedian para corregir la proyección (hacen falta al menos 3)',
+      ),
+      campo(
+        'calibrationMaxDays',
+        'integer',
+        0,
+        60,
+        14,
+        'días',
+        'Tope de la corrección de la fecha proyectada por el desvío del vehículo, en uno y otro sentido (0 apaga la autocalibración)',
       ),
     ],
     cruzada: (v) =>
@@ -714,6 +741,41 @@ export const ESQUEMAS: Record<ProcesoAutomatico, EsquemaDeProceso> = {
         24,
         'h',
         'Vigencia después del recordatorio, antes de escalar',
+      ),
+    ],
+  },
+  [ConfigurableProcess.CASH_ALERTS]: {
+    process: ConfigurableProcess.CASH_ALERTS,
+    title: 'Aviso de efectivo sin rendir',
+    description:
+      'Al cierre del día avisa en la campana del administrador si hay choferes con efectivo cobrado hace más de N horas que todavía no entró en una rendición. Un solo aviso por día.',
+    fields: [
+      campo(
+        'enabled',
+        'integer',
+        0,
+        1,
+        1,
+        null,
+        '1 enciende el aviso al cierre del día; 0 lo apaga. Viene encendido',
+      ),
+      campo(
+        'closeHour',
+        'integer',
+        0,
+        23,
+        20,
+        'h',
+        'Hora del cierre del día en que se revisa el efectivo sin rendir (hora de Argentina)',
+      ),
+      campo(
+        'minHours',
+        'integer',
+        1,
+        720,
+        24,
+        'h',
+        'Antigüedad desde la entrega a partir de la cual el efectivo sin rendir dispara el aviso',
       ),
     ],
   },

@@ -2,9 +2,11 @@ import type { Point } from 'typeorm';
 import { coordenadasDePunto } from '../common/geo/punto';
 import { Order, OrderStatus, PaymentType } from './entities/order.entity';
 import { esEditable } from './domain/order-editable';
+import { efectivoACobrar } from './domain/efectivo-a-cobrar';
 import type { User } from '../users/entities/user.entity';
 import {
   CustomerDeOrderDto,
+  DeliveryConfirmationDto,
   OrderItemResponseDto,
   OrderResponseDto,
   ProductoDelRenglonDto,
@@ -66,6 +68,8 @@ function vehiculoDe(order: Order): VehicleDeOrderDto | null {
   dto.patent = order.vehiclePatent ?? null;
   dto.brand = order.vehicleBrand ?? null;
   dto.model = order.vehicleModel ?? null;
+  // La imagen la completa `OrderVehiclePhotoService` (el mapper no firma).
+  dto.photoUrl = null;
   return dto;
 }
 
@@ -85,8 +89,41 @@ function receptorDe(order: Order): ReceiverDeOrderDto | null {
   return dto;
 }
 
+/**
+ * `confirmedByUserId` es un dato interno (el usuario del chofer o del admin):
+ * sólo sale para el personal del panel; al cliente y al chofer, `null`.
+ */
+function confirmacionDe(
+  order: Order,
+  paraElPersonal: boolean,
+): DeliveryConfirmationDto | null {
+  if (!order.deliveryConfirmedByUserId || !order.deliveredAt) return null;
+  const punto = coordenadasDePunto(order.deliveryConfirmedPoint);
+  const dto = new DeliveryConfirmationDto();
+  dto.confirmedAt = order.deliveredAt;
+  dto.confirmedByRole =
+    (order.deliveryConfirmedByRole as DeliveryConfirmationDto['confirmedByRole']) ??
+    null;
+  dto.confirmedByUserId = paraElPersonal
+    ? order.deliveryConfirmedByUserId
+    : null;
+  dto.latitude = punto?.lat ?? null;
+  dto.longitude = punto?.lng ?? null;
+  dto.accuracyMeters = order.deliveryConfirmedAccuracyM ?? null;
+  dto.distanceMeters = order.deliveryConfirmedDistanceM ?? null;
+  dto.outOfRange = !!order.deliveryConfirmedOutOfRange;
+  return dto;
+}
+
 export class OrderMapper {
-  static toDto(order: Order): OrderResponseDto {
+  /**
+   * `paraElPersonal`: la respuesta va a un admin o super admin (suma los datos
+   * internos, como quién confirmó la entrega). Por omisión, la del cliente o el chofer.
+   */
+  static toDto(
+    order: Order,
+    { paraElPersonal = false }: { paraElPersonal?: boolean } = {},
+  ): OrderResponseDto {
     const dto = new OrderResponseDto();
 
     dto.id = order.orderId;
@@ -118,6 +155,7 @@ export class OrderMapper {
     dto.receiver = receptorDe(order);
     // El chofer sólo se agrega en la lectura individual (ver `OrderService.getOne`).
     dto.driver = null;
+    dto.deliveryConfirmation = confirmacionDe(order, paraElPersonal);
     dto.cancelledBy = null;
 
     // Status Mapping
@@ -130,6 +168,15 @@ export class OrderMapper {
     // Saldo a cobrar al entregar = total menos la seña YA paga.
     dto.remainingBalance =
       Number(order.totalAmount) - (order.depositPaid ? dto.depositAmount : 0);
+
+    dto.cashToCollect = efectivoACobrar({
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      status: order.status,
+      total: Number(order.totalAmount),
+      depositAmount: dto.depositAmount,
+      depositPaid: dto.depositPaid,
+    });
 
     // Payment Method Mapping
     dto.paymentMethod = this.mapPaymentType(order.paymentType);
@@ -204,6 +251,7 @@ export class OrderMapper {
         producto.weight = Number(item.gasCylinder.weight);
         producto.price = Number(item.gasCylinder.price);
         producto.description = item.gasCylinder.description;
+        producto.photoUrl = null;
         renglon.cylinder = producto;
       }
       return renglon;

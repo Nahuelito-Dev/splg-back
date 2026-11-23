@@ -26,6 +26,8 @@ import { CurrentDistributor } from '../../common/decorators/current-distributor.
 import { MessageResponseDto } from '../../common/dtos/message-response.dto';
 import { PurchaseQueryService } from '../application/purchase-query.service';
 import { SupplierService } from '../application/supplier.service';
+import { SupplierPhotoService } from '../application/supplier-photo.service';
+import { Supplier } from '../entities/supplier.entity';
 import {
   QuerySupplierHistoryDto,
   SupplierHistoryDto,
@@ -48,7 +50,14 @@ export class SupplierController {
   constructor(
     private readonly suppliers: SupplierService,
     private readonly queries: PurchaseQueryService,
+    private readonly photo: SupplierPhotoService,
   ) {}
+
+  /** El DTO del proveedor con su foto como URL firmada. */
+  private async aDto(proveedor: Supplier): Promise<SupplierResponseDto> {
+    await this.photo.firmar(proveedor);
+    return SupplierMapper.toDto(proveedor);
+  }
 
   @Permiso('stock.ver')
   @Get()
@@ -59,6 +68,7 @@ export class SupplierController {
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<SupplierPageDto> {
     const { data, total } = await this.suppliers.findAll(distributorId, query);
+    await this.photo.firmar(data);
     return { data: data.map((s) => SupplierMapper.toDto(s)), total };
   }
 
@@ -79,9 +89,7 @@ export class SupplierController {
     @Body() dto: CreateSupplierDto,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<SupplierResponseDto> {
-    return SupplierMapper.toDto(
-      await this.suppliers.create(dto, distributorId),
-    );
+    return this.aDto(await this.suppliers.create(dto, distributorId));
   }
 
   @Permiso('stock.ver')
@@ -94,9 +102,7 @@ export class SupplierController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<SupplierResponseDto> {
-    return SupplierMapper.toDto(
-      await this.suppliers.findOne(id, distributorId),
-    );
+    return this.aDto(await this.suppliers.findOne(id, distributorId));
   }
 
   @Permiso('stock.ver')
@@ -131,9 +137,7 @@ export class SupplierController {
     @Body() dto: UpdateSupplierDto,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<SupplierResponseDto> {
-    return SupplierMapper.toDto(
-      await this.suppliers.update(id, dto, distributorId),
-    );
+    return this.aDto(await this.suppliers.update(id, dto, distributorId));
   }
 
   @Permiso('compras.gestionar')

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { rangoDeDiasArgentinos } from '../../common/utils/dias-argentina';
+import { GasCylinderPhotoService } from '../../gascylinder/gascylinder-photo.service';
 import {
   OrdenNoEncontradaError,
   ProveedorNoEncontradoError,
@@ -102,7 +103,10 @@ const SELECT_RECEPCION = `
 /** Lecturas del módulo de compras. Sólo SELECT, siempre acotadas a la distribuidora. */
 @Injectable()
 export class PurchaseQueryService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly productos: GasCylinderPhotoService,
+  ) {}
 
   async ordenes(
     distributorId: string,
@@ -144,7 +148,7 @@ export class PurchaseQueryService {
       [id, distributorId],
     );
     if (!fila) throw new OrdenNoEncontradaError(id);
-    const items = await this.renglonesDeOrden(id);
+    const items = await this.renglonesDeOrden(id, distributorId);
     const recepciones: FilaDeRecepcion[] = await this.dataSource.query(
       `${SELECT_RECEPCION}
        WHERE r."purchase_order_id" = $1 AND r."distributor_id" = $2
@@ -176,7 +180,7 @@ export class PurchaseQueryService {
       [id, distributorId],
     );
     if (!orden) throw new OrdenNoEncontradaError(id);
-    const items = await this.renglonesDeOrden(id);
+    const items = await this.renglonesDeOrden(id, distributorId);
     const dto = new PurchaseOrderPendingDto();
     dto.purchaseOrderId = orden.purchase_order_id;
     dto.number = orden.number;
@@ -185,6 +189,7 @@ export class PurchaseQueryService {
       const p = new PendingItemDto();
       p.gasCylinderId = i.gasCylinderId;
       p.gasCylinderType = i.gasCylinderType;
+      p.gasCylinderPhotoUrl = i.gasCylinderPhotoUrl;
       p.ordered = i.quantity;
       p.received = i.receivedQuantity;
       p.pending = i.pendingQuantity;
@@ -281,6 +286,10 @@ export class PurchaseQueryService {
        ORDER BY g."type"`,
       [id],
     );
+    const fotos = await this.productos.urlsPorId(
+      distributorId,
+      items.map((i) => i.gas_cylinder_id),
+    );
     return Object.assign(
       new PurchaseReceiptResponseDto(),
       this.aResumenDeRecepcion(fila),
@@ -290,6 +299,7 @@ export class PurchaseQueryService {
             itemId: i.item_id,
             gasCylinderId: i.gas_cylinder_id,
             gasCylinderType: i.type,
+            gasCylinderPhotoUrl: fotos.get(i.gas_cylinder_id) ?? null,
             quantityFull: i.quantity_full,
             quantityEmptyOut: i.quantity_empty_out,
             unitCost: Number(i.unit_cost),
@@ -396,6 +406,7 @@ export class PurchaseQueryService {
 
   private async renglonesDeOrden(
     orderId: string,
+    distributorId: string,
   ): Promise<PurchaseOrderItemResponseDto[]> {
     const filas: Array<{
       item_id: string;
@@ -414,11 +425,16 @@ export class PurchaseQueryService {
        ORDER BY g."type"`,
       [orderId],
     );
+    const fotos = await this.productos.urlsPorId(
+      distributorId,
+      filas.map((f) => f.gas_cylinder_id),
+    );
     return filas.map((f) =>
       Object.assign(new PurchaseOrderItemResponseDto(), {
         itemId: f.item_id,
         gasCylinderId: f.gas_cylinder_id,
         gasCylinderType: f.type,
+        gasCylinderPhotoUrl: fotos.get(f.gas_cylinder_id) ?? null,
         quantity: f.quantity,
         unitCost: Number(f.unit_cost),
         subtotal: redondear(Number(f.unit_cost) * f.quantity),

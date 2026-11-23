@@ -194,6 +194,10 @@ export class DistributorController {
   }
 
   @Get(':id/logo')
+  // El logo es identidad visual y ya sale firmado en la lista de empresas
+  // (`GET /v2/platform/companies`): la plataforma lo lee, y renueva su URL, sin
+  // sesión de soporte. Sólo esta lectura: subirlo y quitarlo siguen cerrados.
+  @Alcance('ambos')
   @Permiso('configuracion.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiVerFoto('Ver el logo de la distribuidora')

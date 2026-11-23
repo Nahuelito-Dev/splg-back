@@ -107,6 +107,10 @@ export class InsuranceMapper {
     dto.paidByUserId = c.paidByUserId;
     dto.cashMovementId = c.cashMovementId;
     dto.receiptAttachmentId = c.receiptAttachmentId;
+    dto.approvalStatus = c.approvalStatus;
+    dto.approvalRequestedAt = c.approvalRequestedAt;
+    dto.approvedAt = c.approvedAt;
+    dto.approvedByUserId = c.approvedByUserId;
     dto.createdAt = c.createdAt;
   }
 }

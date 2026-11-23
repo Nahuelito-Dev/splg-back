@@ -128,6 +128,18 @@ export abstract class OrderRepositoryPort {
   abstract replaceDeliveryCode(
     orderId: string,
     newCode: string,
+    generadoPor?: 'el chofer' | 'el cliente' | 'un administrador',
+  ): Promise<boolean>;
+
+  /**
+   * Cambia un código de entrega que no es de 6 dígitos (los pedidos viejos
+   * tenían 10 caracteres) por `newCode`, con los intentos en 0, en un pedido
+   * aceptado o en camino, auditándolo. Devuelve false si el pedido ya no está
+   * en ese caso (otro pedido lo cambió antes, o ya tiene 6 dígitos).
+   */
+  abstract upgradeLegacyDeliveryCode(
+    orderId: string,
+    newCode: string,
   ): Promise<boolean>;
 
   /** Guarda (crea o actualiza) un pedido ya materializado. */

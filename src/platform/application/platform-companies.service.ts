@@ -13,6 +13,7 @@ import { PlatformMapper, sinMetricas } from '../presentation/platform.mapper';
 import { mesDe, periodoDe } from './periodo';
 import { PlatformProcessesService } from './platform-processes.service';
 import { PlatformUsageService } from './platform-usage.service';
+import { EntityPhotoService } from '../../s3/entity-photo.service';
 
 /** Las sesiones de soporte que muestra la ficha de una empresa. */
 export const SESIONES_EN_LA_FICHA = 10;
@@ -38,6 +39,7 @@ export class PlatformCompaniesService {
     private readonly repo: PlatformMetricsRepository,
     private readonly procesos: PlatformProcessesService,
     private readonly uso: PlatformUsageService,
+    private readonly fotos: EntityPhotoService,
   ) {}
 
   async tablero(
@@ -102,23 +104,26 @@ export class PlatformCompaniesService {
         )
       : new Map<string, number>();
 
-    const items = filas.map((f) => {
-      const m: FilaDeMetricas = deCada.get(f.id) ?? sinMetricas();
-      const dto = new CompanyListItemDto();
-      dto.id = f.id;
-      dto.name = f.name;
-      dto.slug = f.slug;
-      dto.status = f.status as DistributorStatus;
-      dto.ownedByPlatform = f.owned_by_platform;
-      dto.plan = f.plan;
-      dto.createdAt = new Date(f.created_at);
-      dto.lastActivityAt = m.ultima_actividad;
-      dto.metrics = PlatformMapper.metricas(m);
-      dto.processAlerts = alertas.get(f.id) ?? 0;
-      dto.supportSessionActive = m.soporte_activo;
-      dto.supportRequestsPending = m.soporte_pendiente;
-      return dto;
-    });
+    const items = await Promise.all(
+      filas.map(async (f) => {
+        const m: FilaDeMetricas = deCada.get(f.id) ?? sinMetricas();
+        const dto = new CompanyListItemDto();
+        dto.id = f.id;
+        dto.name = f.name;
+        dto.slug = f.slug;
+        dto.logoUrl = await this.fotos.urlDe(f.logo_key);
+        dto.status = f.status as DistributorStatus;
+        dto.ownedByPlatform = f.owned_by_platform;
+        dto.plan = f.plan;
+        dto.createdAt = new Date(f.created_at);
+        dto.lastActivityAt = m.ultima_actividad;
+        dto.metrics = PlatformMapper.metricas(m);
+        dto.processAlerts = alertas.get(f.id) ?? 0;
+        dto.supportSessionActive = m.soporte_activo;
+        dto.supportRequestsPending = m.soporte_pendiente;
+        return dto;
+      }),
+    );
     return { range: { from: periodo.from, to: periodo.to }, items, total };
   }
 

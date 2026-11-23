@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, MoreThanOrEqual, Repository } from 'typeorm';
+import { In, IsNull, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { Car } from '../../car/entities/car.entity';
 import { diaArgentino, sumarDias } from '../../common/utils/dias-argentina';
 import { ValoresDeProceso } from '../../distributor/process-config';
-import { MaintenanceTask } from '../entities/maintenance-task.entity';
+import {
+  MaintenanceTask,
+  MaintenanceTaskStatus,
+} from '../entities/maintenance-task.entity';
 import { VehicleUsageLog } from '../entities/vehicle-usage-log.entity';
 import {
   estimarKmPorDia,
@@ -13,6 +16,10 @@ import {
   MuestraDeUso,
   promedioDeFlota,
 } from './domain/uso-estimado';
+import {
+  calcularCorreccion,
+  CorreccionDeVencimiento,
+} from './domain/autocalibracion';
 import {
   proyectarVencimiento,
   ProyeccionDeVencimiento,
@@ -41,6 +48,10 @@ export interface ConsumoDelVehiculo {
   desactualizado: boolean;
   muestras: MuestraDeUso[];
 }
+
+/** Clave de la corrección de un vehículo y tipo de tarea (el plan). */
+export const claveDeCalibracion = (carId: string, planId: string): string =>
+  `${carId}:${planId}`;
 
 /** Una tarea con su vencimiento proyectado. */
 export interface TareaProyectada {
@@ -155,12 +166,63 @@ export class MaintenanceForecastService {
     return resultado;
   }
 
-  /** Proyecta el vencimiento de una tarea de vehículo con el consumo del vehículo. */
+  /**
+   * La corrección por el desvío histórico de cada vehículo y tipo de tarea
+   * (el plan): se promedian los últimos `calibrationClosures` cierres de esa
+   * pareja, con el tope de `calibrationMaxDays`. Sólo hay entrada si hay al
+   * menos tres cierres medidos y la corrección no se apagó.
+   */
+  async correcciones(
+    distributorId: string,
+    cars: readonly Car[],
+    params: ValoresDeProceso,
+  ): Promise<Map<string, CorreccionDeVencimiento>> {
+    const resultado = new Map<string, CorreccionDeVencimiento>();
+    if (cars.length === 0 || params.calibrationMaxDays <= 0) return resultado;
+    const cerradas = await this.tasks.find({
+      where: {
+        distributorId,
+        carId: In(cars.map((c) => c.carId)),
+        status: MaintenanceTaskStatus.DONE,
+        forecastDeviationDays: Not(IsNull()),
+      },
+      select: {
+        taskId: true,
+        carId: true,
+        planId: true,
+        performedAt: true,
+        forecastDeviationDays: true,
+      },
+      order: { performedAt: 'DESC' },
+    });
+    const desvios = new Map<string, number[]>();
+    for (const t of cerradas) {
+      if (!t.carId || t.forecastDeviationDays === null) continue;
+      const clave = claveDeCalibracion(t.carId, t.planId);
+      const lista = desvios.get(clave) ?? [];
+      lista.push(t.forecastDeviationDays);
+      desvios.set(clave, lista);
+    }
+    for (const [clave, lista] of desvios) {
+      const correccion = calcularCorreccion(lista, {
+        cierres: params.calibrationClosures,
+        topeDias: params.calibrationMaxDays,
+      });
+      if (correccion) resultado.set(clave, correccion);
+    }
+    return resultado;
+  }
+
+  /**
+   * Proyecta el vencimiento de una tarea de vehículo con el consumo del
+   * vehículo, y con la corrección por su desvío histórico si la hay.
+   */
   proyectar(
     task: MaintenanceTask,
     car: Car,
     consumo: ConsumoDelVehiculo | null,
     hoy: Date,
+    correccion: CorreccionDeVencimiento | null = null,
   ): ProyeccionDeVencimiento {
     const hoyDia = diaArgentino(hoy);
     // Datos viejos no se proyectan: un vehículo parado no es uno que anda poco.
@@ -172,6 +234,7 @@ export class MaintenanceForecastService {
         odometerKm: car.odometerKm,
         kmPorDia,
         hoy,
+        correccion,
       });
       const lejos =
         p.porKilometraje !== null &&
@@ -181,6 +244,8 @@ export class MaintenanceForecastService {
       return {
         ...p,
         porKilometraje: null,
+        porKilometrajeSinCorregir: null,
+        correccion: null,
         fecha: task.dueAt,
         enObservacion: task.dueAt === null && task.dueKm !== null,
       };
@@ -208,6 +273,7 @@ export class MaintenanceForecastService {
    */
   async guardarPredicciones(
     proyectadas: readonly TareaProyectada[],
+    ahora: Date = new Date(),
   ): Promise<number> {
     let cambiadas = 0;
     for (const { task, proyeccion } of proyectadas) {
@@ -219,15 +285,30 @@ export class MaintenanceForecastService {
           : actual !== null &&
             Math.abs(nueva.getTime() - actual.getTime()) < 86_400_000;
       if (igual) continue;
-      const primera = task.firstPredictedDueAt ?? nueva;
-      await this.tasks.update(
-        { taskId: task.taskId },
-        primera === (task.firstPredictedDueAt ?? null)
-          ? { predictedDueAt: nueva }
-          : { predictedDueAt: nueva, firstPredictedDueAt: primera },
-      );
+      // La primera proyección se guarda sin corregir (es la que mide el desvío
+      // real) y, aparte, ya corregida (para medir el acierto después de calibrar).
+      const sinCorregir = proyeccion.porKilometrajeSinCorregir ?? nueva;
+      const primera = task.firstPredictedDueAt ?? sinCorregir;
+      const cambios: Partial<MaintenanceTask> = { predictedDueAt: nueva };
+      if (!task.firstPredictedDueAt && primera) {
+        cambios.firstPredictedDueAt = primera;
+        cambios.firstCorrectedDueAt = nueva;
+        // Con qué kilometraje y cuándo se pronosticó: al cierre se mide el ritmo real contra eso.
+        if (task.dueKm !== null && proyeccion.kmFaltantes != null) {
+          cambios.firstPredictedAt = ahora;
+          cambios.firstPredictedOdometerKm =
+            task.dueKm - proyeccion.kmFaltantes;
+        }
+      }
+      await this.tasks.update({ taskId: task.taskId }, cambios);
       task.predictedDueAt = nueva;
       task.firstPredictedDueAt = primera;
+      if (cambios.firstCorrectedDueAt !== undefined) {
+        task.firstCorrectedDueAt = cambios.firstCorrectedDueAt;
+        task.firstPredictedAt = cambios.firstPredictedAt ?? null;
+        task.firstPredictedOdometerKm =
+          cambios.firstPredictedOdometerKm ?? null;
+      }
       cambiadas += 1;
     }
     return cambiadas;

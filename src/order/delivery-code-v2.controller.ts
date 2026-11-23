@@ -21,7 +21,7 @@ import { Permiso } from '../common/decorators/permiso.decorator';
 
 /** Código de entrega del pedido en camino (API v2). */
 @ApiTags('Pedidos · Código de entrega (v2)')
-@Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+@Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller({ path: 'orders', version: '2' })
 export class DeliveryCodeV2Controller {
   constructor(private readonly orderService: OrderService) {}
@@ -32,13 +32,13 @@ export class DeliveryCodeV2Controller {
   @ApiOperation({
     summary: 'Generar un código de entrega nuevo',
     description:
-      'El chofer asignado (o un admin) reemplaza el código del pedido en camino por uno de 6 dígitos y los intentos fallidos del cliente vuelven a 0. Sirve cuando el cliente agotó los intentos (`DELIVERY_CODE_BLOQUEADO`). Queda en la auditoría de datos. El código viejo deja de valer.',
+      'Sólo un admin (el chofer no puede: el código lo ve el cliente, que lo regenera en `POST /api/v3/orders/:id/delivery-code/regenerate`) reemplaza el código del pedido en camino por uno de 6 dígitos y los intentos fallidos del cliente vuelven a 0. Sirve cuando el cliente agotó los intentos (`DELIVERY_CODE_BLOQUEADO`). Queda en la auditoría de datos. El código viejo deja de valer.',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiCreatedResponse({ type: CodigoDeEntregaResponseDto })
   @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiForbiddenResponse({
-    description: 'El pedido no está asignado a este chofer',
+    description: 'La cuenta no es admin (el chofer no puede generar el código)',
   })
   @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
   @ApiConflictResponse({ description: 'El pedido no está en camino' })

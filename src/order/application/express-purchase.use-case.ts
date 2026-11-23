@@ -25,6 +25,7 @@ import { CreateOrderResult, CreateOrderUseCase } from './create-order.use-case';
 import { ExpressAvailabilityService } from './express-availability.service';
 import { QuoteOrderUseCase } from './quote-order.use-case';
 import { CODIGOS_DE_ERROR, conCodigo } from '../../common/errors/con-codigo';
+import { assertMedioDePagoAceptado } from '../domain/medio-de-pago-aceptado';
 
 interface CompraExpress {
   address: UserAddress;
@@ -57,6 +58,7 @@ export class ExpressPurchaseUseCase {
     customerId: string,
     distributorId: string | null,
   ): Promise<ExpressPreviewResponseDto> {
+    assertMedioDePagoAceptado(dto.paymentMethod);
     const distribuidora = await this.distribuidora(distributorId);
     const compra = await this.resolver(dto, customerId, distribuidora);
     const disponibilidad = await this.express.evaluar(
@@ -109,6 +111,7 @@ export class ExpressPurchaseUseCase {
     customerId: string,
     distributorId: string | null,
   ): Promise<CreateOrderResult> {
+    assertMedioDePagoAceptado(dto.paymentMethod);
     const distribuidora = await this.distribuidora(distributorId);
     const compra = await this.resolver(dto, customerId, distribuidora);
     const pedido = Object.assign(new CreateOrderDto(), {

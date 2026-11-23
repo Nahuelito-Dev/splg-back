@@ -78,6 +78,21 @@ export class ChatReadModel {
     return new Map(filas.map((f) => [f.distributor_id, f.name]));
   }
 
+  /** La key del logo (`logo_key`) de las empresas que tienen uno, por id. */
+  async logosDeLasEmpresas(
+    ids: Iterable<string>,
+  ): Promise<Map<string, string>> {
+    const lista = [...new Set(ids)];
+    if (lista.length === 0) return new Map();
+    const filas: Array<{ distributor_id: string; logo_key: string }> =
+      await this.dataSource.query(
+        `SELECT "distributor_id", "logo_key" FROM "distributor"
+          WHERE "distributor_id" = ANY($1::uuid[]) AND "logo_key" IS NOT NULL`,
+        [lista],
+      );
+    return new Map(filas.map((f) => [f.distributor_id, f.logo_key]));
+  }
+
   /** Sin leer por conversación para esa persona: lo de la otra punta, sin notas internas si es la empresa. */
   async noLeidos(
     conversationIds: string[],

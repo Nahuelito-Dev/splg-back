@@ -121,7 +121,7 @@ export class MaintenancePlannerController {
   @ApiOperation({
     summary: 'Cuánto acierta la fecha proyectada de los vencimientos',
     description:
-      'De las tareas cerradas en el período que tenían fecha proyectada por kilometraje: cuántas se pudieron comparar, el error medio en días, el porcentaje hecho a ±7 días de lo proyectado y si tienden a hacerse antes o después. Por omisión, los últimos 180 días.',
+      'De las tareas cerradas en el período que tenían fecha proyectada por kilometraje: cuántas se pudieron comparar, el error medio en días, el porcentaje hecho a ±7 días de lo proyectado y si tienden a hacerse antes o después. `accuracy` mide la proyección sin corregir y `calibratedAccuracy` la misma proyección con la corrección por el desvío del vehículo (autocalibración); las tareas cerradas antes de la autocalibración cuentan igual en las dos. Por omisión, los últimos 180 días.',
   })
   @ApiOkResponse({ type: PlannerAccuracyResponseDto })
   @ApiBadRequestResponse({
@@ -131,13 +131,14 @@ export class MaintenancePlannerController {
     @Query() query: QueryPlannerAccuracyDto,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<PlannerAccuracyResponseDto> {
-    const { accuracy, desde, hasta } = await this.planner.acierto(
-      distributorId,
-      query.from,
-      query.to,
-      new Date(),
-    );
-    return { from: desde, to: hasta, accuracy };
+    const { accuracy, calibratedAccuracy, desde, hasta } =
+      await this.planner.acierto(
+        distributorId,
+        query.from,
+        query.to,
+        new Date(),
+      );
+    return { from: desde, to: hasta, accuracy, calibratedAccuracy };
   }
 
   @Permiso('flota.ver')

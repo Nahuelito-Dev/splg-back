@@ -157,11 +157,37 @@ describe('RouteSheetNotifier', () => {
       'order:eta-updated',
       expect.objectContaining({ orderId: 'o1' }),
     );
-    expect(notifications.sendOrderNoticePush).toHaveBeenCalledWith('c1', 'o1', {
-      title: 'Tu pedido está en camino',
-      body: 'El chofer salió con tu pedido: te llega entre las 10:15 y las 11:15.',
-      event: 'ORDER_TRIP_STARTED',
-    });
+    expect(notifications.sendOrderNoticePush).toHaveBeenCalledWith(
+      'c1',
+      'o1',
+      {
+        title: 'Tu pedido está en camino',
+        body: 'El chofer salió con tu pedido: te llega entre las 10:15 y las 11:15.',
+        event: 'ORDER_TRIP_STARTED',
+      },
+      undefined,
+    );
+  });
+
+  it('salida de un pedido en efectivo: el mismo push lleva el monto y la salida', async () => {
+    const { svc, notifications } = armar();
+    await svc.salidaAlCliente(
+      'c1',
+      'o1',
+      {
+        windowStartMs: Date.parse('2026-11-14T13:15:00Z'),
+        windowEndMs: Date.parse('2026-11-14T14:15:00Z'),
+        etaMs: Date.parse('2026-11-14T13:45:00Z'),
+      },
+      { monto: 12000, salida: 'd1:0' },
+    );
+    expect(notifications.sendOrderNoticePush).toHaveBeenCalledTimes(1);
+    expect(notifications.sendOrderNoticePush).toHaveBeenCalledWith(
+      'c1',
+      'o1',
+      expect.objectContaining({ event: 'ORDER_TRIP_STARTED' }),
+      { monto: 12000, salida: 'd1:0' },
+    );
   });
 
   it.each([

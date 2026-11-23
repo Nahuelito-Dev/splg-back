@@ -30,7 +30,7 @@ const invitacion = (
     status: RepurchaseInvitationStatus.PENDING,
     expiresAt: new Date('2099-01-01T00:00:00Z'),
     invitationId: 'i1',
-    paymentMethod: PaymentMethod.TRANSFER,
+    paymentMethod: PaymentMethod.CASH,
     suggestedItems: [
       { gasCylinderId: 'g10', quantity: 1 },
       { gasCylinderId: 'g45', quantity: 1 },
@@ -113,7 +113,7 @@ describe('RepurchaseInvitationDetailService', () => {
       expect(cotizador.execute).toHaveBeenCalledWith(
         expect.objectContaining({
           addressId: 'a1',
-          paymentMethod: PaymentMethod.TRANSFER,
+          paymentMethod: PaymentMethod.CASH,
           items: [
             { gasCylinderId: 'g10', quantity: 1, unitPrice: 0 },
             { gasCylinderId: 'g45', quantity: 1, unitPrice: 0 },
@@ -121,6 +121,17 @@ describe('RepurchaseInvitationDetailService', () => {
         }),
         'd1',
         { userId: 'u1', role: RoleType.CUSTOMER },
+      );
+    });
+
+    it('una invitación vieja con transferencia se cotiza en efectivo (la transferencia ya no se acepta)', async () => {
+      await service.detallar(
+        invitacion({ paymentMethod: PaymentMethod.TRANSFER }),
+      );
+      expect(cotizador.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ paymentMethod: PaymentMethod.CASH }),
+        'd1',
+        expect.anything(),
       );
     });
 

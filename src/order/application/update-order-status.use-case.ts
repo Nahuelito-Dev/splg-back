@@ -1,3 +1,4 @@
+import { claveDeSalida, efectivoDelPedido } from '../domain/efectivo-a-cobrar';
 import {
   esperaPagoOnline,
   mensajeDeEspera,
@@ -30,6 +31,10 @@ import {
 import { InvalidOrderTransitionError } from '../domain/errors/invalid-order-transition.error';
 import { marcarOfrecible } from '../domain/vencimiento-sin-chofer';
 import { assertReservaActivable } from '../domain/reservation-activation';
+import {
+  ConfirmacionDeEntrega,
+  confirmacionDelAdmin,
+} from '../domain/delivery-confirmation';
 import { generateDeliveryCode } from '../domain/delivery-code.util';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
@@ -113,6 +118,52 @@ const ADMIN_STATUS_EVENT: Partial<Record<OrderStatus, string>> = {
  * Extraído de OrderService para respetar SRP: la orquestación de la transición
  * vive en la capa application/, no mezclada con las lecturas del service.
  */
+/**
+ * Verificación de la entrega que corre CON el pedido bloqueado (`FOR UPDATE`),
+ * en la misma transacción que lo pasa a entregado: el código, los intentos y
+ * la asignación se comparan contra el dato fresco, no contra una lectura
+ * previa que un reintento, una reasignación o un código nuevo pudieron dejar
+ * vieja. Devuelve lo que queda asentado de la confirmación; para rechazar
+ * dejando algo escrito (el intento fallido) lanza `RechazoAsentado`.
+ */
+export type VerificarEntrega = (
+  pedido: Order,
+  manager: EntityManager,
+) => Promise<ConfirmacionDeEntrega>;
+
+/**
+ * Un rechazo de la verificación que igual se confirma: lo que la verificación
+ * escribió con el `manager` (el intento fallido del código) se commitea, el
+ * pedido no cambia de estado y se lanza `causa`. `despues` corre con el lock
+ * ya liberado (avisos al cliente, best-effort).
+ */
+export class RechazoAsentado extends Error {
+  constructor(
+    readonly causa: Error,
+    readonly despues?: () => Promise<void> | void,
+  ) {
+    super(causa.message);
+    this.name = 'RechazoAsentado';
+  }
+}
+
+/**
+ * Cómo terminó la parte bajo lock: transicionó (y quedan los efectos de
+ * después del commit), el pedido ya estaba entregado (no-op) o la verificación
+ * rechazó dejando asentado el intento.
+ */
+type ResultadoBajoLock =
+  | {
+      tipo: 'transicion';
+      order: Order;
+      deliveryUser: User | null;
+      /** `user_id` del chofer cuya aceptación se registra en el despacho DESPUÉS del commit. */
+      aceptacionADespachar: string | null;
+      ofertasRetiradas: string[];
+    }
+  | { tipo: 'ya-entregado'; order: Order }
+  | { tipo: 'rechazo'; rechazo: RechazoAsentado };
+
 /** 409 de tomar suelto un pedido que es parada de un lote de recorrido vivo (M4). */
 export const MENSAJE_PEDIDO_EN_RECORRIDO =
   'El pedido es parte de un recorrido que se le está ofreciendo a un chofer: no se puede tomar suelto';
@@ -160,20 +211,33 @@ export class UpdateOrderStatusUseCase {
     role?: RoleType,
     actorUserId?: string,
     reason?: string,
+    entrega?: ConfirmacionDeEntrega | VerificarEntrega,
   ): Promise<Order> {
-    // La entrega es la prueba de que el cliente recibió el pedido: se confirma
-    // con el QR del chofer (`ConfirmDeliveryUseCase`, que llega acá SIN rol) o
-    // la cierra un administrador. El chofer no puede cerrarla por su cuenta.
+    // La entrega es la prueba de que el cliente recibió el pedido: la confirma
+    // el chofer con el código que le dice el cliente (`ConfirmDeliveryV3UseCase`,
+    // que llega acá SIN rol y con la verificación) o la cierra un administrador.
+    // Por este camino genérico el chofer no puede cerrarla por su cuenta.
     if (status === OrderStatus.DELIVERED && role === RoleType.DELIVERY) {
       throw new ForbiddenException(
-        'La entrega se confirma con el QR del cliente',
+        'La entrega se confirma con el código que te dice el cliente',
       );
     }
 
-    // La entrega manual del administrador no tiene la prueba del QR: queda
+    // La entrega manual del administrador no tiene la prueba del código: queda
     // asentada con el motivo (historial de estados y auditoría). La que llega
-    // sin rol es la del QR, que ya tiene su prueba.
+    // sin rol es la del código, que ya tiene su prueba.
     const motivoDeEntrega = this.motivoDeEntregaManual(status, role, reason);
+    // Una sola fuente de «quién confirmó»: la entrega manual del admin (por
+    // `PATCH :id/status`, la v1 o la v3) asienta su rol y su usuario.
+    if (
+      status === OrderStatus.DELIVERED &&
+      !entrega &&
+      motivoDeEntrega &&
+      actorUserId &&
+      (role === RoleType.ADMIN || role === RoleType.SUPER_ADMIN)
+    ) {
+      entrega = confirmacionDelAdmin(actorUserId, role);
+    }
 
     // Cancelar por ESTE endpoint tiene que producir EXACTAMENTE el mismo
     // efecto que `PATCH /orders/:id/cancel` (mismo stock, mismos avisos, sin
@@ -210,12 +274,7 @@ export class UpdateOrderStatusUseCase {
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
-    let order: Order;
-    let deliveryUser: User | null;
-    // Chofer cuya aceptación hay que dejar registrada en el despacho: se hace
-    // DESPUÉS del commit (ver abajo).
-    let aceptacionADespachar: string | null = null;
-    let ofertasRetiradas: string[] = [];
+    let resultado: ResultadoBajoLock;
     try {
       const locked = await queryRunner.manager
         .createQueryBuilder(Order, 'ord')
@@ -235,51 +294,15 @@ export class UpdateOrderStatusUseCase {
         where: { orderId: locked.orderId },
       });
 
-      // Antes de tocar nada: el pedido tiene que ser de quien lo está moviendo.
-      await this.assertPedidoDelChofer(locked, deliveryId, role);
-
-      // Dominio: valida que la transición sea legal (PENDING→ACCEPTED→ON_THE_WAY
-      // →DELIVERED) y la aplica. Rechaza saltos/estados terminales con 400.
-      const previousStatus = locked.status;
-      // En camino → aceptado existe sólo para la hoja de ruta (la parada que no
-      // se pudo entregar vuelve al final de la cola del mismo chofer, por
-      // `OrderService.postergarEntrega`); por este endpoint sigue siendo inválida.
-      if (
-        previousStatus === OrderStatus.ON_THE_WAY &&
-        status === OrderStatus.ACCEPTED
-      ) {
-        throw new InvalidOrderTransitionError(previousStatus, status);
-      }
-      if (status === OrderStatus.ON_THE_WAY && locked.deliveryId) {
-        await this.assertUnaParadaEnCamino(
-          queryRunner.manager,
-          locked.orderId,
-          locked.deliveryId,
-        );
-      }
-      transitionOrder(locked, status);
-      const efectos = await this.applyStatusEffects(
+      resultado = await this.transicionarBajoLock(
+        queryRunner,
         locked,
         status,
-        previousStatus,
-        queryRunner.manager,
         deliveryId,
         role,
+        motivoDeEntrega,
+        entrega,
       );
-      deliveryUser = efectos.deliveryUser;
-      aceptacionADespachar = efectos.aceptacionDelChoferUserId;
-      ofertasRetiradas = efectos.ofertasRetiradas;
-
-      // El historial de estados lo asienta el subscriber con este motivo.
-      if (motivoDeEntrega) locked.transitionReason = motivoDeEntrega;
-      order = await queryRunner.manager.save(locked);
-      if (motivoDeEntrega) {
-        await this.asentarEntregaManual(
-          queryRunner.manager,
-          order,
-          motivoDeEntrega,
-        );
-      }
       await queryRunner.commitTransaction();
     } catch (e) {
       await this.rollbackSeguro(queryRunner);
@@ -287,6 +310,21 @@ export class UpdateOrderStatusUseCase {
     } finally {
       await queryRunner.release();
     }
+
+    if (resultado.tipo === 'ya-entregado') return resultado.order;
+    if (resultado.tipo === 'rechazo') {
+      const { rechazo } = resultado;
+      try {
+        await rechazo.despues?.();
+      } catch (error) {
+        this.logger.warn(
+          `Pedido ${id}: falló el aviso de un rechazo de la entrega: ${errorMessage(error)}`,
+        );
+      }
+      throw rechazo.causa;
+    }
+    const { order, deliveryUser, aceptacionADespachar, ofertasRetiradas } =
+      resultado;
 
     // La constancia de la oferta escribe en `order_dispatch_offer` por OTRA
     // conexión del pool, y esa tabla tiene una FK al pedido: el chequeo de
@@ -331,8 +369,102 @@ export class UpdateOrderStatusUseCase {
       );
     }
     await this.notifyCustomer(order);
+    // El aviso del efectivo no demora la respuesta del chofer.
+    if (status === OrderStatus.ON_THE_WAY) void this.avisarEfectivo(order);
 
     return order;
+  }
+
+  /**
+   * Con el pedido ya bloqueado: corta si ya estaba entregado (no-op), corre la
+   * verificación de la entrega y, si pasa, aplica la transición y sus efectos.
+   * No commitea: lo hace `execute` (también el intento fallido que dejó
+   * escrito un `RechazoAsentado`).
+   */
+  private async transicionarBajoLock(
+    queryRunner: QueryRunner,
+    locked: Order,
+    status: OrderStatus,
+    deliveryId: string | undefined,
+    role: RoleType | undefined,
+    motivoDeEntrega: string | null,
+    entrega: ConfirmacionDeEntrega | VerificarEntrega | undefined,
+  ): Promise<ResultadoBajoLock> {
+    // Ya entregado: la segunda de dos confirmaciones simultáneas (o un
+    // reintento) devuelve el pedido como quedó, sin re-aplicar el estado ni
+    // pisar la prueba de la primera, sin asientos ni eventos repetidos.
+    if (
+      status === OrderStatus.DELIVERED &&
+      locked.status === OrderStatus.DELIVERED
+    ) {
+      return { tipo: 'ya-entregado', order: locked };
+    }
+
+    let confirmacion: ConfirmacionDeEntrega | undefined;
+    if (typeof entrega === 'function') {
+      try {
+        confirmacion = await entrega(locked, queryRunner.manager);
+      } catch (e) {
+        if (e instanceof RechazoAsentado)
+          return { tipo: 'rechazo', rechazo: e };
+        throw e;
+      }
+    } else {
+      confirmacion = entrega;
+    }
+
+    // Antes de tocar nada: el pedido tiene que ser de quien lo está moviendo.
+    await this.assertPedidoDelChofer(locked, deliveryId, role);
+
+    // Dominio: valida que la transición sea legal (PENDING→ACCEPTED→ON_THE_WAY
+    // →DELIVERED) y la aplica. Rechaza saltos/estados terminales con 400.
+    const previousStatus = locked.status;
+    // En camino → aceptado existe sólo para la hoja de ruta (la parada que no
+    // se pudo entregar vuelve al final de la cola del mismo chofer, por
+    // `OrderService.postergarEntrega`); por este endpoint sigue siendo inválida.
+    if (
+      previousStatus === OrderStatus.ON_THE_WAY &&
+      status === OrderStatus.ACCEPTED
+    ) {
+      throw new InvalidOrderTransitionError(previousStatus, status);
+    }
+    if (status === OrderStatus.ON_THE_WAY && locked.deliveryId) {
+      await this.assertUnaParadaEnCamino(
+        queryRunner.manager,
+        locked.orderId,
+        locked.deliveryId,
+      );
+    }
+    transitionOrder(locked, status);
+    const efectos = await this.applyStatusEffects(
+      locked,
+      status,
+      previousStatus,
+      queryRunner.manager,
+      deliveryId,
+      role,
+    );
+
+    // El historial de estados lo asienta el subscriber con este motivo.
+    if (motivoDeEntrega) locked.transitionReason = motivoDeEntrega;
+    if (confirmacion && status === OrderStatus.DELIVERED) {
+      this.asentarConfirmacion(locked, confirmacion);
+    }
+    const order = await queryRunner.manager.save(locked);
+    if (motivoDeEntrega) {
+      await this.asentarEntregaManual(
+        queryRunner.manager,
+        order,
+        motivoDeEntrega,
+      );
+    }
+    return {
+      tipo: 'transicion',
+      order,
+      deliveryUser: efectos.deliveryUser,
+      aceptacionADespachar: efectos.aceptacionDelChoferUserId,
+      ofertasRetiradas: efectos.ofertasRetiradas,
+    };
   }
 
   /**
@@ -432,6 +564,19 @@ export class UpdateOrderStatusUseCase {
       );
     }
     return motivo;
+  }
+
+  /** Deja en el pedido la prueba de la confirmación (la audita el trigger de la base). */
+  private asentarConfirmacion(
+    order: Order,
+    confirmacion: ConfirmacionDeEntrega,
+  ): void {
+    order.deliveryConfirmedPoint = confirmacion.point;
+    order.deliveryConfirmedAccuracyM = confirmacion.accuracyM;
+    order.deliveryConfirmedDistanceM = confirmacion.distanceM;
+    order.deliveryConfirmedOutOfRange = confirmacion.outOfRange;
+    order.deliveryConfirmedByUserId = confirmacion.byUserId;
+    order.deliveryConfirmedByRole = confirmacion.byRole;
   }
 
   /** Auditoría de datos del motivo, en la transacción de la entrega manual. */
@@ -783,10 +928,10 @@ export class UpdateOrderStatusUseCase {
           // fix en `releaseDriverAssignment`/`OrderService.assignDelivery`.
           order.delivery = delivery;
           order.acceptedAt = await ahoraDeLaBase(manager);
-          // Prueba de entrega con QR: se genera acá el código secreto que el
-          // chofer mostrará en su QR y el cliente escaneará para confirmar la
-          // entrega (ver ConfirmDeliveryUseCase). Ya queda listo para cuando
-          // el pedido pase a ON_THE_WAY.
+          // Prueba de entrega: se genera acá el código secreto que el cliente
+          // ve en su app y le dice al chofer para confirmar la entrega (ver
+          // ConfirmDeliveryV3UseCase). Ya queda listo para cuando el pedido
+          // pase a ON_THE_WAY.
           order.deliveryCode = generateDeliveryCode();
 
           // La oferta de despacho se cierra como ACCEPTED después del commit
@@ -940,6 +1085,35 @@ export class UpdateOrderStatusUseCase {
       // Errores de WebSocket no rompen la actualización del pedido.
       this.logger.warn(
         `No se pudo emitir el evento de WebSocket "${eventName}" del pedido ${order.orderId}: ${errorMessage(error)}`,
+      );
+    }
+  }
+
+  /**
+   * «Tené listos $X en efectivo» al salir el chofer (best-effort, una vez por
+   * pedido, monto y salida). La salida la da el chofer asignado y los intentos
+   * fallidos de la parada: si vuelve después de una entrega fallida se avisa otra vez.
+   */
+  private async avisarEfectivo(order: Order): Promise<void> {
+    const monto = efectivoDelPedido(order);
+    if (monto === null) return;
+    try {
+      const filas: Array<{ intentos: number }> = await this.dataSource.query(
+        `SELECT "failed_attempts" AS "intentos" FROM "route_batch_stop"
+          WHERE "order_id" = $1 AND "active" LIMIT 1`,
+        [order.orderId],
+      );
+      await this.notificationService.sendCashReadyPush(
+        order.customerId,
+        order.orderId,
+        {
+          monto,
+          salida: claveDeSalida(order.deliveryId, filas[0]?.intentos),
+        },
+      );
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo avisar el efectivo del pedido ${order.orderId}: ${errorMessage(error)}`,
       );
     }
   }

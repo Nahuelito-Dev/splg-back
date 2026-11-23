@@ -74,6 +74,13 @@ export class SupportSessionRefDto {
 export class TicketDto extends TicketSummaryDto {
   @ApiProperty({ format: 'uuid' }) distributorId!: string;
   @ApiProperty() distributorName!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Logo de la empresa del ticket: URL firmada de S3 de corta vigencia. Sólo para la plataforma, en la lista y la ficha de tickets; null si la empresa no tiene logo, si quien pide es la empresa o en el ticket que viaja dentro de una conversación',
+  })
+  distributorLogoUrl!: string | null;
   @ApiProperty({ enum: TicketCategory }) category!: TicketCategory;
   @ApiProperty({ format: 'uuid', description: 'El hilo propio del ticket' })
   conversationId!: string;

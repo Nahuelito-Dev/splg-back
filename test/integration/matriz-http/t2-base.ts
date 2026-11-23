@@ -15,6 +15,7 @@ import {
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
+  PaymentType,
 } from '../../../src/order/entities/order.entity';
 import { RealtimeDispatchPort } from '../../../src/order/domain/ports/realtime-dispatch.port';
 import { UserAddress } from '../../../src/user-address/entities/user-address.entity';
@@ -228,8 +229,37 @@ export async function sembrarBaseT2(
   };
 }
 
+/**
+ * Un pedido HISTÓRICO por transferencia (la transferencia ya no se acepta en el
+ * alta, así que la API no lo crea): pasa un pedido en efectivo a transferencia
+ * con el +10 % online de entonces. Sólo entra porque la base de pruebas tiene
+ * encendido `splg.bypass_transferencia`.
+ */
+async function aTransferenciaHistorica(
+  ds: DataSource,
+  orderId: string,
+): Promise<void> {
+  const repo = ds.getRepository(Order);
+  const o = await repo.findOneByOrFail({ orderId });
+  const recargo =
+    Math.round(
+      (Number(o.subtotalItems) + Number(o.zoneSurchargeAmount)) * 0.1 * 100,
+    ) / 100;
+  await repo.update(
+    { orderId },
+    {
+      paymentMethod: PaymentMethod.TRANSFER,
+      paymentType: PaymentType.ONLINE,
+      paymentSurchargePercentage: 10,
+      paymentSurchargeAmount: recargo,
+      totalAmount: Number(o.totalAmount) + recargo,
+    },
+  );
+}
+
 export interface OpcionesPedido {
   estado?: OrderStatus;
+  /** `TRANSFER` es un pedido histórico (ver `aTransferenciaHistorica`). */
   metodo?: PaymentMethod.CASH | PaymentMethod.TRANSFER;
   /** De quién es: el cliente de A (por omisión) o el de B. */
   cliente?: 'A' | 'B';
@@ -256,7 +286,10 @@ export async function sembrarPedido(
   const body: Record<string, unknown> = {
     customerId: deB ? ctx.clienteB.userId : ctx.clienteA.userId,
     addressId: deB ? ctx.dirB : ctx.dirCentro,
-    paymentMethod: o.metodo ?? PaymentMethod.CASH,
+    paymentMethod:
+      o.metodo === PaymentMethod.TRANSFER
+        ? PaymentMethod.CASH
+        : (o.metodo ?? PaymentMethod.CASH),
     items: [
       {
         gasCylinderId: deB ? ctx.garrafaB : ctx.garrafaA,
@@ -278,6 +311,8 @@ export async function sembrarPedido(
     );
   }
   const id = (res.body as { order_id: string }).order_id;
+  if (o.metodo === PaymentMethod.TRANSFER)
+    await aTransferenciaHistorica(ds, id);
   const estado = o.estado ?? OrderStatus.PENDING;
   const repo = ds.getRepository(Order);
   const choferId = {

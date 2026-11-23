@@ -68,7 +68,12 @@ export class ChatMapper {
       : null;
   }
 
-  static ticket(t: SupportTicket, ctx: ContextoDeVista): TicketDto {
+  /** `logos`: el logo firmado de cada empresa, que sólo junta la vista de la plataforma. */
+  static ticket(
+    t: SupportTicket,
+    ctx: ContextoDeVista,
+    logos?: ReadonlyMap<string, string | null>,
+  ): TicketDto {
     const asignado = t.assignedMemberUserId
       ? (ctx.nombres.get(t.assignedMemberUserId) ?? 'Sin nombre')
       : null;
@@ -76,6 +81,7 @@ export class ChatMapper {
       ...ChatMapper.ticketResumen(t, ctx),
       distributorId: t.distributorId,
       distributorName: ctx.empresas.get(t.distributorId) ?? '',
+      distributorLogoUrl: logos?.get(t.distributorId) ?? null,
       category: t.category,
       conversationId: t.conversationId,
       origin:

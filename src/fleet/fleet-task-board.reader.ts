@@ -16,6 +16,7 @@ import {
   MaintenanceTaskStatus,
 } from './entities/maintenance-task.entity';
 import { FleetTaskBoardQueryDto } from './dto/task-board.dto';
+import { CarPhotoService } from '../car/car-photo.service';
 
 /** Lo que necesita una tarjeta: la tarea (con plan, vehículo y responsable) y cuántos adjuntos tiene. */
 export interface TarjetaLeida {
@@ -52,6 +53,7 @@ export class FleetTaskBoardReader {
     private readonly tasks: Repository<MaintenanceTask>,
     @InjectRepository(MaintenanceTaskAttachment)
     private readonly attachments: Repository<MaintenanceTaskAttachment>,
+    private readonly fotosDeVehiculos: CarPhotoService,
   ) {}
 
   async tablero(
@@ -221,6 +223,9 @@ export class FleetTaskBoardReader {
     tareas: MaintenanceTask[],
   ): Promise<TarjetaLeida[]> {
     if (tareas.length === 0) return [];
+    await this.fotosDeVehiculos.firmar(
+      tareas.flatMap((t) => (t.car ? [t.car] : [])),
+    );
     const filas = await this.attachments
       .createQueryBuilder('a')
       .select('a.task_id', 'taskId')

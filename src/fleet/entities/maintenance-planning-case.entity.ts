@@ -50,7 +50,8 @@ export interface EvaluatedWindow {
   /** Después del vencimiento proyectado: se ofrece lo antes posible. */
   urgent: boolean;
   offered: boolean;
-  discardReason: 'coverage' | 'not_selected' | null;
+  /** `rejected` y `expired`: se ofreció al chofer y no la tomó. */
+  discardReason: 'coverage' | 'not_selected' | 'rejected' | 'expired' | null;
 }
 
 /**

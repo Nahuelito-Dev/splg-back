@@ -186,10 +186,33 @@ describe('ExpressPurchaseUseCase (CU-147)', () => {
     });
   });
 
+  describe('transferencia', () => {
+    it.each(['preview', 'buy'] as const)(
+      '%s con transferencia es 400 PAYMENT_METHOD_NOT_ACCEPTED y no consulta ni crea nada',
+      async (metodo) => {
+        const error = await useCase[metodo](
+          { paymentMethod: PaymentMethod.TRANSFER },
+          'cli-1',
+          'dist-1',
+        ).then(
+          () => null,
+          (e: unknown) => e as BadRequestException,
+        );
+        expect(error).toBeInstanceOf(BadRequestException);
+        expect(error?.getResponse()).toMatchObject({
+          code: 'PAYMENT_METHOD_NOT_ACCEPTED',
+        });
+        expect(express.evaluar).not.toHaveBeenCalled();
+        expect(quote.execute).not.toHaveBeenCalled();
+        expect(create.execute).not.toHaveBeenCalled();
+      },
+    );
+  });
+
   describe('buy', () => {
     it('crea el pedido en modalidad express con la dirección y la garrafa resueltas', async () => {
       const r = await useCase.buy(
-        { paymentMethod: PaymentMethod.TRANSFER, notificationToken: 'tok' },
+        { paymentMethod: PaymentMethod.MERCADOPAGO, notificationToken: 'tok' },
         'cli-1',
         'dist-1',
       );
@@ -199,7 +222,7 @@ describe('ExpressPurchaseUseCase (CU-147)', () => {
         expect.objectContaining({
           customerId: 'cli-1',
           addressId: 'dir-1',
-          paymentMethod: PaymentMethod.TRANSFER,
+          paymentMethod: PaymentMethod.MERCADOPAGO,
           notificationToken: 'tok',
           deliveryMode: OrderDeliveryMode.EXPRESS,
           items: [{ gasCylinderId: 'gc-habitual', quantity: 1, unitPrice: 0 }],

@@ -385,7 +385,11 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     return Number(fila?.delivery_code_attempts ?? 0);
   }
 
-  replaceDeliveryCode(orderId: string, newCode: string): Promise<boolean> {
+  replaceDeliveryCode(
+    orderId: string,
+    newCode: string,
+    generadoPor: 'el chofer' | 'el cliente' | 'un administrador' = 'el chofer',
+  ): Promise<boolean> {
     return this.orderRepository.manager.transaction(async (manager) => {
       const [filas]: [Array<{ distributor_id: string }>, number] =
         await manager.query(
@@ -406,7 +410,41 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
           {
             field: 'deliveryCode',
             oldValue: '[código de entrega]',
-            newValue: '[código nuevo generado por el chofer]',
+            newValue: `[código nuevo generado por ${generadoPor}]`,
+          },
+        ],
+      });
+      return true;
+    });
+  }
+
+  upgradeLegacyDeliveryCode(
+    orderId: string,
+    newCode: string,
+  ): Promise<boolean> {
+    return this.orderRepository.manager.transaction(async (manager) => {
+      const [filas]: [Array<{ distributor_id: string }>, number] =
+        await manager.query(
+          `UPDATE "order"
+              SET "deliveryCode" = $2, "delivery_code_attempts" = 0
+            WHERE "order_id" = $1
+              AND "status" IN ($3, $4)
+              AND "deliveryCode" IS NOT NULL
+              AND "deliveryCode" !~ '^[0-9]{6}$'
+          RETURNING "distributor_id"`,
+          [orderId, newCode, OrderStatus.ACCEPTED, OrderStatus.ON_THE_WAY],
+        );
+      if (filas.length === 0) return false;
+      await AuditoriaDeDatos.registrar(manager, {
+        actionTypeId: AuditActionTypeId.UPDATE,
+        entity: Order.name,
+        recordId: orderId,
+        distributorId: filas[0].distributor_id,
+        details: [
+          {
+            field: 'deliveryCode',
+            oldValue: '[código de entrega anterior]',
+            newValue: '[código de 6 dígitos generado al mostrarlo al cliente]',
           },
         ],
       });

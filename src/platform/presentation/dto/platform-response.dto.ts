@@ -66,6 +66,14 @@ export class CompanyListItemDto {
   @ApiProperty({ example: 'gas-del-norte' })
   slug!: string;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Logo de la empresa: URL firmada de S3 de corta vigencia, o null si no tiene',
+  })
+  logoUrl!: string | null;
+
   @ApiProperty({ enum: DistributorStatus })
   status!: DistributorStatus;
 
@@ -487,6 +495,14 @@ export class DocumentReadingUsageItemDto {
   @ApiProperty({ example: 'Gas del Norte' })
   name!: string;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Logo de la empresa: URL firmada de S3 de corta vigencia, o null si no tiene',
+  })
+  logoUrl!: string | null;
+
   @ApiProperty({ example: 41 })
   readings!: number;
 
@@ -541,6 +557,14 @@ export class ActivityItemDto {
 
   @ApiProperty({ type: String, nullable: true, example: 'Soporte Plataforma' })
   actorName!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Foto de perfil de quien lo hizo: URL firmada de S3 de corta vigencia, o null si no tiene (o no hay actor)',
+  })
+  actorPhotoUrl!: string | null;
 
   @ApiProperty({ type: String, nullable: true, example: 'super_admin' })
   actorRole!: string | null;

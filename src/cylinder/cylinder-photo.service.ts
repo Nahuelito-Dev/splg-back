@@ -24,6 +24,18 @@ export class CylinderPhotoService {
     private readonly fotos: EntityPhotoService,
   ) {}
 
+  /** Completa la URL firmada del envase y la de su producto, si lo trae. */
+  async firmar(cylinders: Cylinder | readonly Cylinder[]): Promise<void> {
+    const lista: readonly Cylinder[] = Array.isArray(cylinders)
+      ? (cylinders as readonly Cylinder[])
+      : [cylinders as Cylinder];
+    await this.fotos.firmar(lista, (c) => c.photoKey);
+    const productos = lista.flatMap((c) =>
+      c.gasCylinder ? [c.gasCylinder] : [],
+    );
+    await this.fotos.firmar(productos, (g) => g.photoKey);
+  }
+
   /** Sube o reemplaza la foto y devuelve el enlace vigente. */
   async subir(
     id: string,

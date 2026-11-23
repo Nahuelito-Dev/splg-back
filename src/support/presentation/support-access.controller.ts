@@ -39,6 +39,7 @@ import {
 } from './dto/support-session-response.dto';
 import { UpdateSupportPolicyDto } from './dto/update-support-policy.dto';
 import { SupportMapper } from './support.mapper';
+import { SupportSessionPresenter } from './support-session.presenter';
 
 /**
  * Modo soporte, lado de la empresa: «Accesos de soporte» del panel (API v2,
@@ -53,6 +54,7 @@ export class SupportAccessController {
   constructor(
     private readonly service: SupportAccessService,
     private readonly sesiones: SupportSessionsService,
+    private readonly presentar: SupportSessionPresenter,
   ) {}
 
   @Get()
@@ -71,7 +73,7 @@ export class SupportAccessController {
     @Query() query: QuerySupportAccessDto,
   ): Promise<SupportSessionListResponseDto> {
     const { items, total } = await this.service.listar(distributorId, query);
-    return { items: items.map((s) => SupportMapper.toDto(s)), total };
+    return { items: await this.presentar.sesiones(items), total };
   }
 
   @Get('policy')
@@ -118,7 +120,7 @@ export class SupportAccessController {
     @CurrentDistributor({ required: true }) distributorId: string,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<SupportSessionResponseDto> {
-    return SupportMapper.toDto(await this.sesiones.ficha(id, distributorId));
+    return this.presentar.sesion(await this.sesiones.ficha(id, distributorId));
   }
 
   @Get(':id/accesses')
@@ -169,7 +171,7 @@ export class SupportAccessController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ApproveSupportAccessDto,
   ): Promise<SupportSessionResponseDto> {
-    return SupportMapper.toDto(
+    return this.presentar.sesion(
       await this.service.aprobar(distributorId, userId, id, dto),
     );
   }
@@ -192,7 +194,7 @@ export class SupportAccessController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: RejectSupportAccessDto,
   ): Promise<SupportSessionResponseDto> {
-    return SupportMapper.toDto(
+    return this.presentar.sesion(
       await this.service.rechazar(distributorId, userId, id, dto),
     );
   }
@@ -216,7 +218,7 @@ export class SupportAccessController {
     @CurrentUser('user_id') userId: string,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<SupportSessionResponseDto> {
-    return SupportMapper.toDto(
+    return this.presentar.sesion(
       await this.service.revocar(distributorId, userId, id),
     );
   }

@@ -11,6 +11,12 @@ export class VehicleInUseResponseDto {
   @ApiProperty({ type: String, nullable: true, example: 'Moto' })
   carTypeCar!: string | null;
   @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Foto del vehículo: URL firmada de corta vigencia, o null',
+  })
+  photoUrl!: string | null;
+  @ApiProperty({
     description:
       'Si el vehículo está inhabilitado por documentación vencida (CU-136/137)',
   })
@@ -26,6 +32,12 @@ export class VehicleAssignmentHistoryResponseDto {
   @ApiProperty({ type: String, nullable: true }) carPatent!: string | null;
   @ApiProperty({ type: String, nullable: true }) carBrand!: string | null;
   @ApiProperty({ type: String, nullable: true }) carModel!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Foto del vehículo: URL firmada de corta vigencia, o null',
+  })
+  photoUrl!: string | null;
   @ApiProperty({ format: 'uuid' }) deliveryId!: string;
   @ApiProperty({ type: String, nullable: true }) driverName!: string | null;
   @ApiProperty({ type: String, format: 'date-time' }) assignedAt!: Date;

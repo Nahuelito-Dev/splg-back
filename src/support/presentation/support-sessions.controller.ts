@@ -40,6 +40,7 @@ import {
   SupportSessionResponseDto,
 } from './dto/support-session-response.dto';
 import { SupportMapper } from './support.mapper';
+import { SupportSessionPresenter } from './support-session.presenter';
 
 /**
  * Modo soporte, lado de la plataforma (API v2, sólo `super_admin`, alcance
@@ -52,7 +53,10 @@ import { SupportMapper } from './support.mapper';
 @SinDistribuidora()
 @Controller({ path: 'support-sessions', version: '2' })
 export class SupportSessionsController {
-  constructor(private readonly service: SupportSessionsService) {}
+  constructor(
+    private readonly service: SupportSessionsService,
+    private readonly presentar: SupportSessionPresenter,
+  ) {}
 
   @Post()
   @ApiOperation({
@@ -80,7 +84,7 @@ export class SupportSessionsController {
     @CurrentUser('user_id') userId: string,
     @Body() dto: CreateSupportSessionDto,
   ): Promise<SupportSessionResponseDto> {
-    return SupportMapper.toDto(await this.service.pedir(userId, dto));
+    return this.presentar.sesion(await this.service.pedir(userId, dto));
   }
 
   @Get('current')
@@ -94,7 +98,9 @@ export class SupportSessionsController {
     @CurrentUser('user_id') userId: string,
   ): Promise<SupportSessionCurrentResponseDto> {
     const sesion = await this.service.actual(userId);
-    return { session: sesion ? SupportMapper.toDto(sesion) : null };
+    return {
+      session: sesion ? await this.presentar.sesion(sesion) : null,
+    };
   }
 
   @Get()
@@ -112,7 +118,7 @@ export class SupportSessionsController {
     @Query() query: QuerySupportSessionsDto,
   ): Promise<SupportSessionListResponseDto> {
     const { items, total } = await this.service.listar(query);
-    return { items: items.map((s) => SupportMapper.toDto(s)), total };
+    return { items: await this.presentar.sesiones(items), total };
   }
 
   @Get(':id')
@@ -123,7 +129,7 @@ export class SupportSessionsController {
   async ficha(
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<SupportSessionResponseDto> {
-    return SupportMapper.toDto(await this.service.ficha(id));
+    return this.presentar.sesion(await this.service.ficha(id));
   }
 
   @Get(':id/accesses')

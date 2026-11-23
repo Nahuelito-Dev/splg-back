@@ -1,4 +1,5 @@
 import {
+  esCodigoDeSeisDigitos,
   compareDeliveryCode,
   generateDeliveryCode,
   tieneFormatoDeCodigo,
@@ -41,5 +42,17 @@ describe('generateDeliveryCode', () => {
       Array.from({ length: 50 }, () => generateDeliveryCode()),
     );
     expect(codigos.size).toBeGreaterThan(40);
+  });
+});
+
+describe('esCodigoDeSeisDigitos', () => {
+  it('acepta sólo 6 dígitos', () => {
+    expect(esCodigoDeSeisDigitos('482913')).toBe(true);
+    expect(esCodigoDeSeisDigitos('000000')).toBe(true);
+    expect(esCodigoDeSeisDigitos('48291')).toBe(false);
+    expect(esCodigoDeSeisDigitos('4829133')).toBe(false);
+    expect(esCodigoDeSeisDigitos('48A913')).toBe(false);
+    expect(esCodigoDeSeisDigitos('A1B2C3D4E5')).toBe(false);
+    expect(esCodigoDeSeisDigitos('')).toBe(false);
   });
 });

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { S3Module } from '../s3/s3.module';
 import { PlatformController } from './platform.controller';
 import { PlatformActivityService } from './application/platform-activity.service';
 import { PlatformCompaniesService } from './application/platform-companies.service';
@@ -26,6 +27,7 @@ import { PublicFeaturesController } from './modules/public-features.controller';
  * `DistributorModule` y `ProcessRunModule` son globales.
  */
 @Module({
+  imports: [S3Module],
   controllers: [
     PlatformController,
     PlatformConsoleController,

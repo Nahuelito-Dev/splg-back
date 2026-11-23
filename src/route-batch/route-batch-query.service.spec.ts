@@ -40,7 +40,10 @@ const parada = (
       scheduledDate: '2026-11-03',
       status: 'pending',
       paymentMethod: 'cash',
+      paymentStatus: 'pending',
       totalAmount: 15800,
+      depositAmount: 0,
+      depositPaid: false,
       deliveryPoint: { type: 'Point', coordinates: [-55.93, -27.38] },
       customer: { fullName: 'Cliente Demo' },
       timeSlot: { name: 'Mañana', startTime: '08:00:00', endTime: '12:00:00' },
@@ -168,6 +171,7 @@ describe('RouteBatchQueryService', () => {
       slot: { name: 'Mañana' },
       address: { street: 'Jujuy 571', latitude: -27.38, longitude: -55.93 },
       items: [{ name: 'Garrafa 10kg', quantity: 2 }],
+      cashToCollect: 15800,
     });
     expect(dto.currentOffer).toMatchObject({
       deliveryId: 'dl1',
@@ -287,6 +291,22 @@ describe('RouteBatchQueryService', () => {
       await expect(service.unoDelChofer('u1', 'b-otro-chofer')).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    it('cada parada trae lo que se cobra en efectivo (con la seña descontada) y null si no es efectivo', async () => {
+      const conSena = parada('b1', 'p1', 1);
+      Object.assign(conSena.order, { depositAmount: 5000, depositPaid: true });
+      const online = parada('b1', 'p2', 2);
+      Object.assign(online.order, { paymentMethod: 'mercadopago' });
+      preparar(
+        [oferta('b1', 'dl1', ProposalStatus.PENDING, 10)],
+        [lote('b1')],
+        [conSena, online],
+      );
+
+      const dto = await service.unoDelChofer('u1', 'b1');
+
+      expect(dto.stops.map((s) => s.cashToCollect)).toEqual([10800, null]);
     });
 
     it('de un lote visible sólo van las paradas vivas', async () => {

@@ -34,7 +34,11 @@ describe('CylinderMapper — lo que el panel muestra de un envase', () => {
         phoneNumber: '+5493764281613',
       } as User,
     } as Cylinder);
-    expect(dto.gas_cylinder).toEqual({ type: 'Garrafa 10kg', weight: 10 });
+    expect(dto.gas_cylinder).toEqual({
+      type: 'Garrafa 10kg',
+      weight: 10,
+      photoUrl: null,
+    });
     expect(dto.current_customer).toEqual({
       user_id: 'u1',
       full_name: 'María Benítez',

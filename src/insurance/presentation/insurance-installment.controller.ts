@@ -161,6 +161,32 @@ export class InsuranceInstallmentController {
   }
 
   @Permiso('flota.gestionar')
+  @Post(':id/approve')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Aprobar el pago de una cuota',
+    description:
+      'Todo pago de una cuota requiere la aprobación del admin. El aviso de la cuota a 5 días deja `approvalStatus: awaiting` («¿Aprobar pago?»), pero se aprueba cualquier cuota pendiente que no esté aprobada (`none` o `awaiting`). Queda quién (`approvedByUserId`) y cuándo (`approvedAt`), con la auditoría de datos. No mueve plata ni registra el pago: eso es `POST /insurance-installments/:id/pay`, que responde 409 `INSTALLMENT_APPROVAL_REQUIRED` mientras la cuota no esté aprobada. Corregir el importe o el vencimiento de una cuota aprobada la devuelve a `awaiting`.',
+  })
+  @ApiParam({ name: 'id', description: 'Cuota UUID' })
+  @ApiOkResponse({ type: InsuranceInstallmentDetailDto })
+  @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
+  @ApiConflictResponse({
+    description:
+      'La cuota ya está aprobada, o está paga o cancelada: `INSTALLMENT_NOT_APPROVABLE`',
+  })
+  async approve(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<InsuranceInstallmentDetailDto> {
+    await this.cuotas.aprobar(id, distributorId, user.user_id);
+    return InsuranceMapper.installmentDetail(
+      await this.cuotas.findOne(id, distributorId),
+    );
+  }
+
+  @Permiso('flota.gestionar')
   @Post(':id/pay')
   @HttpCode(HttpStatus.OK)
   @Idempotent()
@@ -180,7 +206,7 @@ export class InsuranceInstallmentController {
   })
   @ApiConflictResponse({
     description:
-      'La cuota ya está paga o cancelada, la caja está desactivada, exige sesión abierta o no tiene saldo',
+      'La cuota ya está paga o cancelada, no está aprobada (`INSTALLMENT_APPROVAL_REQUIRED`), el importe supera el aprobado (`INSTALLMENT_AMOUNT_EXCEEDS_APPROVED`), la caja está desactivada, exige sesión abierta o no tiene saldo',
   })
   async pay(
     @Param('id', ParseUUIDPipe) id: string,

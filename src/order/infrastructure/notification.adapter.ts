@@ -1,4 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import {
+  DesgloseDelEfectivo,
+  EfectivoDeSalida,
+} from '../domain/efectivo-a-cobrar';
 import { NotificationPort } from '../domain/ports/notification.port';
 import { NotificationsService } from '../../notifications/notifications.service';
 
@@ -14,8 +18,26 @@ export class NotificationAdapter extends NotificationPort {
     super();
   }
 
-  sendOrderConfirmation(customerId: string, orderId: string, token?: string) {
-    return this.notifications.sendOrderConfirmation(customerId, orderId, token);
+  sendOrderConfirmation(
+    customerId: string,
+    orderId: string,
+    token?: string,
+    efectivo?: DesgloseDelEfectivo | null,
+  ) {
+    return this.notifications.sendOrderConfirmation(
+      customerId,
+      orderId,
+      token,
+      efectivo,
+    );
+  }
+
+  sendCashReadyPush(
+    customerId: string,
+    orderId: string,
+    efectivo: EfectivoDeSalida,
+  ) {
+    return this.notifications.sendCashReadyPush(customerId, orderId, efectivo);
   }
 
   sendArrivalPushToCustomer(

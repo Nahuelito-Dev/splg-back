@@ -30,6 +30,13 @@ import {
 } from '../dto/insurance-installment.dto';
 import { instanteDelPago } from '../domain/payment-date';
 import { InstallmentStatus } from '../domain/insurance.enums';
+import {
+  pagoBloqueadoPorAprobacion,
+  puedeAprobarse,
+  superaElImporteAprobado,
+} from '../domain/insurance-rules';
+import { InstallmentApprovalStatus } from '../domain/insurance.enums';
+import { CODIGOS_DE_ERROR, conCodigo } from '../../common/errors/con-codigo';
 import { InsuranceInstallment } from '../entities/insurance-installment.entity';
 import { InsurancePolicy } from '../entities/insurance-policy.entity';
 import {
@@ -93,6 +100,7 @@ export class InsuranceInstallmentService {
     id: string,
     dto: UpdateInsuranceInstallmentDto,
     distributorId: string,
+    ahora: Date = new Date(),
   ): Promise<void> {
     try {
       await this.dataSource.transaction(async (manager) => {
@@ -114,7 +122,20 @@ export class InsuranceInstallmentService {
             );
           }
         }
+        const importeAnterior = cuota.amount;
+        const vencimientoAnterior = cuota.dueDate;
         Object.assign(cuota, sinIndefinidos({ ...dto }));
+        // Lo aprobado era ese importe y ese vencimiento: si cambian, hay que volver a aprobar.
+        if (
+          cuota.approvalStatus === InstallmentApprovalStatus.APPROVED &&
+          (cuota.amount !== importeAnterior ||
+            cuota.dueDate !== vencimientoAnterior)
+        ) {
+          cuota.approvalStatus = InstallmentApprovalStatus.AWAITING;
+          cuota.approvalRequestedAt = ahora;
+          cuota.approvedAt = null;
+          cuota.approvedByUserId = null;
+        }
         if (cuota.graceUntil < cuota.dueDate) {
           throw new BadRequestException(
             'Gracia hasta: la gracia no puede ser anterior al vencimiento',
@@ -162,6 +183,38 @@ export class InsuranceInstallmentService {
     return dto;
   }
 
+  /**
+   * Aprueba el pago de una cuota pendiente que todavía no está aprobada (la haya pedido el aviso o no): queda quién y cuándo
+   * (y la auditoría de datos lo asienta). No mueve plata: el pago se registra
+   * después, con su comprobante y su caja.
+   */
+  async aprobar(
+    id: string,
+    distributorId: string,
+    userId: string,
+    ahora: Date = new Date(),
+  ): Promise<void> {
+    try {
+      await this.dataSource.transaction(async (manager) => {
+        const cuota = await this.bloquear(manager, id, distributorId);
+        if (!puedeAprobarse(cuota)) {
+          throw conCodigo(
+            ConflictException,
+            409,
+            cuota.status === InstallmentStatus.PENDING
+              ? 'La cuota ya está aprobada'
+              : 'Sólo se aprueba el pago de una cuota pendiente',
+            CODIGOS_DE_ERROR.INSTALLMENT_NOT_APPROVABLE,
+          );
+        }
+        this.asentarAprobacion(cuota, userId, ahora);
+        await manager.save(cuota);
+      });
+    } catch (error) {
+      return traducirErrorDeBase(error, this.logger, 'cuotas de seguro');
+    }
+  }
+
   /** Egreso en la caja elegida y cuota paga, bajo el lock de la cuota. */
   async pagar(
     id: string,
@@ -185,6 +238,11 @@ export class InsuranceInstallmentService {
     dto: PayInsuranceInstallmentDto,
     distributorId: string,
     userId: string,
+    /**
+     * Confirmar el pago desde otro circuito del admin (la propuesta de una lectura
+     * de documento) cuenta como su aprobación: se asienta quién y cuándo antes de pagar.
+     */
+    confirmaLaAprobacion = false,
   ): Promise<void> {
     const pagadoEn = instanteDelPago(dto.paidAt);
     if (Number.isNaN(pagadoEn.getTime())) {
@@ -200,6 +258,25 @@ export class InsuranceInstallmentService {
       throw new ConflictException('La cuota ya está paga');
     }
     this.assertPendiente(cuota, 'La cuota está cancelada: no admite el pago');
+    if (confirmaLaAprobacion && pagoBloqueadoPorAprobacion(cuota)) {
+      this.asentarAprobacion(cuota, userId, new Date());
+    }
+    if (pagoBloqueadoPorAprobacion(cuota)) {
+      throw conCodigo(
+        ConflictException,
+        409,
+        'El pago de la cuota no está aprobado: aprobalo antes de registrarlo',
+        CODIGOS_DE_ERROR.INSTALLMENT_APPROVAL_REQUIRED,
+      );
+    }
+    if (superaElImporteAprobado(cuota, dto.amount)) {
+      throw conCodigo(
+        ConflictException,
+        409,
+        `El importe a pagar supera el aprobado (${cuota.amount}): corregí el importe de la cuota para volver a aprobarlo`,
+        CODIGOS_DE_ERROR.INSTALLMENT_AMOUNT_EXCEEDS_APPROVED,
+      );
+    }
 
     const comprobante = await this.attachments.findDelDueno(
       manager,
@@ -318,6 +395,18 @@ export class InsuranceInstallmentService {
     });
     if (!cuota) throw new NotFoundException('Cuota no encontrada');
     return cuota;
+  }
+
+  /** Deja la cuota aprobada con quién y cuándo (y cuándo se pidió, si el aviso no lo había hecho). */
+  private asentarAprobacion(
+    cuota: InsuranceInstallment,
+    userId: string,
+    ahora: Date,
+  ): void {
+    cuota.approvalStatus = InstallmentApprovalStatus.APPROVED;
+    cuota.approvalRequestedAt = cuota.approvalRequestedAt ?? ahora;
+    cuota.approvedAt = ahora;
+    cuota.approvedByUserId = userId;
   }
 
   private assertPendiente(cuota: InsuranceInstallment, mensaje: string): void {

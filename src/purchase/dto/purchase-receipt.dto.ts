@@ -18,6 +18,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { TextoNoVacio } from '../../common/decorators/texto-no-vacio.decorator';
+import { FOTO_DEL_PRODUCTO_API } from '../../gascylinder/foto-del-producto';
 import { MotivoObligatorio } from './motivo.decorator';
 import { MAX_COSTO, MAX_RENGLONES, MAX_UNIDADES } from './purchase-limits';
 import { PaginationDto } from '../../common/dtos/pagination.dto';
@@ -213,6 +214,7 @@ export class PurchaseReceiptItemResponseDto {
   @ApiProperty({ format: 'uuid' }) itemId!: string;
   @ApiProperty({ format: 'uuid' }) gasCylinderId!: string;
   @ApiProperty({ example: '10kg' }) gasCylinderType!: string;
+  @ApiProperty(FOTO_DEL_PRODUCTO_API) gasCylinderPhotoUrl!: string | null;
   @ApiProperty({ example: 25 }) quantityFull!: number;
   @ApiProperty({ example: 25 }) quantityEmptyOut!: number;
   @ApiProperty({ example: 5200.5 }) unitCost!: number;

@@ -12,10 +12,14 @@ import {
   ZONA_ARGENTINA,
 } from '../../common/utils/dias-argentina';
 import { ScheduledTasksSettingsService } from '../../distributor/scheduled-tasks-settings.service';
-import { conGraciaVencida } from '../domain/insurance-rules';
+import {
+  conGraciaVencida,
+  debePedirAprobacion,
+} from '../domain/insurance-rules';
 import {
   DIAS_DE_AVISO_DE_CUOTA,
   DIAS_DE_AVISO_DE_POLIZA,
+  InstallmentApprovalStatus,
   InstallmentStatus,
 } from '../domain/insurance.enums';
 import { InsuranceInstallment } from '../entities/insurance-installment.entity';
@@ -92,8 +96,12 @@ export class InsuranceAlertsCron {
           await this.polizas.completarPendientes(distributorId, hoy);
         }
         for (const cuota of cuotas) {
-          if (cuota.distributorId === distributorId)
-            this.avisarCuota(cuota, hoy);
+          if (cuota.distributorId !== distributorId) continue;
+          // El aviso a los 5 días es la pregunta «¿Aprobar pago?»: la cuota queda esperando al admin.
+          if (debePedirAprobacion(cuota, hoy, DIAS_DE_AVISO_DE_CUOTA)) {
+            await this.pedirAprobacion(cuota, ahora);
+          }
+          this.avisarCuota(cuota, hoy);
         }
         for (const poliza of polizas) {
           if (poliza.distributorId === distributorId) this.avisarPoliza(poliza);
@@ -104,6 +112,31 @@ export class InsuranceAlertsCron {
           `No se pudieron avisar los seguros de la distribuidora ${distributorId}: ${errorMessage(error)}`,
         );
       }
+    }
+  }
+
+  /**
+   * Deja la cuota «pendiente de aprobación». El `WHERE` repite la condición para
+   * que dos corridas seguidas no pisen una aprobación que llegó en el medio.
+   */
+  private async pedirAprobacion(
+    cuota: InsuranceInstallment,
+    ahora: Date,
+  ): Promise<void> {
+    const r = await this.installments.update(
+      {
+        installmentId: cuota.installmentId,
+        status: InstallmentStatus.PENDING,
+        approvalStatus: InstallmentApprovalStatus.NONE,
+      },
+      {
+        approvalStatus: InstallmentApprovalStatus.AWAITING,
+        approvalRequestedAt: ahora,
+      },
+    );
+    if (r.affected) {
+      cuota.approvalStatus = InstallmentApprovalStatus.AWAITING;
+      cuota.approvalRequestedAt = ahora;
     }
   }
 
@@ -166,7 +199,12 @@ export class InsuranceAlertsCron {
     const enlace = poliza.insurer?.paymentUrl
       ? `\nEnlace de pago: ${poliza.insurer.paymentUrl}`
       : '';
-    const cuerpo = `${poliza.insurer?.name ?? 'Aseguradora'} — vehículo ${vehiculo(poliza)}, cuota ${cuota.number}/${cuota.total} de ${importe(cuota.amount)}, ${vencida ? 'venció' : 'vence'} el ${fechaCorta(cuota.dueDate)} (en término hasta el ${fechaCorta(cuota.graceUntil)}).${enlace}`;
+    const pideAprobacion =
+      cuota.approvalStatus === InstallmentApprovalStatus.AWAITING;
+    const aprobacion = pideAprobacion
+      ? '\n¿Aprobar el pago? Aprobalo desde esta notificación o desde la cuota; después se registra con su comprobante.'
+      : '';
+    const cuerpo = `${poliza.insurer?.name ?? 'Aseguradora'} — vehículo ${vehiculo(poliza)}, cuota ${cuota.number}/${cuota.total} de ${importe(cuota.amount)}, ${vencida ? 'venció' : 'vence'} el ${fechaCorta(cuota.dueDate)} (en término hasta el ${fechaCorta(cuota.graceUntil)}).${enlace}${aprobacion}`;
     pedirAvisoAlAdmin(this.events, this.logger, {
       distributorId: cuota.distributorId,
       kind: vencida
@@ -176,9 +214,12 @@ export class InsuranceAlertsCron {
         ? `Cuota de seguro vencida: ${vehiculo(poliza)}`
         : `Cuota de seguro por vencer: ${vehiculo(poliza)}`,
       body: cuerpo,
-      link: { entity: 'car-insurance', id: poliza.carId },
-      // Con el vencimiento: si se corrige la fecha, la cuota vuelve a avisar.
-      dedupeKey: `insurance-installment:${cuota.installmentId}:${vencida ? 'overdue' : 'due'}:${cuota.dueDate}`,
+      // Con la aprobación pendiente el aviso apunta a la cuota (el panel ofrece «Aprobar»).
+      link: pideAprobacion
+        ? { entity: 'insurance-installment', id: cuota.installmentId }
+        : { entity: 'car-insurance', id: poliza.carId },
+      // Con el vencimiento: si se corrige la fecha, la cuota vuelve a avisar. La clave no depende del estado de la aprobación: aprobar no vuelve a avisar.
+      dedupeKey: `insurance-installment:${cuota.installmentId}:${vencida ? 'overdue' : 'due:approval'}:${cuota.dueDate}`,
       email: true,
     });
   }

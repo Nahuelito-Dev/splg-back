@@ -10,9 +10,19 @@ set -euo pipefail
 RAIZ="$HOME/splg"
 REPO="$RAIZ/splg-app-backend"
 COMPOSE=(docker compose -f docker-compose.servidor.yaml)
-COMMIT="${SSH_ORIGINAL_COMMAND:-}"
-COMMIT="${COMMIT##* }"
-[[ "$COMMIT" =~ ^[0-9a-f]{7,40}$ ]] || { echo "Falta el commit a desplegar (sha)."; exit 2; }
+DESPLEGADO="$RAIZ/.desplegado"
+ORDEN="${SSH_ORIGINAL_COMMAND:-}"
+[[ "$ORDEN" =~ ^desplegar\ (version|[0-9a-f]{7,40})$ ]] || { echo "Uso: desplegar version | desplegar <sha>."; exit 2; }
+COMMIT="${ORDEN#desplegar }"
+
+# «desplegar version»: sólo informa (no lee el bundle ni toca nada). Lo usa el workflow
+# «Orix al día». El sha es el del último despliegue que terminó con health 200 (archivo
+# .desplegado); sin ese archivo, el HEAD del clon.
+if [ "$COMMIT" = "version" ]; then
+  if [ -s "$DESPLEGADO" ]; then echo "sha=$(head -1 "$DESPLEGADO")"; else echo "sha=$(git -C "$REPO" rev-parse HEAD)"; fi
+  echo "health=$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://127.0.0.1:3000/api/health || true)"
+  exit 0
+fi
 
 exec 9>"$RAIZ/.desplegando" && flock -n 9 || { echo "Ya hay un despliegue en curso."; exit 3; }
 
@@ -30,6 +40,8 @@ cp "$PREVIO" "$RAIZ/respaldos/antes-de-${COMMIT:0:8}.dump"
 
 cd "$REPO"
 ANTERIOR=$(git rev-parse HEAD)
+# Lo que realmente corre hoy: el último desplegado con health 200 (el HEAD puede ser de un despliegue cortado).
+CORRIENDO=$(head -1 "$DESPLEGADO" 2>/dev/null || echo "$ANTERIOR")
 git checkout -q --detach "$COMMIT"
 
 # Versión que ve Sentry (docker-compose.servidor.yaml la pasa a la API): la del tag
@@ -54,7 +66,7 @@ echo "== API nueva"
 "${COMPOSE[@]}" up -d api
 for _ in $(seq 1 60); do
   c=$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://127.0.0.1:3000/api/health || true)
-  [ "$c" = 200 ] && { echo "OK ${COMMIT:0:8} health=200"; exit 0; }
+  [ "$c" = 200 ] && { echo "$COMMIT" > "$DESPLEGADO"; echo "OK ${COMMIT:0:8} health=200"; exit 0; }
   sleep 3
 done
 
@@ -64,5 +76,6 @@ version_para_sentry
 if docker image inspect splg-api:anterior >/dev/null 2>&1; then
   docker tag splg-api:anterior splg-app-backend-api:latest
   "${COMPOSE[@]}" up -d --no-build api
+  echo "$CORRIENDO" > "$DESPLEGADO"
 fi
 exit 5

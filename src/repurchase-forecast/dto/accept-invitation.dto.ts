@@ -8,12 +8,21 @@ import {
   MaxLength,
 } from 'class-validator';
 import { PaymentMethod } from '../../order/entities/order.entity';
+import { RechazarTransferenciaEnDto } from '../../order/domain/medio-de-pago-aceptado';
 
-/** Medios de pago que el cliente puede elegir al aceptar: la cuenta corriente la carga el administrador. */
+/**
+ * Medios de pago que el cliente puede elegir al aceptar: la cuenta corriente la
+ * carga el administrador. La transferencia ya no se acepta: si la manda, el alta
+ * responde 400 `PAYMENT_METHOD_NOT_ACCEPTED`.
+ */
 export const MEDIOS_AL_ACEPTAR = [
   PaymentMethod.CASH,
-  PaymentMethod.TRANSFER,
   PaymentMethod.MERCADOPAGO,
+] as const;
+
+const MEDIOS_QUE_VALIDA_EL_CUERPO = [
+  ...MEDIOS_AL_ACEPTAR,
+  PaymentMethod.TRANSFER,
 ] as const;
 
 /**
@@ -35,7 +44,8 @@ export class AcceptInvitationDto {
     description: 'Medio de pago; por omisión el de la invitación',
   })
   @IsOptional()
-  @IsIn(MEDIOS_AL_ACEPTAR)
+  @RechazarTransferenciaEnDto()
+  @IsIn(MEDIOS_QUE_VALIDA_EL_CUERPO)
   paymentMethod?: PaymentMethod;
 
   @ApiPropertyOptional({

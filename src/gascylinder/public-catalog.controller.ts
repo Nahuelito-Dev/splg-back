@@ -58,7 +58,7 @@ export class PublicCatalogController {
   @ApiOperation({
     summary: 'Medios de pago y su recargo, sin iniciar sesión',
     description:
-      'Público. Efectivo, transferencia y Mercado Pago con el recargo (%) que la distribuidora cobra hoy con cada uno. Es informativo: el monto exacto de un pedido lo da `POST /orders/quote`.',
+      'Público. Efectivo y Mercado Pago (la transferencia ya no se acepta) con el recargo (%) que la distribuidora cobra hoy con cada uno. Es informativo: el monto exacto de un pedido lo da `POST /orders/quote`.',
   })
   @ApiParam({ name: 'slug', example: 'demo' })
   @ApiOkResponse({ type: MedioDePagoDto, isArray: true })

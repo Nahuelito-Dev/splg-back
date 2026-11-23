@@ -17,6 +17,7 @@ export class VehicleAssignmentMapper {
     dto.carBrand = a.car?.carBrand ?? null;
     dto.carModel = a.car?.carModel ?? null;
     dto.carTypeCar = a.car?.typeCar ?? null;
+    dto.photoUrl = a.car?.photoSignedUrl ?? null;
     dto.isLocked = isLocked;
     dto.assignedAt = a.assignedAt;
     dto.note = a.note;
@@ -32,6 +33,7 @@ export class VehicleAssignmentMapper {
     dto.carPatent = a.car?.carPatent ?? null;
     dto.carBrand = a.car?.carBrand ?? null;
     dto.carModel = a.car?.carModel ?? null;
+    dto.photoUrl = a.car?.photoSignedUrl ?? null;
     dto.deliveryId = a.deliveryId;
     dto.driverName = a.delivery?.user?.fullName ?? null;
     dto.assignedAt = a.assignedAt;

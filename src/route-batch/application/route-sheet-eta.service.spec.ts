@@ -50,6 +50,7 @@ function armar(
     enCurso?: Array<{ batchId: string; distributorId: string }>;
     conHojas?: jest.Mock;
     horarios?: Array<Record<string, unknown>>;
+    clientes?: Array<Record<string, unknown>>;
     /** Pedidos cuya franja de horario ya se avisó (o que ya no están vigentes): el UPDATE no los reclama. */
     yaAvisados?: string[];
   } = {},
@@ -95,8 +96,10 @@ function armar(
         ],
       );
     }
-    if (sql.includes('SELECT "order_id" AS "orderId", "customer_id"')) {
-      return Promise.resolve([{ orderId: 'o1', customerId: 'c1' }]);
+    if (sql.includes('SELECT o."order_id" AS "orderId", o."customer_id"')) {
+      return Promise.resolve(
+        o.clientes ?? [{ orderId: 'o1', customerId: 'c1' }],
+      );
     }
     if (sql.includes('ORDER BY b."started_at"')) {
       return Promise.resolve(o.hojaDelChofer ?? []);
@@ -595,12 +598,70 @@ describe('RouteSheetEtaService', () => {
         'c1',
         'o1',
         expect.objectContaining({ etaMs: AHORA + 30 * 60_000 }),
+        undefined,
       );
       expect(t.notifier.alPanel).toHaveBeenCalledWith(
         DIST,
         'route-sheet:eta-updated',
         expect.objectContaining({ sheetId: 'hoja-1' }),
       );
+    });
+
+    it('a un pedido en efectivo le pasa el monto y la salida al mismo push de «en camino» (C4)', async () => {
+      const t = armar({
+        clientes: [
+          {
+            orderId: 'o1',
+            customerId: 'c1',
+            deliveryId: 'd1',
+            intentos: 1,
+            status: 'accepted',
+            paymentMethod: 'cash',
+            paymentStatus: 'pending',
+            totalAmount: '22600',
+            depositAmount: '5000',
+            depositPaid: true,
+          },
+        ],
+      });
+      await t.svc.avisarSalida(DIST, 'hoja-1', calculo(), AHORA, 'u-chofer');
+      expect(t.notifier.salidaAlCliente).toHaveBeenCalledWith(
+        'c1',
+        'o1',
+        expect.anything(),
+        { monto: 17600, salida: 'd1:1' },
+      );
+      expect(t.notifier.salidaAlCliente).toHaveBeenCalledTimes(1);
+    });
+
+    it('un pedido que no es en efectivo no recibe el aviso del efectivo', async () => {
+      const t = armar();
+      await t.svc.avisarSalida(DIST, 'hoja-1', calculo(), AHORA, 'u-chofer');
+      expect(t.notifier.salidaAlCliente).toHaveBeenCalledWith(
+        'c1',
+        'o1',
+        expect.anything(),
+        undefined,
+      );
+    });
+
+    it('los avisos salen en paralelo y uno que falla no frena a los demás ni a la respuesta', async () => {
+      const t = armar({
+        clientes: [
+          { orderId: 'o1', customerId: 'c1' },
+          { orderId: 'o2', customerId: 'c2' },
+        ],
+      });
+      t.notifier.salidaAlCliente
+        .mockRejectedValueOnce(new Error('FCM caído'))
+        .mockResolvedValue(undefined);
+      const dos = calculo([
+        { orderId: 'o1', etaMs: AHORA, late: false, ...SLOT },
+        { orderId: 'o2', etaMs: AHORA, late: false, ...SLOT },
+      ]);
+      const n = await t.svc.avisarSalida(DIST, 'hoja-1', dos, AHORA, null);
+      expect(n).toBe(2);
+      expect(t.notifier.salidaAlCliente).toHaveBeenCalledTimes(2);
     });
 
     it('sin paradas, o un pedido sin cliente visible, no avisa', async () => {

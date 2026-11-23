@@ -1,3 +1,8 @@
+import type {
+  DesgloseDelEfectivo,
+  EfectivoDeSalida,
+} from '../efectivo-a-cobrar';
+
 /**
  * PUERTO de notificaciones al cliente visto desde el pedido. Los use-cases de
  * `order` (crear/actualizar estado) dependen de ESTA interfaz, no del módulo
@@ -29,7 +34,18 @@ export abstract class NotificationPort {
     customerId: string,
     orderId: string,
     token?: string,
+    efectivo?: DesgloseDelEfectivo | null,
   ): Promise<{ success: boolean; messageId?: string; error?: string }>;
+
+  /**
+   * «Tené listos $X en efectivo» cuando el chofer sale hacia el cliente. Una
+   * sola vez por pedido; best-effort, nunca lanza.
+   */
+  abstract sendCashReadyPush(
+    customerId: string,
+    orderId: string,
+    efectivo: EfectivoDeSalida,
+  ): Promise<'sent' | 'duplicate' | 'no_token' | 'failed'>;
 
   /**
    * Avisa al cliente que el repartidor llegó al domicilio (push best-effort,

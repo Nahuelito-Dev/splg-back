@@ -7,6 +7,7 @@ import { CustomerPurchaseStatsController } from './customer-purchase-stats.contr
 import { CustomerPurchaseStatsService } from './application/customer-purchase-stats.service';
 import { OrderService } from './order.service';
 import { Order } from './entities/order.entity';
+import { Car } from '../car/entities/car.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { DispatchOffer } from './entities/dispatch-offer.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -28,6 +29,8 @@ import { CreateOrderUseCase } from './application/create-order.use-case';
 import { QuoteOrderUseCase } from './application/quote-order.use-case';
 import { UpdateOrderStatusUseCase } from './application/update-order-status.use-case';
 import { OrderDriverPhotoService } from './application/order-driver-photo.service';
+import { OrderVehiclePhotoService } from './application/order-vehicle-photo.service';
+import { OrderProductPhotoService } from './application/order-product-photo.service';
 import { UpdateOrderUseCase } from './application/update-order.use-case';
 import { ChangeOrderAddressUseCase } from './application/change-order-address.use-case';
 import { SetOrderReceiverUseCase } from './application/set-order-receiver.use-case';
@@ -36,6 +39,7 @@ import { CancelOrderUseCase } from './application/cancel-order.use-case';
 import { ReleaseOrderUseCase } from './application/release-order.use-case';
 import { CashCollectionUseCase } from './application/cash-collection.use-case';
 import { ConfirmDeliveryUseCase } from './application/confirm-delivery.use-case';
+import { ConfirmDeliveryV3UseCase } from './application/confirm-delivery-v3.use-case';
 import { DispatchOrchestratorService } from './application/dispatch-orchestrator.service';
 import { ExpressAvailabilityService } from './application/express-availability.service';
 import { ExpressDegradeService } from './application/express-degrade.service';
@@ -50,6 +54,7 @@ import { OrderPaymentV2Controller } from './order-payment-v2.controller';
 import { DispatchMetricsController } from './dispatch-metrics.controller';
 import { DispatchMetricsService } from './application/dispatch-metrics.service';
 import { DeliveryCodeV2Controller } from './delivery-code-v2.controller';
+import { DeliveryCodeV3Controller } from './delivery-code-v3.controller';
 import { ReservationV2Controller } from './reservation-v2.controller';
 import { ConciliacionMercadoPagoService } from './application/conciliacion-mercadopago.service';
 import { ReservationService } from './application/reservation.service';
@@ -92,6 +97,7 @@ import { VencimientoSinChoferService } from './application/vencimiento-sin-chofe
       DispatchOffer,
       OrderStatusHistory,
       OrderAddressChange,
+      Car,
     ]),
     CartModule, // checkout del carrito: ítems y vaciado en la transacción del pedido (CU-126)
     S3Module, // foto firmada del chofer en el tracking
@@ -122,6 +128,7 @@ import { VencimientoSinChoferService } from './application/vencimiento-sin-chofe
     OrderTransferReceiptController,
     ReservationV2Controller,
     DeliveryCodeV2Controller,
+    DeliveryCodeV3Controller,
     OrderPaymentV2Controller,
     DispatchMetricsController,
     CustomerPurchaseStatsController,
@@ -146,9 +153,12 @@ import { VencimientoSinChoferService } from './application/vencimiento-sin-chofe
     ReceiverRetentionCron,
     UpdateOrderStatusUseCase,
     OrderDriverPhotoService,
+    OrderVehiclePhotoService,
+    OrderProductPhotoService,
     CancelOrderUseCase,
     ReleaseOrderUseCase,
     ConfirmDeliveryUseCase,
+    ConfirmDeliveryV3UseCase,
     CashCollectionUseCase,
     // Historial de estados: una fila por transición, en la misma transacción.
     OrderStatusHistorySubscriber,

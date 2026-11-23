@@ -31,6 +31,13 @@ export interface FilaDeEmpresa {
   created_at: Date;
   support_emergency_allowed: boolean;
   support_auto_approve: boolean;
+  logo_key: string | null;
+}
+
+export interface FilaDeNombre {
+  id: string;
+  name: string;
+  logo_key: string | null;
 }
 
 export interface FilaDeMetricas {
@@ -103,6 +110,8 @@ export interface FilaDeActividad {
   kind: 'request' | 'login';
   actor_user_id: string | null;
   actor_name: string | null;
+  /** Key de la foto del actor en el bucket (`user.photo_key`), si tiene. */
+  actor_photo_key: string | null;
   actor_role: string | null;
   method: string | null;
   resource: string;
@@ -159,11 +168,11 @@ export class PlatformMetricsRepository {
     return { filas, total: numero(cuenta?.total) };
   }
 
-  /** Id y nombre de todas las empresas vigentes, por nombre. */
-  async nombres(): Promise<Array<{ id: string; name: string }>> {
-    return this.ds.query<Array<{ id: string; name: string }>>(
+  /** Id, nombre y key del logo de todas las empresas vigentes, por nombre. */
+  async nombres(): Promise<FilaDeNombre[]> {
+    return this.ds.query<FilaDeNombre[]>(
       `/* plataforma:nombres */
-       SELECT d."distributor_id" AS id, d."name"
+       SELECT d."distributor_id" AS id, d."name", d."logo_key"
          FROM "distributor" d
         WHERE d."deletedAt" IS NULL
         ORDER BY d."name", d."distributor_id"`,
@@ -411,7 +420,8 @@ export class PlatformMetricsRepository {
            JOIN "role" r ON r."role_id" = u."role_id"
           WHERE au."action_type_id" = $3 AND r."type" = $1
        )
-       SELECT x.*, u."full_name" AS actor_name, d."name" AS distributor_name,
+       SELECT x.*, u."full_name" AS actor_name, u."photo_key" AS actor_photo_key,
+              d."name" AS distributor_name,
               COUNT(*) OVER () AS total
          FROM actividad x
          LEFT JOIN "user" u ON u."user_id" = x."actor_user_id"
@@ -440,6 +450,7 @@ export class PlatformMetricsRepository {
       kind: f.kind === 'login' ? 'login' : 'request',
       actor_user_id: (f.actor_user_id as string | null) ?? null,
       actor_name: (f.actor_name as string | null) ?? null,
+      actor_photo_key: (f.actor_photo_key as string | null) ?? null,
       actor_role: (f.actor_role as string | null) ?? null,
       method: (f.method as string | null) ?? null,
       resource: String(f.resource),
@@ -465,4 +476,4 @@ const VENTA = `o."status"::text = $4 AND o."paymentStatus"::text = $5 AND o."del
 
 const COLUMNAS_DE_EMPRESA = `d."distributor_id" AS id, d."name", d."slug", d."legal_name", d."tax_id",
        d."email", d."status"::text AS status, d."owned_by_platform", d."plan",
-       d."createdAt" AS created_at, d."support_emergency_allowed", d."support_auto_approve"`;
+       d."createdAt" AS created_at, d."support_emergency_allowed", d."support_auto_approve", d."logo_key"`;

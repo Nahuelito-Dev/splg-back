@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DistributorModule } from '../distributor/distributor.module';
 import { GatewaysModule } from '../gateways/gateways.module';
+import { S3Module } from '../s3/s3.module';
 import { SupportEndedNotice } from './application/support-ended.notice';
 import { SupportAccessService } from './application/support-access.service';
 import { SupportNotices } from './application/support-notices';
@@ -12,6 +13,7 @@ import { SupportSessionsService } from './application/support-sessions.service';
 import { SupportAccess } from './entities/support-access.entity';
 import { SupportSession } from './entities/support-session.entity';
 import { SupportAccessController } from './presentation/support-access.controller';
+import { SupportSessionPresenter } from './presentation/support-session.presenter';
 import { SupportSessionsController } from './presentation/support-sessions.controller';
 
 /**
@@ -24,6 +26,7 @@ import { SupportSessionsController } from './presentation/support-sessions.contr
     TypeOrmModule.forFeature([SupportSession, SupportAccess]),
     DistributorModule,
     GatewaysModule,
+    S3Module, // foto firmada de quien pide, decide y termina una sesión
   ],
   controllers: [SupportSessionsController, SupportAccessController],
   providers: [
@@ -34,6 +37,7 @@ import { SupportSessionsController } from './presentation/support-sessions.contr
     SupportNotices,
     SupportSessionExpiryCron,
     SupportEndedNotice,
+    SupportSessionPresenter,
   ],
   exports: [SupportSessionResolver],
 })

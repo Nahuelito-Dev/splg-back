@@ -26,6 +26,7 @@ import {
   CompanyChatSettingsService,
 } from '../../application/company-chat-settings.service';
 import { PlatformChatMetricsService } from '../../application/platform-chat-metrics.service';
+import { EntityPhotoService } from '../../../s3/entity-photo.service';
 import {
   configuracionPorDefecto,
   SupportSettingsService,
@@ -191,6 +192,7 @@ function lecturaFalsa() {
         {
           distributorId: A,
           name: 'Gas del Sur',
+          logoKey: 'distributors/a/logo/x.png',
           conversations: 1,
           messages: 4,
         },
@@ -252,6 +254,13 @@ describe('Métricas del chat: matriz HTTP (v2)', () => {
           provide: AccesoDeLaEmpresa,
           useValue: {
             habilitado: jest.fn(() => Promise.resolve(chatHabilitado)),
+          },
+        },
+        {
+          provide: EntityPhotoService,
+          useValue: {
+            urlDe: (key: string | null) =>
+              Promise.resolve(key ? `https://s3.test/${key}?firma` : null),
           },
         },
         Reflector,
@@ -507,6 +516,15 @@ describe('Métricas del chat: matriz HTTP (v2)', () => {
         'to',
       ]);
       expect((res.body as { tickets: { open: number } }).tickets.open).toBe(1);
+      // Cada empresa con su logo firmado (sin la key del bucket).
+      expect(
+        (res.body as { companies: Array<Record<string, unknown>> })
+          .companies[0],
+      ).toMatchObject({
+        distributorId: A,
+        logoUrl: 'https://s3.test/distributors/a/logo/x.png?firma',
+      });
+      expect(JSON.stringify(res.body)).not.toContain('logoKey');
       const una = await llamar(
         `/platform/chat/metrics?distributorId=${A}`,
         SUPER,

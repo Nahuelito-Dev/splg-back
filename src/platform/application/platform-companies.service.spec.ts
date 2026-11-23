@@ -10,6 +10,7 @@ import type {
   PlatformMetricsRepository,
 } from '../infrastructure/platform-metrics.repository';
 import { PlatformCompaniesService } from './platform-companies.service';
+import type { EntityPhotoService } from '../../s3/entity-photo.service';
 import type {
   PlatformProcessesService,
   SaludDeProcesos,
@@ -34,6 +35,7 @@ const empresa = (
   created_at: new Date('2026-01-01T00:00:00Z'),
   support_emergency_allowed: true,
   support_auto_approve: false,
+  logo_key: null,
   ...extra,
 });
 
@@ -102,12 +104,18 @@ function armar() {
       monthlyBudgetUsd: 20,
     }),
   };
+  const fotos = {
+    urlDe: jest.fn((k: string | null) =>
+      Promise.resolve(k ? `https://s3/${k}?X-Amz-Signature=x` : null),
+    ),
+  };
   const service = new PlatformCompaniesService(
     repo as unknown as PlatformMetricsRepository,
     procesos as unknown as PlatformProcessesService,
     uso as unknown as PlatformUsageService,
+    fotos as unknown as EntityPhotoService,
   );
-  return { service, repo, procesos, uso };
+  return { service, repo, procesos, uso, fotos };
 }
 
 describe('PlatformCompaniesService', () => {
@@ -204,6 +212,21 @@ describe('PlatformCompaniesService', () => {
         metrics: { revenue: 150.5 },
       });
       expect(r.total).toBe(2);
+    });
+
+    it('expone el logo firmado de cada empresa, o null si no tiene', async () => {
+      const { service, repo, fotos } = armar();
+      repo.empresas.mockResolvedValue({
+        filas: [empresa('a', { logo_key: 'logos/a.png' }), empresa('b')],
+        total: 2,
+      });
+      repo.metricas.mockResolvedValue([]);
+      const r = await service.listar({ limit: 10, offset: 0 }, AHORA);
+      expect(r.items.map((i) => i.logoUrl)).toEqual([
+        'https://s3/logos/a.png?X-Amz-Signature=x',
+        null,
+      ]);
+      expect(fotos.urlDe).toHaveBeenCalledWith('logos/a.png');
     });
 
     it('pasa el filtro de empresa propia y expone la marca', async () => {

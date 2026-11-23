@@ -226,7 +226,7 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
     ).rejects.toThrow(ForbiddenException);
   });
 
-  it('el chofer asignado NO puede marcar delivered: la entrega se confirma con el QR del cliente', async () => {
+  it('el chofer asignado NO puede marcar delivered: la entrega se confirma con el código del cliente', async () => {
     armar(DELIVERY_ASIGNADO);
     deliveries.buscarPorIdOUsuario.mockResolvedValue({
       deliveryId: DELIVERY_ASIGNADO,
@@ -240,13 +240,15 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
         'user-asignado',
         RoleType.DELIVERY,
       ),
-    ).rejects.toThrow('La entrega se confirma con el QR del cliente');
+    ).rejects.toThrow(
+      'La entrega se confirma con el código que te dice el cliente',
+    );
 
     expect(queryRunner.manager.save).not.toHaveBeenCalled();
     expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
   });
 
-  it('la entrega sin rol (la que dispara confirm-delivery con el QR válido) sí avanza', async () => {
+  it('la entrega sin rol (la que dispara confirm-delivery con el código válido) sí avanza', async () => {
     armar(DELIVERY_ASIGNADO);
 
     await expect(

@@ -4,15 +4,22 @@ import {
   PlatformUsageService,
   porcentajeDelTope,
 } from './platform-usage.service';
+import type { EntityPhotoService } from '../../s3/entity-photo.service';
+
+/** Firma de mentira: la key con una marca, `null` si no hay foto. */
+const urlDe = jest.fn((key: string | null | undefined) =>
+  Promise.resolve(key ? `https://s3.test/${key}?firma` : null),
+);
+const fotos = { urlDe } as unknown as EntityPhotoService;
 
 const MES = mesDe('2026-11');
 
 function armar() {
   const repo = {
     nombres: jest.fn().mockResolvedValue([
-      { id: 'a', name: 'Alfa' },
-      { id: 'b', name: 'Beta' },
-      { id: 'c', name: 'Gama' },
+      { id: 'a', name: 'Alfa', logo_key: 'distributors/a/logo/x.png' },
+      { id: 'b', name: 'Beta', logo_key: null },
+      { id: 'c', name: 'Gama', logo_key: null },
     ]),
     lector: jest.fn().mockResolvedValue([
       { id: 'a', lecturas: 2, costo: '0.100000' },
@@ -28,6 +35,7 @@ function armar() {
   };
   const service = new PlatformUsageService(
     repo as unknown as PlatformMetricsRepository,
+    fotos,
   );
   return { service, repo };
 }
@@ -56,13 +64,28 @@ describe('PlatformUsageService', () => {
     expect(repo.lector).toHaveBeenCalledTimes(1);
   });
 
-  it('el total del mes del tablero', async () => {
+  it('cada empresa con su logo firmado, o null si no tiene; la key llega con las empresas (una sola consulta)', async () => {
+    urlDe.mockClear();
+    const { service, repo } = armar();
+    const r = await service.porEmpresa(MES);
+    expect(r.items.map((i) => [i.name, i.logoUrl])).toEqual([
+      ['Beta', null],
+      ['Alfa', 'https://s3.test/distributors/a/logo/x.png?firma'],
+      ['Gama', null],
+    ]);
+    expect(repo.nombres).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(r)).not.toContain('logo_key');
+  });
+
+  it('el total del mes del tablero (no firma logos: no los muestra)', async () => {
+    urlDe.mockClear();
     const { service } = armar();
     expect(await service.totalDelMes(MES)).toEqual({
       month: '2026-11',
       readings: 12,
       costUsd: 0.300001,
     });
+    expect(urlDe).not.toHaveBeenCalled();
   });
 
   it('una empresa: su uso y su tope', async () => {

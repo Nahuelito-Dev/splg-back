@@ -67,23 +67,29 @@ export class PaymentSurchargeSettingsService {
   }
 
   /**
-   * Guarda los tres porcentajes (reemplaza la configuración). Rige para los
-   * pedidos que se cotizan o crean desde ahí: los existentes conservan el % con
-   * que se crearon.
+   * Guarda los porcentajes de Mercado Pago y de efectivo (reemplaza la
+   * configuración). Rige para los pedidos que se cotizan o crean desde ahí: los
+   * existentes conservan el % con que se crearon. El de transferencia, si llega,
+   * se ignora: queda el ya guardado.
    */
   async guardar(
     distributorId: string,
-    settings: PaymentSurchargeSettings,
+    settings: Pick<
+      PaymentSurchargeSettings,
+      'mercadoPagoPercentage' | 'cashPercentage'
+    > &
+      Partial<Pick<PaymentSurchargeSettings, 'transferPercentage'>>,
     actorUserId: string,
   ): Promise<PaymentSurchargeSettingsVigentes> {
+    const guardados = await this.obtener(distributorId);
     const completos: PaymentSurchargeSettings = {
-      transferPercentage: settings.transferPercentage,
+      transferPercentage: guardados.transferPercentage,
       mercadoPagoPercentage: settings.mercadoPagoPercentage,
       cashPercentage: settings.cashPercentage,
     };
     if (!CLAVES_DE_RECARGO.every((k) => esPorcentajeDeRecargo(completos[k]))) {
       throw new BadRequestException(
-        'Los tres porcentajes son obligatorios: 0 a 30, hasta 2 decimales',
+        'Los porcentajes de Mercado Pago y de efectivo son obligatorios: 0 a 30, hasta 2 decimales',
       );
     }
     await this.configs.guardar(

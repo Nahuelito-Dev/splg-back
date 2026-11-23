@@ -7,6 +7,7 @@ import { AdminGateway } from '../../gateways/admin.gateway';
 import { CustomersGateway } from '../../gateways/customers.gateway';
 import { DriversGateway } from '../../gateways/drivers.gateway';
 import { NotificationsService } from '../../notifications/notifications.service';
+import type { EfectivoDeSalida } from '../../order/domain/efectivo-a-cobrar';
 
 /** Por qué cambió la hoja en curso (lo que la app del chofer le muestra). */
 export type MotivoDeCambio =
@@ -179,6 +180,7 @@ export class RouteSheetNotifier {
     customerUserId: string,
     orderId: string,
     franja: { windowStartMs: number; windowEndMs: number; etaMs: number },
+    efectivo?: EfectivoDeSalida,
   ): Promise<void> {
     this.seguro('order:eta-updated', () =>
       this.customers.notifyCustomer(customerUserId, 'order:eta-updated', {
@@ -188,11 +190,17 @@ export class RouteSheetNotifier {
         etaAt: new Date(franja.etaMs).toISOString(),
       }),
     );
-    await this.notifications.sendOrderNoticePush(customerUserId, orderId, {
-      title: 'Tu pedido está en camino',
-      body: `El chofer salió con tu pedido: te llega entre las ${horaArgentina(franja.windowStartMs)} y las ${horaArgentina(franja.windowEndMs)}.`,
-      event: 'ORDER_TRIP_STARTED',
-    });
+    // Con efectivo a cobrar, el mismo push suma «tené listos $X»: un solo aviso por parada.
+    await this.notifications.sendOrderNoticePush(
+      customerUserId,
+      orderId,
+      {
+        title: 'Tu pedido está en camino',
+        body: `El chofer salió con tu pedido: te llega entre las ${horaArgentina(franja.windowStartMs)} y las ${horaArgentina(franja.windowEndMs)}.`,
+        event: 'ORDER_TRIP_STARTED',
+      },
+      efectivo,
+    );
   }
 
   /**

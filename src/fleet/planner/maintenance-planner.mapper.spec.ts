@@ -200,6 +200,97 @@ describe('MaintenancePlannerMapper', () => {
     });
   });
 
+  it('cada tarea dice qué corrección por desvío se le aplicó y de qué fecha partió', () => {
+    const sinCorregir = new Date('2026-11-10T15:00:00Z');
+    const v = {
+      car: { carId: 'c', carPatent: null, typeCar: null, odometerKm: 1 },
+      consumo: null,
+      proximaVentana: null,
+      items: [
+        {
+          task: {
+            taskId: 't1',
+            dueAt: null,
+            dueKm: 2000,
+            scheduledAt: null,
+            plan: {
+              name: 'Service',
+              criticality: MaintenanceCriticality.NON_BLOCKING,
+              documentKind: MaintenanceDocumentKind.SERVICE,
+            },
+          },
+          proyeccion: {
+            fecha: new Date('2026-11-16T15:00:00Z'),
+            porKilometraje: new Date('2026-11-16T15:00:00Z'),
+            porKilometrajeSinCorregir: sinCorregir,
+            correccion: {
+              correctionDays: 6,
+              averageDeviationDays: 6.4,
+              samples: 5,
+              capped: false,
+              source: 'vehicle_task_type',
+            },
+            kmFaltantes: 1000,
+            enObservacion: false,
+          },
+          porVencer: false,
+          caso: null,
+        },
+      ],
+    } as unknown as VencimientosDeVehiculo;
+
+    const dto = MaintenancePlannerMapper.vehiculo(
+      v,
+      new Date('2026-10-30T15:00:00Z'),
+    );
+
+    expect(dto.items[0].calibration).toEqual({
+      correctionDays: 6,
+      averageDeviationDays: 6.4,
+      samples: 5,
+      capped: false,
+      source: 'vehicle_task_type',
+      uncorrectedAt: sinCorregir,
+    });
+  });
+
+  it('una tarea sin corrección lo dice con null', () => {
+    const dto = MaintenancePlannerMapper.vehiculo(
+      {
+        car: { carId: 'c', carPatent: null, typeCar: null, odometerKm: null },
+        consumo: null,
+        proximaVentana: null,
+        items: [
+          {
+            task: {
+              taskId: 't1',
+              dueAt: null,
+              dueKm: 10,
+              scheduledAt: null,
+              plan: {
+                name: 'x',
+                criticality: MaintenanceCriticality.NON_BLOCKING,
+                documentKind: MaintenanceDocumentKind.SERVICE,
+              },
+            },
+            proyeccion: {
+              fecha: null,
+              porKilometraje: null,
+              porKilometrajeSinCorregir: null,
+              correccion: null,
+              kmFaltantes: null,
+              enObservacion: true,
+            },
+            porVencer: false,
+            caso: null,
+          },
+        ],
+      } as unknown as VencimientosDeVehiculo,
+      new Date(),
+    );
+    expect(dto.items[0].calibration).toBeNull();
+  });
+
   it('un vehículo sin consumo no inventa uno', () => {
     const dto = MaintenancePlannerMapper.vehiculo(
       {

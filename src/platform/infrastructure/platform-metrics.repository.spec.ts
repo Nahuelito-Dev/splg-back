@@ -51,12 +51,16 @@ describe('PlatformMetricsRepository', () => {
     const { repo, query } = armar(
       [{ id: 'a' }],
       [],
-      [{ id: 'a', name: 'Alfa' }],
+      [{ id: 'a', name: 'Alfa', logo_key: 'k' }],
       [{ status: 'active', cantidad: '3' }],
     );
     expect(await repo.empresa('a')).toEqual({ id: 'a' });
     expect(await repo.empresa('x')).toBeNull();
-    expect(await repo.nombres()).toEqual([{ id: 'a', name: 'Alfa' }]);
+    expect(await repo.nombres()).toEqual([
+      { id: 'a', name: 'Alfa', logo_key: 'k' },
+    ]);
+    // El logo sale en la misma consulta que los nombres.
+    expect(String(query.mock.calls[2][0])).toContain('d."logo_key"');
     expect(await repo.estados()).toEqual([{ status: 'active', cantidad: 3 }]);
     expect(marca(query, 3)).toBe('estados');
   });
@@ -167,6 +171,7 @@ describe('PlatformMetricsRepository', () => {
       kind: 'login',
       actor_user_id: 'u',
       actor_name: 'Soporte',
+      actor_photo_key: 'users/u/a.jpg',
       actor_role: 'super_admin',
       method: null,
       resource: 'auth',
@@ -179,7 +184,15 @@ describe('PlatformMetricsRepository', () => {
       total: '4',
     };
     const { repo, query } = armar(
-      [fila, { ...fila, kind: 'request', actor_user_id: undefined }],
+      [
+        fila,
+        {
+          ...fila,
+          kind: 'request',
+          actor_user_id: undefined,
+          actor_photo_key: undefined,
+        },
+      ],
       [{ ...fila, total: '9' }],
     );
     const filtro = {
@@ -194,9 +207,18 @@ describe('PlatformMetricsRepository', () => {
     expect(r[0]).toMatchObject({
       kind: 'login',
       at: new Date('2026-11-14T12:00:00.000Z'),
+      actor_photo_key: 'users/u/a.jpg',
       total: 4,
     });
-    expect(r[1]).toMatchObject({ kind: 'request', actor_user_id: null });
+    expect(r[1]).toMatchObject({
+      kind: 'request',
+      actor_user_id: null,
+      actor_photo_key: null,
+    });
+    // La foto del actor sale del mismo JOIN que su nombre.
+    expect(String(query.mock.calls[0][0])).toContain(
+      'u."photo_key" AS actor_photo_key',
+    );
     expect(parametros(query, 0)).toEqual([
       'super_admin',
       ['distributor', 'platform', 'support-sessions', 'support-access', 'role'],

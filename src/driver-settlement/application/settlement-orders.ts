@@ -112,3 +112,93 @@ export async function pedidosSinRendir(
 export function sumaACobrar(pedidos: PedidoSinRendir[]): Decimal {
   return pedidos.reduce((s, p) => s.plus(p.amountToCollect), dec(0));
 }
+
+/** El efectivo cobrado y no rendido de un chofer, con lo que lleva sin entrar a una rendición. */
+export interface EfectivoSinRendirDeChofer {
+  deliveryId: string;
+  driverName: string | null;
+  orders: number;
+  amount: number;
+  oldestDeliveredAt: Date;
+  ageHours: number;
+}
+
+/**
+ * Efectivo de pedidos entregados que ninguna rendición tomó todavía, por chofer
+ * (el mismo criterio de `condicionSinRendir` salvo el día: acá no hay corte).
+ * Con `masViejosDeHoras` sólo cuentan los entregados hace al menos esas horas.
+ * Los choferes salen del más viejo al más nuevo. El monto es el saldo que cobró
+ * el chofer (total menos la seña ya paga), la misma regla de la rendición.
+ *
+ * Una rendición presentada (`submitted`) ya tomó sus pedidos al presentarse
+ * (`driver_settlement_order`): cuenta como rendida, el chofer ya entregó el
+ * efectivo. Si se reabre, los libera y vuelven a contar acá.
+ */
+export async function efectivoSinRendirPorChofer(
+  manager: EntityManager,
+  distributorId: string,
+  opciones: { ahora?: Date; masViejosDeHoras?: number } = {},
+): Promise<EfectivoSinRendirDeChofer[]> {
+  const ahora = opciones.ahora ?? new Date();
+  const corte =
+    opciones.masViejosDeHoras === undefined
+      ? null
+      : ahora.getTime() - opciones.masViejosDeHoras * 3_600_000;
+  const filas: Array<{
+    delivery_id: string;
+    driver_name: string | null;
+    total: string;
+    sena: string;
+    delivered_at: Date;
+  }> = await manager.query(
+    `SELECT o."delivery_id", u."full_name" AS driver_name, o."totalAmount"::text AS total,
+            (CASE WHEN o."deposit_paid" THEN o."deposit_amount" ELSE 0 END)::text AS sena,
+            o."deliveredAt" AS delivered_at
+     FROM "order" o
+     JOIN "delivery" d ON d."delivery_id" = o."delivery_id"
+     JOIN "user" u ON u."user_id" = d."user_id"
+     WHERE o."distributor_id" = $1 AND o."delivery_id" IS NOT NULL
+       AND o."status" = 'delivered'
+       AND o."paymentMethod" = 'cash' AND o."paymentStatus" IN ('paid', 'pending')
+       AND o."payment_resolved_by" IS NULL
+       AND o."deliveredAt" IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM "driver_settlement_order" s WHERE s."order_id" = o."order_id")
+     ORDER BY o."deliveredAt", o."order_id"`,
+    [distributorId],
+  );
+  const porChofer = new Map<
+    string,
+    { nombre: string | null; pedidos: number; monto: Decimal; viejo: Date }
+  >();
+  for (const f of filas) {
+    if (corte !== null && new Date(f.delivered_at).getTime() > corte) continue;
+    const actual = porChofer.get(f.delivery_id);
+    const monto = dec(saldoACobrar(Number(f.total), Number(f.sena)));
+    if (actual) {
+      actual.pedidos += 1;
+      actual.monto = actual.monto.plus(monto);
+    } else {
+      porChofer.set(f.delivery_id, {
+        nombre: f.driver_name,
+        pedidos: 1,
+        monto,
+        viejo: new Date(f.delivered_at),
+      });
+    }
+  }
+  return [...porChofer.entries()]
+    .map(([deliveryId, c]) => ({
+      deliveryId,
+      driverName: c.nombre,
+      orders: c.pedidos,
+      amount: c.monto.toNumber(),
+      oldestDeliveredAt: c.viejo,
+      ageHours: Math.max(
+        0,
+        Math.floor((ahora.getTime() - c.viejo.getTime()) / 3_600_000),
+      ),
+    }))
+    .sort(
+      (a, b) => a.oldestDeliveredAt.getTime() - b.oldestDeliveredAt.getTime(),
+    );
+}

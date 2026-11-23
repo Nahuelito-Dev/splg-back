@@ -1,3 +1,7 @@
+import {
+  claveDeSalida,
+  efectivoDelPedido,
+} from '../../order/domain/efectivo-a-cobrar';
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { DataSource } from 'typeorm';
@@ -298,17 +302,37 @@ export class RouteSheetEtaService {
       distributorId,
       ConfigurableProcess.ROUTE_PLANNING,
     );
-    const clientes: Array<{ orderId: string; customerId: string }> =
-      await this.dataSource.query(
-        `SELECT "order_id" AS "orderId", "customer_id" AS "customerId" FROM "order"
-          WHERE "order_id" = ANY($1::uuid[])`,
-        [calculo.etas.map((e) => e.orderId)],
-      );
-    const deQuien = new Map(clientes.map((c) => [c.orderId, c.customerId]));
+    const clientes: Array<{
+      orderId: string;
+      customerId: string;
+      deliveryId: string | null;
+      intentos: number;
+      status: string;
+      paymentMethod: string;
+      paymentStatus: string;
+      totalAmount: string;
+      depositAmount: string;
+      depositPaid: boolean;
+    }> = await this.dataSource.query(
+      `SELECT o."order_id" AS "orderId", o."customer_id" AS "customerId", o."delivery_id" AS "deliveryId",
+              COALESCE((SELECT s."failed_attempts" FROM "route_batch_stop" s
+                         WHERE s."order_id" = o."order_id" AND s."batch_id" = $2 AND s."active"
+                         LIMIT 1), 0) AS "intentos",
+              o."status"::text AS "status",
+              o."paymentMethod"::text AS "paymentMethod", o."paymentStatus"::text AS "paymentStatus",
+              o."totalAmount"::text AS "totalAmount", COALESCE(o."deposit_amount", 0)::text AS "depositAmount",
+              COALESCE(o."deposit_paid", false) AS "depositPaid"
+         FROM "order" o WHERE o."order_id" = ANY($1::uuid[])`,
+      [calculo.etas.map((e) => e.orderId), sheetId],
+    );
+    const pedidoDe = new Map(clientes.map((c) => [c.orderId, c]));
+    // Un solo push por parada (en camino + efectivo, si lo hay), todos en
+    // paralelo: la respuesta del chofer no espera a que salga cada aviso.
+    const envios: Array<Promise<void>> = [];
     let avisados = 0;
     for (const e of calculo.etas) {
-      const customerId = deQuien.get(e.orderId);
-      if (!customerId) continue;
+      const pedido = pedidoDe.get(e.orderId);
+      if (!pedido) continue;
       const ventana = estimatedWindow(
         e.etaMs,
         e.slotStartMs,
@@ -329,12 +353,33 @@ export class RouteSheetEtaService {
           new Date(nowMs),
         ],
       );
-      await this.notifier.salidaAlCliente(customerId, e.orderId, {
-        windowStartMs: ventana.startMs,
-        windowEndMs: ventana.endMs,
-        etaMs: e.etaMs,
-      });
+      const monto = efectivoDelPedido(pedido);
+      envios.push(
+        this.notifier.salidaAlCliente(
+          pedido.customerId,
+          e.orderId,
+          {
+            windowStartMs: ventana.startMs,
+            windowEndMs: ventana.endMs,
+            etaMs: e.etaMs,
+          },
+          monto === null
+            ? undefined
+            : {
+                monto,
+                salida: claveDeSalida(pedido.deliveryId, pedido.intentos),
+              },
+        ),
+      );
       avisados += 1;
+    }
+    const resultados = await Promise.allSettled(envios);
+    for (const r of resultados) {
+      if (r.status === 'rejected') {
+        this.logger.warn(
+          `Hoja ${sheetId}: no se pudo avisar la salida a un cliente: ${errorMessage(r.reason)}`,
+        );
+      }
     }
     return avisados;
   }

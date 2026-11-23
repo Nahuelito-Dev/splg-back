@@ -49,6 +49,10 @@ export enum MaintenanceTaskStatus {
   'CHK_maintenance_task_pago',
   `num_nonnulls("cash_movement_id", "paid_at", "paid_amount") IN (0, 3) AND coalesce("paid_amount", 1) > 0 AND ("cash_movement_id" IS NULL OR "status" = 'done')`,
 )
+@Check(
+  'CHK_maintenance_task_desvio',
+  `"forecast_deviation_days" IS NULL OR ("status" = 'done' AND "first_predicted_due_at" IS NOT NULL AND "first_predicted_at" IS NOT NULL AND "first_predicted_odometer_km" IS NOT NULL AND "performed_at" IS NOT NULL)`,
+)
 @ForeignKey(
   () => CashMovement,
   ['cash_movement_id', 'distributor_id'],
@@ -148,6 +152,38 @@ export class MaintenanceTask {
     nullable: true,
   })
   firstPredictedDueAt!: Date | null;
+
+  /**
+   * La primera fecha proyectada con la corrección por el desvío del vehículo ya
+   * aplicada (igual a `firstPredictedDueAt` si no había corrección): sirve para
+   * medir el acierto antes y después de calibrar.
+   */
+  @Column({
+    name: 'first_corrected_due_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  firstCorrectedDueAt!: Date | null;
+
+  /** Cuándo se hizo la primera proyección por kilometraje y con qué kilometraje del vehículo: sirven para medir el ritmo real de uso. */
+  @Column({ name: 'first_predicted_at', type: 'timestamptz', nullable: true })
+  firstPredictedAt!: Date | null;
+
+  @Column({
+    name: 'first_predicted_odometer_km',
+    type: 'integer',
+    nullable: true,
+  })
+  firstPredictedOdometerKm!: number | null;
+
+  /**
+   * Al cerrar la tarea: cuánto se equivocó el pronóstico de uso, en días de
+   * calendario (cuándo habría llegado a `due_km` con el ritmo real menos la
+   * primera fecha proyectada sin corregir). Positivo = llega después. No
+   * depende de cuándo se hizo el taller. `null` si no se pudo medir.
+   */
+  @Column({ name: 'forecast_deviation_days', type: 'integer', nullable: true })
+  forecastDeviationDays!: number | null;
 
   @Column({ name: 'scheduled_at', type: 'timestamptz', nullable: true })
   scheduledAt!: Date | null;

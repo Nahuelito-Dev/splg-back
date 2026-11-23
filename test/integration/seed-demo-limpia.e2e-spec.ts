@@ -32,6 +32,7 @@ import { Order } from '../../src/order/entities/order.entity';
 import { OrderLookupService } from '../../src/order/lookup/order-lookup.service';
 import { StockOnHandService } from '../../src/stock/application/stock-on-hand.service';
 import { StockReconciliationService } from '../../src/stock/application/stock-reconciliation.service';
+import type { GasCylinderPhotoService } from '../../src/gascylinder/gascylinder-photo.service';
 import {
   cuentasDePruebaEnBase,
   CUENTAS_CON_LOGIN,
@@ -721,6 +722,10 @@ describe('seed:demo en contenedores (e2e)', () => {
       ds,
       new OrderLookupService(ds.getRepository(Order)),
       new StockOnHandService(),
+      // La conciliación sólo pide las fotos para mostrarlas; acá se mira la cuenta, no las fotos.
+      {
+        urlsPorId: () => Promise.resolve(new Map<string, string | null>()),
+      } as unknown as GasCylinderPhotoService,
     );
     const r = await servicio.conciliar(distId);
     expect(r.consistent).toBe(true);

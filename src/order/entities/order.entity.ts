@@ -105,6 +105,26 @@ export enum PaymentStatus {
   `("status" = 'delivered') = ("deliveredAt" IS NOT NULL)`,
 )
 @Check(
+  'CHK_order_confirmacion_con_entrega',
+  `"delivery_confirmed_point" IS NULL OR "deliveredAt" IS NOT NULL`,
+)
+@Check(
+  'CHK_order_confirmacion_precision',
+  `"delivery_confirmed_accuracy_m" IS NULL OR ("delivery_confirmed_accuracy_m" >= 0 AND "delivery_confirmed_accuracy_m" <= 10000)`,
+)
+@Check(
+  'CHK_order_confirmacion_distancia',
+  `"delivery_confirmed_distance_m" IS NULL OR "delivery_confirmed_distance_m" >= 0`,
+)
+@Check(
+  'CHK_order_confirmacion_fuera_de_radio',
+  `NOT "delivery_confirmed_out_of_range" OR "delivery_confirmed_point" IS NOT NULL`,
+)
+@Check(
+  'CHK_order_confirmacion_rol',
+  `"delivery_confirmed_by_role" IS NULL OR "delivery_confirmed_by_role" IN ('delivery', 'admin', 'super_admin')`,
+)
+@Check(
   'CHK_order_chofer_asignado',
   `"status" NOT IN ('accepted', 'on_the_way', 'delivered') OR "delivery_id" IS NOT NULL`,
 )
@@ -437,6 +457,70 @@ export class Order {
    */
   @Column({ name: 'delivery_code_attempts', type: 'int', default: 0 })
   deliveryCodeAttempts!: number;
+
+  /**
+   * Dónde estaba el chofer al escribir el código de entrega (lo manda la app
+   * del chofer). `null` en la entrega confirmada por un admin y en las anteriores.
+   */
+  @Column({
+    name: 'delivery_confirmed_point',
+    type: 'geography',
+    spatialFeatureType: 'Point',
+    srid: 4326,
+    nullable: true,
+  })
+  deliveryConfirmedPoint!: Point | null;
+
+  /** Precisión del GPS del chofer al confirmar, en metros. */
+  @Column({
+    name: 'delivery_confirmed_accuracy_m',
+    type: 'numeric',
+    precision: 8,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (v: number | null | undefined) => v ?? null,
+      from: (v: string | null) => (v === null ? null : Number(v)),
+    },
+  })
+  deliveryConfirmedAccuracyM!: number | null;
+
+  /** Distancia, en metros, del punto de confirmación al domicilio de entrega. */
+  @Column({
+    name: 'delivery_confirmed_distance_m',
+    type: 'int',
+    nullable: true,
+  })
+  deliveryConfirmedDistanceM!: number | null;
+
+  /** El chofer confirmó más lejos del domicilio que el radio de llegada: no se rechaza, se marca. */
+  @Column({
+    name: 'delivery_confirmed_out_of_range',
+    type: 'boolean',
+    default: false,
+  })
+  deliveryConfirmedOutOfRange!: boolean;
+
+  /** Quién confirmó la entrega (chofer o admin). */
+  @ForeignKey('user', {
+    name: 'FK_order_delivery_confirmed_by',
+    onDelete: 'RESTRICT',
+  })
+  @Column({
+    name: 'delivery_confirmed_by_user_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  deliveryConfirmedByUserId!: string | null;
+
+  /** Rol con el que confirmó: `delivery`, `admin` o `super_admin`. */
+  @Column({
+    name: 'delivery_confirmed_by_role',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+  })
+  deliveryConfirmedByRole!: string | null;
 
   @Column({
     name: 'receiver_name',

@@ -41,6 +41,9 @@ export class Supplier {
   @Column({ name: 'photo_key', type: 'varchar', length: 512, nullable: true })
   photoKey!: string | null;
 
+  /** URL firmada; la completa `EntityPhotoService.firmar`. No es una columna. */
+  photoSignedUrl?: string | null;
+
   @Column({ name: 'business_name', type: 'varchar', length: 120 })
   businessName!: string;
 

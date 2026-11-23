@@ -15,6 +15,10 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
   CHK_order_montos: 'Los montos del pedido no pueden ser negativos',
   CHK_order_total_formula:
     'El total del pedido no coincide con la suma de ítems, recargos y envío',
+  CHK_order_sin_transferencia:
+    'La distribuidora ya no acepta transferencias. Elegí efectivo o Mercado Pago.',
+  CHK_repurchase_invitation_sin_transferencia:
+    'La distribuidora ya no acepta transferencias. Elegí efectivo o Mercado Pago.',
   CHK_order_pago_coherente:
     'El tipo de pago no corresponde al medio de pago elegido',
   CHK_order_aceptado_fecha:
@@ -23,6 +27,16 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'Un pedido en camino o entregado tiene que tener la fecha de salida',
   CHK_order_entregado_fecha:
     'La fecha de entrega sólo corresponde a un pedido entregado (y es obligatoria en ese caso)',
+  CHK_order_confirmacion_con_entrega:
+    'La ubicación de la confirmación sólo corresponde a un pedido entregado',
+  CHK_order_confirmacion_precision:
+    'La precisión del GPS al confirmar la entrega va de 0 a 10000 metros',
+  CHK_order_confirmacion_distancia:
+    'La distancia al domicilio al confirmar la entrega no puede ser negativa',
+  CHK_order_confirmacion_fuera_de_radio:
+    'Marcar la entrega fuera del radio requiere la ubicación de la confirmación',
+  CHK_order_confirmacion_rol:
+    'La entrega la confirma el chofer, un administrador o un super administrador',
   CHK_order_chofer_asignado:
     'Un pedido aceptado, en camino o entregado tiene que tener chofer asignado',
   CHK_order_cancelado_motivo:

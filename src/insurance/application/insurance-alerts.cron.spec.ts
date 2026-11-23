@@ -5,7 +5,10 @@ import {
   NotificarAdminEvent,
 } from '../../common/events/notificar-admin.event';
 import { ScheduledTasksSettingsService } from '../../distributor/scheduled-tasks-settings.service';
-import { InstallmentStatus } from '../domain/insurance.enums';
+import {
+  InstallmentApprovalStatus,
+  InstallmentStatus,
+} from '../domain/insurance.enums';
 import { InsurancePolicyService } from './insurance-policy.service';
 import { InsuranceInstallment } from '../entities/insurance-installment.entity';
 import { InsurancePolicy } from '../entities/insurance-policy.entity';
@@ -25,6 +28,8 @@ function cuota(over: Partial<InsuranceInstallment> = {}): InsuranceInstallment {
     graceUntil: '2026-11-08',
     amount: 29958,
     status: InstallmentStatus.PENDING,
+    approvalStatus: InstallmentApprovalStatus.NONE,
+    approvalRequestedAt: null,
     policy: {
       policyId: 'p1',
       carId: 'c1',
@@ -61,6 +66,7 @@ describe('InsuranceAlertsCron', () => {
   let conBajas: number;
   let completarPendientes: jest.Mock;
   let pendientes: InsurancePolicy[];
+  let update: jest.Mock;
 
   const qb = <T>(filas: () => T[]) => {
     const b: Record<string, jest.Mock> = {};
@@ -93,10 +99,12 @@ describe('InsuranceAlertsCron', () => {
     emit = jest.fn();
     completarPendientes = jest.fn().mockResolvedValue(1);
     pendientes = [];
+    update = jest.fn().mockResolvedValue({ affected: 1 });
     esLaHora = jest.fn().mockResolvedValue(true);
     cron = new InsuranceAlertsCron(
       {
         createQueryBuilder: () => qb(() => cuotas),
+        update,
       } as unknown as Repository<InsuranceInstallment>,
       {
         // la consulta de pendientes es la única que no hace withDeleted
@@ -130,17 +138,102 @@ describe('InsuranceAlertsCron', () => {
     expect(aviso).toMatchObject({
       distributorId: 'd1',
       kind: 'insurance_installment_due',
-      dedupeKey: 'insurance-installment:q1:due:2026-11-03',
-      link: { entity: 'car-insurance', id: 'c1' },
+      dedupeKey: 'insurance-installment:q1:due:approval:2026-11-03',
+      // El aviso a 5 días es «¿Aprobar pago?»: apunta a la cuota para aprobarla desde la bandeja.
+      link: { entity: 'insurance-installment', id: 'q1' },
       email: true,
     });
     expect(aviso.title).toContain('OVQ621');
+    expect(aviso.body).toContain('¿Aprobar el pago?');
     expect(aviso.body).toContain('Seguros Rivadavia');
     expect(aviso.body).toContain('OVQ621');
     expect(aviso.body).toContain('5/6');
     expect(aviso.body).toContain('29.958,00');
     expect(aviso.body).toContain('03/11/2026');
     expect(aviso.body).toContain('https://pagos.rivadavia.test/cuotas');
+  });
+
+  describe('aprobación del pago', () => {
+    it('la cuota pendiente que avisa queda pendiente de aprobación, con el WHERE que no pisa una aprobación', async () => {
+      cuotas = [cuota()];
+      await cron.avisar(AHORA);
+
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(update).toHaveBeenCalledWith(
+        {
+          installmentId: 'q1',
+          status: InstallmentStatus.PENDING,
+          approvalStatus: InstallmentApprovalStatus.NONE,
+        },
+        {
+          approvalStatus: InstallmentApprovalStatus.AWAITING,
+          approvalRequestedAt: AHORA,
+        },
+      );
+    });
+
+    it('una cuota que ya espera la aprobación no se vuelve a pedir y el aviso sigue apuntando a ella', async () => {
+      cuotas = [
+        cuota({
+          approvalStatus: InstallmentApprovalStatus.AWAITING,
+          approvalRequestedAt: new Date('2026-10-30T11:00:00Z'),
+        }),
+      ];
+      await cron.avisar(AHORA);
+      expect(update).not.toHaveBeenCalled();
+      expect(avisos()[0].link).toEqual({
+        entity: 'insurance-installment',
+        id: 'q1',
+      });
+    });
+
+    it('la clave del aviso no cambia al aprobar: no se vuelve a avisar la misma cuota', async () => {
+      cuotas = [cuota()];
+      await cron.avisar(AHORA);
+      const antes = avisos()[0].dedupeKey;
+      emit.mockClear();
+      cuotas = [cuota({ approvalStatus: InstallmentApprovalStatus.APPROVED })];
+      await cron.avisar(AHORA);
+      expect(avisos()[0].dedupeKey).toBe(antes);
+    });
+
+    it('una cuota ya vencida no pasa a pendiente de aprobación (sin ola de pedidos); su aviso es el de vencida', async () => {
+      cuotas = [cuota({ dueDate: '2026-10-22', graceUntil: '2026-10-27' })];
+      await cron.avisar(AHORA);
+      expect(update).not.toHaveBeenCalled();
+      expect(avisos()[0]).toMatchObject({
+        kind: 'insurance_installment_overdue',
+        link: { entity: 'car-insurance', id: 'c1' },
+      });
+    });
+
+    it('una cuota más lejos que 5 días no se pide (ni se avisa)', async () => {
+      cuotas = [cuota({ dueDate: '2026-11-10', graceUntil: '2026-11-15' })];
+      await cron.avisar(AHORA);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('una cuota ya aprobada avisa como antes, sin volver a pedir aprobación', async () => {
+      cuotas = [cuota({ approvalStatus: InstallmentApprovalStatus.APPROVED })];
+      await cron.avisar(AHORA);
+      expect(update).not.toHaveBeenCalled();
+      expect(avisos()[0].link).toEqual({ entity: 'car-insurance', id: 'c1' });
+      expect(avisos()[0].body).not.toContain('¿Aprobar el pago?');
+    });
+
+    it('si otra corrida ya la había pedido (nada afectado), el aviso no promete una aprobación', async () => {
+      update.mockResolvedValue({ affected: 0 });
+      cuotas = [cuota()];
+      await cron.avisar(AHORA);
+      expect(avisos()[0].link).toEqual({ entity: 'car-insurance', id: 'c1' });
+    });
+
+    it('fuera de la hora del aviso de la distribuidora no pide nada', async () => {
+      esLaHora.mockResolvedValue(false);
+      cuotas = [cuota()];
+      await cron.avisar(AHORA);
+      expect(update).not.toHaveBeenCalled();
+    });
   });
 
   it('cuota con la gracia vencida: aviso aparte con su propia clave', async () => {
@@ -212,7 +305,7 @@ describe('InsuranceAlertsCron', () => {
     cuotas = [cuota({ dueDate: '2026-11-04', graceUntil: '2026-11-09' })];
     await cron.avisar(AHORA);
     expect(avisos()[0].dedupeKey).toBe(
-      'insurance-installment:q1:due:2026-11-04',
+      'insurance-installment:q1:due:approval:2026-11-04',
     );
   });
 

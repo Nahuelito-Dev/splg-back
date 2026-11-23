@@ -24,6 +24,11 @@ export class SupplierPhotoService {
     private readonly fotos: EntityPhotoService,
   ) {}
 
+  /** Completa la URL firmada de cada proveedor (firmar es local). */
+  async firmar(proveedores: Supplier | readonly Supplier[]): Promise<void> {
+    await this.fotos.firmar(proveedores, (s) => s.photoKey);
+  }
+
   /** Sube o reemplaza la foto y devuelve el enlace vigente. */
   async subir(
     id: string,

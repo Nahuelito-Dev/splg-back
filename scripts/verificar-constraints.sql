@@ -129,6 +129,10 @@ SELECT pg_temp.rechaza('order', 'CHK_order_pago_coherente', '{}'::jsonb, '{"paym
 SELECT pg_temp.rechaza('order', 'CHK_order_aceptado_fecha', '{}'::jsonb, '{"status": "accepted", "delivery_id": "11111111-1111-1111-1111-111111111111"}'::jsonb);
 SELECT pg_temp.rechaza('order', 'CHK_order_en_camino_fecha', '{}'::jsonb, '{"status": "on_the_way", "acceptedAt": "2026-10-21T12:00:00Z", "delivery_id": "11111111-1111-1111-1111-111111111111"}'::jsonb);
 SELECT pg_temp.rechaza('order', 'CHK_order_entregado_fecha', '{}'::jsonb, '{"status": "pending", "deliveredAt": "2026-10-21T12:00:00Z"}'::jsonb);
+SELECT pg_temp.rechaza('order', 'CHK_order_confirmacion_precision', '{}'::jsonb, '{"delivery_confirmed_accuracy_m": 10001}'::jsonb);
+SELECT pg_temp.rechaza('order', 'CHK_order_confirmacion_distancia', '{}'::jsonb, '{"delivery_confirmed_distance_m": -1}'::jsonb);
+SELECT pg_temp.rechaza('order', 'CHK_order_confirmacion_fuera_de_radio', '{}'::jsonb, '{"delivery_confirmed_out_of_range": true}'::jsonb);
+SELECT pg_temp.rechaza('order', 'CHK_order_confirmacion_rol', '{}'::jsonb, '{"delivery_confirmed_by_role": "customer"}'::jsonb);
 SELECT pg_temp.rechaza('order', 'CHK_order_chofer_asignado', '{}'::jsonb, '{"status": "accepted", "acceptedAt": "2026-10-21T12:00:00Z"}'::jsonb);
 SELECT pg_temp.rechaza('order', 'CHK_order_cancelado_motivo', '{}'::jsonb, '{"status": "cancelled"}'::jsonb);
 SELECT pg_temp.rechaza('order', 'CHK_order_cancelado_motivo', '{}'::jsonb, '{"status": "cancelled", "cancellationReason": "   "}'::jsonb);

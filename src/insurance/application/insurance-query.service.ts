@@ -70,6 +70,11 @@ export class InsuranceQueryService {
       .where('c.distributor_id = :distributorId', { distributorId });
     if (query.status)
       qb.andWhere('c.status = :status', { status: query.status });
+    if (query.approvalStatus) {
+      qb.andWhere('c.approval_status = :approvalStatus', {
+        approvalStatus: query.approvalStatus,
+      });
+    }
     if (query.dueFrom)
       qb.andWhere('c.due_date >= :dueFrom', { dueFrom: query.dueFrom });
     if (query.dueTo)

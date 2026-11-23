@@ -54,6 +54,7 @@ const vehiculo = (
   capacityKg: 1000,
   capacityUnits: 50,
   available: true,
+  photoKey: null,
   ...over,
 });
 

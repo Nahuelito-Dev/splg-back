@@ -59,6 +59,7 @@ import {
 } from '../entities/maintenance-window-proposal.entity';
 import {
   ConsumoDelVehiculo,
+  claveDeCalibracion,
   MaintenanceForecastService,
   TareaProyectada,
 } from './maintenance-forecast.service';
@@ -255,6 +256,11 @@ export class MaintenancePlannerService {
       params,
       ahora,
     );
+    const correcciones = await this.forecast.correcciones(
+      distributorId,
+      cars,
+      params,
+    );
     const abiertas = await this.tareasAbiertas(distributorId);
     const porVehiculo = new Map(cars.map((c) => [c.carId, c]));
     const proyectadas: TareaProyectada[] = [];
@@ -265,15 +271,23 @@ export class MaintenancePlannerService {
       proyectadas.push({
         task,
         consumo,
-        proyeccion: this.forecast.proyectar(task, car, consumo, ahora),
+        proyeccion: this.forecast.proyectar(
+          task,
+          car,
+          consumo,
+          ahora,
+          correcciones.get(claveDeCalibracion(car.carId, task.planId)) ?? null,
+        ),
       });
     }
 
     const resumen: ResumenDeCorrida = {
       distributorId,
       vehiculos: cars.length,
-      prediccionesActualizadas:
-        await this.forecast.guardarPredicciones(proyectadas),
+      prediccionesActualizadas: await this.forecast.guardarPredicciones(
+        proyectadas,
+        ahora,
+      ),
       propuestas: 0,
       escaladas: 0,
       reiteradas: 0,
@@ -743,7 +757,9 @@ export class MaintenancePlannerService {
         return null;
       }
       vigente.status = WindowProposalStatus.EXPIRED;
+      this.descartarVentana(caso, vigente, 'expired');
       await manager.getRepository(MaintenanceWindowProposal).save(vigente);
+      await manager.getRepository(MaintenancePlanningCase).save(caso);
       const siguiente = await this.ofrecerSiguiente(
         manager,
         caso,
@@ -981,11 +997,13 @@ export class MaintenancePlannerService {
       ahora,
       async (manager, caso, propuesta) => {
         propuesta.status = WindowProposalStatus.REJECTED;
+        this.descartarVentana(caso, propuesta, 'rejected');
         propuesta.respondedAt = ahora;
         propuesta.rejectionReason = motivo;
         propuesta.altWindowStart = alternativa?.start ?? null;
         propuesta.altWindowEnd = alternativa?.end ?? null;
         await manager.getRepository(MaintenanceWindowProposal).save(propuesta);
+        await manager.getRepository(MaintenancePlanningCase).save(caso);
         if (alternativa) {
           this.acordar(
             caso,
@@ -1016,6 +1034,23 @@ export class MaintenancePlannerService {
       await this.avisarEscalado(caso, delivery, ahora);
     }
     return propuesta;
+  }
+
+  /**
+   * El cuadro de ventanas del caso dice por qué se descartó cada una: la que se
+   * ofreció y el chofer rechazó o dejó vencer lo registra (D-06).
+   */
+  private descartarVentana(
+    caso: MaintenancePlanningCase,
+    propuesta: MaintenanceWindowProposal,
+    motivo: 'rejected' | 'expired',
+  ): void {
+    const inicio = propuesta.windowStart.getTime();
+    caso.evaluatedWindows = caso.evaluatedWindows.map((w) =>
+      w.offered && new Date(w.start).getTime() === inicio
+        ? { ...w, discardReason: motivo }
+        : w,
+    );
   }
 
   private acordar(
@@ -1219,7 +1254,12 @@ export class MaintenancePlannerService {
     from: string | undefined,
     to: string | undefined,
     ahora: Date,
-  ): Promise<{ accuracy: AciertoDePrediccion; desde: Date; hasta: Date }> {
+  ): Promise<{
+    accuracy: AciertoDePrediccion;
+    calibratedAccuracy: AciertoDePrediccion;
+    desde: Date;
+    hasta: Date;
+  }> {
     const hoy = diaArgentino(ahora);
     const diaDesde = from ?? sumarDias(hoy, -DIAS_DE_ACIERTO_POR_OMISION);
     const diaHasta = to ?? hoy;
@@ -1232,7 +1272,11 @@ export class MaintenancePlannerService {
     const { desde, hasta } = rango;
     const hechas = await this.tasks
       .createQueryBuilder('t')
-      .select(['t.firstPredictedDueAt', 't.performedAt'])
+      .select([
+        't.firstPredictedDueAt',
+        't.firstCorrectedDueAt',
+        't.performedAt',
+      ])
       .where('t.distributorId = :distributorId', { distributorId })
       .andWhere('t.status = :hecha', { hecha: MaintenanceTaskStatus.DONE })
       .andWhere('t.firstPredictedDueAt IS NOT NULL')
@@ -1249,7 +1293,17 @@ export class MaintenancePlannerService {
       ),
       MARGEN_DE_ACIERTO_TALLER_DIAS,
     );
-    return { accuracy, desde, hasta };
+    // Después de calibrar: la primera fecha ya corregida (la sin corregir si no hubo corrección).
+    const calibratedAccuracy = resumirAcierto(
+      hechas.flatMap((t) => {
+        const proyectada = t.firstCorrectedDueAt ?? t.firstPredictedDueAt;
+        return proyectada && t.performedAt
+          ? [errorEnDias(proyectada, t.performedAt)]
+          : [];
+      }),
+      MARGEN_DE_ACIERTO_TALLER_DIAS,
+    );
+    return { accuracy, calibratedAccuracy, desde, hasta };
   }
 
   /** Cuántos casos hay en cada estado (el resumen de arriba de la pantalla). */
@@ -1286,6 +1340,11 @@ export class MaintenancePlannerService {
       params,
       ahora,
     );
+    const correcciones = await this.forecast.correcciones(
+      distributorId,
+      cars,
+      params,
+    );
     const abiertas = (await this.tareasAbiertas(distributorId)).filter(
       (t) => !filtro.carId || t.carId === filtro.carId,
     );
@@ -1300,7 +1359,14 @@ export class MaintenancePlannerService {
       const items = abiertas
         .filter((t) => t.carId === car.carId)
         .map((task) => {
-          const proyeccion = this.forecast.proyectar(task, car, consumo, ahora);
+          const proyeccion = this.forecast.proyectar(
+            task,
+            car,
+            consumo,
+            ahora,
+            correcciones.get(claveDeCalibracion(car.carId, task.planId)) ??
+              null,
+          );
           return {
             task,
             proyeccion,
@@ -1498,7 +1564,18 @@ export class MaintenancePlannerService {
       ahora,
     );
     const consumo = consumos.get(car.carId) ?? null;
-    const proyeccion = this.forecast.proyectar(task, car, consumo, ahora);
+    const correcciones = await this.forecast.correcciones(
+      distributorId,
+      cars,
+      params,
+    );
+    const proyeccion = this.forecast.proyectar(
+      task,
+      car,
+      consumo,
+      ahora,
+      correcciones.get(claveDeCalibracion(car.carId, task.planId)) ?? null,
+    );
     if (!proyeccion.fecha) {
       throw new BadRequestException(
         'La tarea no tiene fecha de vencimiento ni kilometraje proyectable: no hay qué planificar',

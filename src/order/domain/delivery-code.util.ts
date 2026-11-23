@@ -1,13 +1,12 @@
 import { randomInt, timingSafeEqual } from 'crypto';
 
 /**
- * Código secreto de la prueba de entrega con QR (dominio puro, sin
- * dependencias de NestJS/TypeORM — testeable en aislamiento).
+ * Código secreto de la prueba de entrega (dominio puro, sin dependencias de
+ * NestJS/TypeORM — testeable en aislamiento).
  *
- * Se genera al ACEPTAR el pedido y viaja embebido en el QR que el chofer
- * muestra en su app. El cliente NO lo conoce de antemano: solo lo obtiene
- * escaneando ese QR físico, por eso funciona como prueba de que el chofer
- * estuvo presente en la entrega.
+ * Se genera al ACEPTAR el pedido. Lo ve el cliente en su app (v3) y se lo dice
+ * al chofer cuando llega; el chofer lo escribe. El chofer NO lo conoce de
+ * antemano: por eso funciona como prueba de que el cliente recibió el pedido.
  */
 
 /**
@@ -47,7 +46,7 @@ export function compareDeliveryCode(
 
 /** Por qué se rechazó un código de entrega (campo `code` del 400 de `confirm-delivery`). */
 export enum DeliveryCodeError {
-  /** No tiene la forma de un código de entrega: se leyó mal el QR o se tipeó mal. */
+  /** No tiene la forma de un código de entrega: se tipeó mal. */
   FORMATO = 'DELIVERY_CODE_FORMATO',
   /** Es un código válido, pero de otro pedido en camino del mismo cliente. */
   OTRO_PEDIDO = 'DELIVERY_CODE_OTRO_PEDIDO',
@@ -55,6 +54,10 @@ export enum DeliveryCodeError {
   INCORRECTO = 'DELIVERY_CODE_INCORRECTO',
   /** Se agotaron los intentos: el chofer tiene que generar un código nuevo. */
   BLOQUEADO = 'DELIVERY_CODE_BLOQUEADO',
+  /** El pedido todavía no tiene código para mostrar (no está aceptado ni en camino). */
+  SIN_CODIGO = 'ORDER_WITHOUT_DELIVERY_CODE',
+  /** La entrega sólo se confirma con el pedido en camino. */
+  NO_EN_CAMINO = 'ORDER_NOT_ON_THE_WAY',
 }
 
 const FORMATO_DEL_CODIGO = /^[0-9A-Za-z]{4,12}$/;
@@ -62,4 +65,11 @@ const FORMATO_DEL_CODIGO = /^[0-9A-Za-z]{4,12}$/;
 /** Forma plausible de un código de entrega: alfanumérico de 4 a 12 . */
 export function tieneFormatoDeCodigo(code: string): boolean {
   return FORMATO_DEL_CODIGO.test(code);
+}
+
+const CODIGO_DE_SEIS_DIGITOS = /^\d{6}$/;
+
+/** El código que genera el sistema: exactamente 6 dígitos (lo que escribe el chofer). */
+export function esCodigoDeSeisDigitos(code: string): boolean {
+  return CODIGO_DE_SEIS_DIGITOS.test(code);
 }

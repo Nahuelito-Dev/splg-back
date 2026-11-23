@@ -150,6 +150,16 @@ export class MaintenancePlannerMapper {
         scheduledAt: task.scheduledAt,
         caseId: caso?.caseId ?? null,
         caseStatus: caso?.status ?? null,
+        calibration: proyeccion.correccion
+          ? {
+              correctionDays: proyeccion.correccion.correctionDays,
+              averageDeviationDays: proyeccion.correccion.averageDeviationDays,
+              samples: proyeccion.correccion.samples,
+              capped: proyeccion.correccion.capped,
+              source: proyeccion.correccion.source,
+              uncorrectedAt: proyeccion.porKilometrajeSinCorregir,
+            }
+          : null,
       })),
     };
   }

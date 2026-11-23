@@ -20,6 +20,7 @@ import {
   RouteSheetWarningDto,
   UnassignedOrderDto,
 } from '../presentation/dto/route-sheet-response.dto';
+import { EntityPhotoService } from '../../s3/entity-photo.service';
 import { RoutePlanService } from './route-plan.service';
 import {
   PedidoDeHoja,
@@ -47,6 +48,7 @@ export class RouteSheetQueryService {
     private readonly plans: RoutePlanService,
     private readonly writer: RouteSheetWriter,
     private readonly locks: RouteSheetLocks,
+    private readonly fotos: EntityPhotoService,
   ) {}
 
   async detalle(distributorId: string, id: string): Promise<RouteSheetDto> {
@@ -136,10 +138,18 @@ export class RouteSheetQueryService {
           busySheetId: hojaDeChofer.get(c.deliveryId) ?? null,
           usualCarId: c.usualCarId,
         })),
-        cars: vehiculos.map((v) => ({
-          ...v,
-          busySheetId: hojaDeAuto.get(v.carId) ?? null,
-        })),
+        cars: await Promise.all(
+          vehiculos.map(async (v) => ({
+            carId: v.carId,
+            patent: v.patent,
+            description: v.description,
+            capacityKg: v.capacityKg,
+            capacityUnits: v.capacityUnits,
+            photoUrl: await this.fotos.urlDe(v.photoKey),
+            available: v.available,
+            busySheetId: hojaDeAuto.get(v.carId) ?? null,
+          })),
+        ),
       },
     };
   }
@@ -403,6 +413,7 @@ export class RouteSheetQueryService {
           emptiesExpected: p?.collectUnits ?? 0,
           weightKg: p?.weightKg ?? 0,
           unpaidOnline: p?.unpaidOnline ?? false,
+          cashToCollect: p?.cashToCollect ?? null,
         };
       });
       const noPlanificables = propias.filter((s) => {

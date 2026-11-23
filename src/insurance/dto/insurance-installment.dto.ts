@@ -13,7 +13,10 @@ import {
 import { PaginationDto } from '../../common/dtos/pagination.dto';
 import { FechaCalendarioOpcional } from '../../employee/dto/fecha-calendario.decorator';
 import { VacioANulo } from '../../employee/dto/vacio-a-nulo.decorator';
-import { InstallmentStatus } from '../domain/insurance.enums';
+import {
+  InstallmentApprovalStatus,
+  InstallmentStatus,
+} from '../domain/insurance.enums';
 
 export class UpdateInsuranceInstallmentDto {
   @FechaCalendarioOpcional('2026-11-22', undefined)
@@ -84,6 +87,15 @@ export class QueryInsuranceInstallmentDto extends PaginationDto {
   @IsOptional()
   @IsEnum(InstallmentStatus)
   status?: InstallmentStatus;
+
+  @ApiPropertyOptional({
+    enum: InstallmentApprovalStatus,
+    description:
+      '`awaiting` lista las cuotas pendientes de aprobación («¿Aprobar pago?»)',
+  })
+  @IsOptional()
+  @IsEnum(InstallmentApprovalStatus)
+  approvalStatus?: InstallmentApprovalStatus;
 
   @FechaCalendarioOpcional('2026-11-01', undefined)
   dueFrom?: string;

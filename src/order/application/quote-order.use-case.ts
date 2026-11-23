@@ -40,6 +40,10 @@ import {
 import { diaArgentino } from '../../common/utils/dias-argentina';
 import { CustomerContainerService } from '../../customer-container/customer-container.service';
 import { cambiaronLosRenglones } from '../domain/renglones-del-pedido';
+import {
+  assertCambioDeMedioAceptado,
+  assertMedioDePagoAceptado,
+} from '../domain/medio-de-pago-aceptado';
 
 /**
  * Cotización de un pedido: el mismo cálculo que el alta (`CreateOrderUseCase`:
@@ -86,6 +90,7 @@ export class QuoteOrderUseCase {
     distributorId: string | null,
     actor: { userId: string; role: RoleType },
   ): Promise<QuoteResponseDto> {
+    if (!dto.orderId) assertMedioDePagoAceptado(dto.paymentMethod);
     if (dto.fromCart && dto.items !== undefined) {
       throw new BadRequestException(
         'Si el pedido sale del carrito, los productos se toman de ahí: no los mandes',
@@ -407,6 +412,7 @@ export class QuoteOrderUseCase {
     if (dto.paymentMethod === PaymentMethod.MERCADOPAGO) {
       throw new BadRequestException(MENSAJE_NO_PASAR_A_MERCADOPAGO);
     }
+    assertCambioDeMedioAceptado(order.paymentMethod, dto.paymentMethod);
     const renglones = await this.dataSource.manager.find(OrderItem, {
       where: { orderId },
     });

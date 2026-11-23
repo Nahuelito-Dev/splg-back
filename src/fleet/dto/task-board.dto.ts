@@ -136,6 +136,12 @@ export class FleetTaskBoardCarDto {
     description: 'Marca y modelo; si no hay, el tipo de vehículo o la patente',
   })
   label!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Foto del vehículo: URL firmada de corta vigencia, o null',
+  })
+  photoUrl!: string | null;
 }
 
 export class FleetTaskBoardAssigneeDto {
