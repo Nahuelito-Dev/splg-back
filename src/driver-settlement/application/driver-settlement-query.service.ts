@@ -4,6 +4,8 @@ import { DataSource, EntityManager } from 'typeorm';
 import { deliveryIdDelUsuario } from '../../common/tenancy/chofer-empleado';
 import { diaArgentino } from '../../common/utils/dias-argentina';
 import { aCentavos, dec } from '../../common/utils/dinero';
+import { ConfigurableProcess } from '../../distributor/entities/module-config.entity';
+import { ProcessConfigService } from '../../distributor/process-config.service';
 import {
   cuentasDeRendicion,
   exigirEstado,
@@ -20,6 +22,7 @@ import {
   DriverSettlementDetailDto,
   DriverSettlementPageDto,
   DriverSettlementResponseDto,
+  EfectivoSinRendirDto,
   PreviewDriverSettlementDto,
   QueryDriverSettlementDto,
   SettlementPreviewDto,
@@ -27,12 +30,45 @@ import {
 import { DriverSettlement } from '../entities/driver-settlement.entity';
 import { exigirRendicionDelUsuario } from './settlement-propietario';
 import { clientesDeEntrega } from './settlement-clientes';
-import { pedidosSinRendir, sumaACobrar } from './settlement-orders';
+import {
+  efectivoSinRendirPorChofer,
+  pedidosSinRendir,
+  sumaACobrar,
+} from './settlement-orders';
 
 /** Lecturas de las rendiciones: listado, ficha y tablero (CU-232, 233). */
 @Injectable()
 export class DriverSettlementQueryService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly config: ProcessConfigService,
+  ) {}
+
+  /**
+   * El efectivo cobrado y no rendido por chofer, con su antigüedad: lo que el
+   * administrador tiene que perseguir (C4). `overdue` es el umbral del aviso.
+   */
+  async efectivoSinRendir(
+    distributorId: string,
+  ): Promise<EfectivoSinRendirDto> {
+    const { minHours, enabled } = await this.config.obtener(
+      distributorId,
+      ConfigurableProcess.CASH_ALERTS,
+    );
+    const choferes = await efectivoSinRendirPorChofer(
+      this.dataSource.manager,
+      distributorId,
+    );
+    return {
+      items: choferes.map((c) => ({ ...c, overdue: c.ageHours >= minHours })),
+      totalAmount: choferes
+        .reduce((s, c) => s.plus(c.amount), dec(0))
+        .toNumber(),
+      totalOrders: choferes.reduce((s, c) => s + c.orders, 0),
+      minHours,
+      enabled: enabled === 1,
+    };
+  }
 
   async findAll(
     distributorId: string,

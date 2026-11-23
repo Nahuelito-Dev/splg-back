@@ -60,6 +60,14 @@ export class RouteSheetStopDto {
     description: 'Mercado Pago todavía sin pagar (entra con advertencia)',
   })
   unpaidOnline!: boolean;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 22600,
+    description:
+      'Efectivo que el chofer cobra en la parada (total menos la seña: la ya paga o, en una reserva, la comprometida), calculado en el back; `null` si no es en efectivo, ya se cobró o no hay saldo',
+  })
+  cashToCollect!: number | null;
 }
 
 export class RouteSheetWarningDto {

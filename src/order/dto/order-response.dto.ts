@@ -353,6 +353,15 @@ export class OrderResponseDto {
   createdAt!: Date;
 
   @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 22600,
+    description:
+      'Efectivo que el chofer cobra al entregar (total menos la seña: la ya paga o, en una reserva, la comprometida), calculado en el back. `null` si el pedido no es en efectivo, ya se cobró, está entregado o cancelado. Las apps lo muestran tal cual.',
+  })
+  cashToCollect!: number | null;
+
+  @ApiProperty({
     name: 'payment_method',
     enum: ['cash', 'online', 'account'],
     description:

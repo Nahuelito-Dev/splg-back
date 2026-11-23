@@ -6,6 +6,7 @@ import {
 } from '../domain/errors/driver-settlement.errors';
 import { DriverSettlementQueryService } from './driver-settlement-query.service';
 import { dec } from '../../common/utils/dinero';
+import type { ProcessConfigService } from '../../distributor/process-config.service';
 
 describe('DriverSettlementQueryService.vistaPrevia', () => {
   const abierta = (extra: Record<string, unknown> = {}) => ({
@@ -25,9 +26,12 @@ describe('DriverSettlementQueryService.vistaPrevia', () => {
   ) => {
     const findOne = jest.fn().mockResolvedValue(fila);
     const query = jest.fn().mockResolvedValue([{ user_id: userDelChofer }]);
-    const servicio = new DriverSettlementQueryService({
-      manager: { findOne, query },
-    } as unknown as DataSource);
+    const servicio = new DriverSettlementQueryService(
+      {
+        manager: { findOne, query },
+      } as unknown as DataSource,
+      {} as unknown as ProcessConfigService,
+    );
     const vivo = jest.spyOn(servicio, 'esperadoEnVivo').mockResolvedValue({
       pedidos: [],
       cashFromOrders: dec(esperado),
@@ -98,5 +102,67 @@ describe('DriverSettlementQueryService.vistaPrevia', () => {
       servicio.vistaPrevia('s1', { declaredCash: 0 }, 'd1'),
     ).rejects.toBeInstanceOf(RendicionEnOtroEstadoError);
     expect(vivo).not.toHaveBeenCalled();
+  });
+});
+
+describe('DriverSettlementQueryService.efectivoSinRendir (C4)', () => {
+  const armar = (filas: unknown[], minHours = 24, enabled = 1) => {
+    const query = jest.fn().mockResolvedValue(filas);
+    const obtener = jest.fn().mockResolvedValue({ minHours, enabled });
+    const servicio = new DriverSettlementQueryService(
+      { manager: { query } } as unknown as DataSource,
+      { obtener } as unknown as ProcessConfigService,
+    );
+    return { servicio, query, obtener };
+  };
+  const hace = (horas: number) => new Date(Date.now() - horas * 3_600_000);
+
+  it('suma por chofer, marca los que pasaron el umbral y totaliza', async () => {
+    const { servicio, obtener } = armar(
+      [
+        {
+          delivery_id: 'a',
+          driver_name: 'Ana',
+          total: '10000',
+          sena: '0',
+          delivered_at: hace(30),
+        },
+        {
+          delivery_id: 'b',
+          driver_name: 'Beto',
+          total: '5000',
+          sena: '1000',
+          delivered_at: hace(3),
+        },
+      ],
+      24,
+    );
+
+    const r = await servicio.efectivoSinRendir('d1');
+
+    expect(obtener).toHaveBeenCalledWith('d1', 'cash_alerts');
+    expect(r.minHours).toBe(24);
+    expect(r.totalAmount).toBe(14000);
+    expect(r.totalOrders).toBe(2);
+    expect(r.items.map((i) => [i.deliveryId, i.overdue])).toEqual([
+      ['a', true],
+      ['b', false],
+    ]);
+  });
+
+  it('sin efectivo pendiente devuelve la lista vacía y el total en cero', async () => {
+    const { servicio } = armar([]);
+    expect(await servicio.efectivoSinRendir('d1')).toEqual({
+      items: [],
+      totalAmount: 0,
+      totalOrders: 0,
+      minHours: 24,
+      enabled: true,
+    });
+  });
+
+  it('con el aviso apagado lo dice (el panel no promete el aviso del cierre)', async () => {
+    const { servicio } = armar([], 24, 0);
+    expect((await servicio.efectivoSinRendir('d1')).enabled).toBe(false);
   });
 });

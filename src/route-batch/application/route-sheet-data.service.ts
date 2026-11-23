@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { FleetDispatchLockService } from '../../fleet/fleet-dispatch-lock.service';
+import { efectivoDelPedido } from '../../order/domain/efectivo-a-cobrar';
 import { StopLoad } from '../domain/load-profile';
 import {
   PedidoParaPlanificar,
@@ -36,6 +37,8 @@ export interface PedidoDeHoja extends PedidoParaPlanificar {
   collectUnits: number;
   /** Mercado Pago todavía sin pagar: entra con advertencia (D-06). */
   unpaidOnline: boolean;
+  /** Efectivo que se cobra en la parada (calculado en el back); `null` si no hay. */
+  cashToCollect: number | null;
   /** Tiene una oferta del despacho individual esperando respuesta. */
   offeredNow: boolean;
   /** Lote u hoja viva en la que ya está (parada activa). */
@@ -93,6 +96,10 @@ interface FilaPedido {
   unpaidOnline: boolean;
   offeredNow: boolean;
   activeBatchId: string | null;
+  paymentMethod: string;
+  paymentStatus: string;
+  totalAmount: string;
+  depositAmount: string;
 }
 
 const SELECT_PEDIDO = `
@@ -117,6 +124,8 @@ const SELECT_PEDIDO = `
                     WHERE oi."order_id" = o."order_id"), 0) AS "collectUnits",
          (o."paymentMethod"::text = 'mercadopago' AND o."paymentStatus"::text <> 'paid'
             AND NOT COALESCE(o."deposit_paid", false)) AS "unpaidOnline",
+         o."paymentMethod"::text AS "paymentMethod", o."paymentStatus"::text AS "paymentStatus",
+         o."totalAmount"::text AS "totalAmount", COALESCE(o."deposit_amount", 0)::text AS "depositAmount",
          EXISTS (SELECT 1 FROM "order_dispatch_offer" d
                   WHERE d."order_id" = o."order_id" AND d."status" = 'offered') AS "offeredNow",
          (SELECT s."batch_id" FROM "route_batch_stop" s
@@ -160,6 +169,14 @@ function aPedido(f: FilaPedido): PedidoDeHoja {
     weightKg: Math.round(Number(f.weightKg) * 100) / 100,
     collectUnits: Number(f.collectUnits),
     unpaidOnline: f.unpaidOnline,
+    cashToCollect: efectivoDelPedido({
+      paymentMethod: f.paymentMethod,
+      paymentStatus: f.paymentStatus,
+      status: f.status,
+      totalAmount: f.totalAmount,
+      depositAmount: f.depositAmount,
+      depositPaid: f.depositPaid,
+    }),
     offeredNow: f.offeredNow,
     activeBatchId: f.activeBatchId,
   };

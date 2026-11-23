@@ -4,6 +4,7 @@ import {
   EVENTO_CHOFER_DEL_PEDIDO_CAMBIADO,
 } from './domain/events/chofer-del-pedido-cambiado.event';
 import { esperaPagoOnline, mensajeDeEspera } from './domain/espera-pago-online';
+import { efectivoDelPedido } from './domain/efectivo-a-cobrar';
 import { OrderItem } from './entities/order-item.entity';
 import { TruckLoadGatePort } from './domain/ports/truck-load-gate.port';
 import {
@@ -1213,6 +1214,7 @@ export class OrderService {
         orderId: order.orderId,
         totalAmount: order.totalAmount,
         paymentMethod: order.paymentMethod,
+        cashToCollect: efectivoDelPedido(order),
         expiresAt: new Date(Date.now() + offerTtlSeconds * 1000).toISOString(),
         items: order.items,
         // Ya está asignado: la app lo abre como entrega, no como una oferta que se

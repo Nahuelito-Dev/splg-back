@@ -10,6 +10,17 @@ import {
 import { FcmPort } from '../firebase/ports/fcm.port';
 import { errorMessage } from '../common/errors/error-message';
 import { OrderLookupService } from '../order/lookup/order-lookup.service';
+import { RedisService } from '../redis/redis.service';
+import {
+  DesgloseDelEfectivo,
+  EfectivoDeSalida,
+  montoEnPesos,
+  textoDelEfectivoAlConfirmar,
+  textoDelEfectivoAlSalir,
+} from '../order/domain/efectivo-a-cobrar';
+
+/** Cuánto se acuerda que ya se avisó el efectivo de un pedido (más que cualquier entrega). */
+const VIGENCIA_AVISO_EFECTIVO_SEG = 7 * 24 * 3600;
 
 @Injectable()
 export class NotificationsService {
@@ -20,6 +31,7 @@ export class NotificationsService {
     private readonly deliveryService: DeliveryService,
     private readonly fcm: FcmPort,
     private readonly orders: OrderLookupService,
+    private readonly redis: RedisService,
   ) {}
 
   async sendTestNotification(
@@ -81,6 +93,7 @@ export class NotificationsService {
     customerId: string,
     orderId: string,
     token?: string,
+    efectivo?: DesgloseDelEfectivo | null,
   ): Promise<ResultadoDeEnvioDto> {
     try {
       const cliente =
@@ -102,7 +115,11 @@ export class NotificationsService {
       const message = {
         notification: {
           title: '¡Pedido Confirmado!',
-          body: `Tu pedido #${orderId.substring(0, 8)} ha sido creado exitosamente.`,
+          body:
+            `Tu pedido #${orderId.substring(0, 8)} ha sido creado exitosamente.` +
+            (efectivo
+              ? ` ${textoDelEfectivoAlConfirmar(efectivo.monto, efectivo.senaDescontada)}`
+              : ''),
         },
         data: {
           orderId,
@@ -186,6 +203,7 @@ export class NotificationsService {
   async sendOfferPushToDriver(
     driverUserId: string,
     orderId: string,
+    cashToCollect?: number | null,
   ): Promise<void> {
     try {
       const token =
@@ -195,9 +213,17 @@ export class NotificationsService {
       await this.fcm.sendToToken(token, {
         notification: {
           title: '¡Nuevo pedido disponible!',
-          body: 'Tenés una oferta de entrega. Abrí la app para aceptarla.',
+          body:
+            'Tenés una oferta de entrega. Abrí la app para aceptarla.' +
+            (cashToCollect
+              ? ` Se cobra en efectivo: ${montoEnPesos(cashToCollect)}.`
+              : ''),
         },
-        data: { event: 'NEW_ORDER', orderId },
+        data: {
+          event: 'NEW_ORDER',
+          orderId,
+          ...(cashToCollect ? { cashToCollect: String(cashToCollect) } : {}),
+        },
         android: { priority: 'high' },
         apns: { headers: { 'apns-priority': '10' } },
       });
@@ -260,6 +286,79 @@ export class NotificationsService {
   }
 
   /**
+   * Reserva el aviso de efectivo de una salida: una vez por pedido, monto y
+   * salida (si cambió el monto o el chofer vuelve a salir, se avisa de nuevo).
+   * Si Redis no responde se avisa igual (mejor un duplicado que ninguno) y
+   * queda en el log; en ese caso no hay marca que liberar.
+   */
+  private async reservarAvisoDeEfectivo(
+    orderId: string,
+    efectivo: EfectivoDeSalida,
+  ): Promise<{ enviar: boolean; clave: string | null }> {
+    const clave = `aviso:efectivo-listo:${orderId}:${efectivo.monto}:${efectivo.salida}`;
+    try {
+      const reservada = await this.redis.setIfAbsent(
+        clave,
+        VIGENCIA_AVISO_EFECTIVO_SEG,
+      );
+      return { enviar: reservada, clave: reservada ? clave : null };
+    } catch (error) {
+      this.logger.warn(
+        `Redis no respondió al marcar el aviso de efectivo del pedido ${orderId}: se avisa igual (${errorMessage(error)})`,
+      );
+      return { enviar: true, clave: null };
+    }
+  }
+
+  private async liberarAvisoDeEfectivo(clave: string | null): Promise<void> {
+    if (clave) await this.redis.del(clave).catch(() => undefined);
+  }
+
+  /**
+   * Push «tené listos $X en efectivo» cuando el chofer sale hacia el domicilio.
+   * Una vez por pedido, monto y salida: la salida puede llegar por la hoja de
+   * ruta y por el cambio de estado, y el aviso no se repite. Si no salió (sin
+   * token o FCM falló), se libera la marca para que un segundo intento pueda
+   * avisar. Nunca lanza.
+   */
+  async sendCashReadyPush(
+    customerUserId: string,
+    orderId: string,
+    efectivo: EfectivoDeSalida,
+  ): Promise<'sent' | 'duplicate' | 'no_token' | 'failed'> {
+    const { enviar, clave } = await this.reservarAvisoDeEfectivo(
+      orderId,
+      efectivo,
+    );
+    if (!enviar) return 'duplicate';
+    let resultado: 'sent' | 'no_token' | 'failed' = 'failed';
+    try {
+      const { token } =
+        await this.customersService.findNotificationToken(customerUserId);
+      if (!token) {
+        resultado = 'no_token';
+      } else {
+        const messageId = await this.fcm.sendToToken(token, {
+          notification: {
+            title: 'Tené listo el efectivo',
+            body: textoDelEfectivoAlSalir(efectivo.monto),
+          },
+          data: { event: 'CASH_READY', orderId },
+          android: { priority: 'high' },
+          apns: { headers: { 'apns-priority': '10' } },
+        });
+        resultado = messageId ? 'sent' : 'failed';
+      }
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo enviar el aviso de efectivo al cliente ${customerUserId}: ${errorMessage(error)}`,
+      );
+    }
+    if (resultado !== 'sent') await this.liberarAvisoDeEfectivo(clave);
+    return resultado;
+  }
+
+  /**
    * Push al cliente cuando se aprueba el pago de su pedido. No-op si el
    * cliente no registró token. Nunca lanza: no debe romper la confirmación.
    */
@@ -308,19 +407,37 @@ export class NotificationsService {
     customerUserId: string,
     orderId: string,
     aviso: { title: string; body: string; event: string },
+    efectivo?: EfectivoDeSalida,
   ): Promise<void> {
+    // Con efectivo a cobrar, el mismo push suma «tené listos $X» (un solo
+    // aviso por parada); si ese aviso ya salió antes, sale sin el texto.
+    const reserva = efectivo
+      ? await this.reservarAvisoDeEfectivo(orderId, efectivo)
+      : { enviar: false, clave: null };
+    let salio = false;
     try {
       const { token } =
         await this.customersService.findNotificationToken(customerUserId);
       if (!token) return;
-      await this.fcm.sendToToken(token, {
-        notification: { title: aviso.title, body: aviso.body },
+      const messageId = await this.fcm.sendToToken(token, {
+        notification: {
+          title: aviso.title,
+          body:
+            reserva.enviar && efectivo
+              ? `${aviso.body} ${textoDelEfectivoAlSalir(efectivo.monto)}`
+              : aviso.body,
+        },
         data: { event: aviso.event, orderId },
       });
+      salio = messageId !== '';
     } catch (error) {
       this.logger.warn(
         `No se pudo enviar el push ${aviso.event} al cliente ${customerUserId}: ${errorMessage(error)}`,
       );
+    } finally {
+      if (reserva.clave && !salio) {
+        await this.liberarAvisoDeEfectivo(reserva.clave);
+      }
     }
   }
 

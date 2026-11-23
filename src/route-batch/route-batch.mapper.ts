@@ -1,4 +1,5 @@
 import { ProposalStatus } from '../common/enums/proposal-status.enum';
+import { efectivoDelPedido } from '../order/domain/efectivo-a-cobrar';
 import { coordenadasDePunto } from '../common/geo/punto';
 import { RouteBatch } from '../order/entities/route-batch.entity';
 import { RouteBatchOffer } from '../order/entities/route-batch-offer.entity';
@@ -59,6 +60,7 @@ export class RouteBatchMapper {
       paymentMethod: order.paymentMethod,
       totalAmount: Number(order.totalAmount),
       orderStatus: order.status,
+      cashToCollect: efectivoDelPedido(order),
       items,
     };
   }

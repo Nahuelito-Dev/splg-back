@@ -37,6 +37,8 @@ export enum ConfigurableProcess {
   /** Hoja de ruta: planificación del día siguiente (M4, modalidad `planned`). */
   ROUTE_PLANNING = 'route_planning',
   DOCUMENT_READING = 'document_reading',
+  /** Aviso al administrador del efectivo cobrado y no rendido. */
+  CASH_ALERTS = 'cash_alerts',
 }
 
 /**
@@ -159,6 +161,17 @@ const CHECK_HOJA = RANGOS_DE_LA_HOJA.map(
     `("params" -> '${k}' IS NULL OR (jsonb_typeof("params" -> '${k}') = 'number' AND ("params" ->> '${k}')::numeric BETWEEN ${min} AND ${max}${k === 'trafficFactor' ? '' : ` AND ("params" ->> '${k}')::numeric = trunc(("params" ->> '${k}')::numeric)`}))`,
 ).join(' AND ');
 
+/** Aviso del efectivo sin rendir: todos enteros, cada clave puede faltar. */
+const RANGOS_AVISO_DE_EFECTIVO: ReadonlyArray<[string, number, number]> = [
+  ['enabled', 0, 1],
+  ['closeHour', 0, 23],
+  ['minHours', 1, 720],
+];
+const CHECK_AVISO_DE_EFECTIVO = RANGOS_AVISO_DE_EFECTIVO.map(
+  ([k, min, max]) =>
+    `("params" -> '${k}' IS NULL OR (jsonb_typeof("params" -> '${k}') = 'number' AND ("params" ->> '${k}')::numeric BETWEEN ${min} AND ${max} AND ("params" ->> '${k}')::numeric = trunc(("params" ->> '${k}')::numeric)))`,
+).join(' AND ');
+
 const RANGOS_LECTURA_DOCUMENTOS: ReadonlyArray<[string, number, number]> = [
   ['enabled', 0, 1],
   ['frequencyMinutes', 5, 1440],
@@ -252,6 +265,10 @@ const CHECK_COBRO_ENVASES =
 @Check(
   'CHK_module_config_lectura',
   `"module"::text <> 'document_reading' OR (${CHECK_LECTURA_DOCUMENTOS})`,
+)
+@Check(
+  'CHK_module_config_aviso_efectivo',
+  `"module"::text <> 'cash_alerts' OR (${CHECK_AVISO_DE_EFECTIVO})`,
 )
 @Entity('module_config')
 @Unique('UQ_module_config_distributor_module', ['distributorId', 'module'])

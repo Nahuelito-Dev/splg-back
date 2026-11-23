@@ -25,6 +25,7 @@ export enum ProcessName {
   S3_ORPHANS_RETRY = 's3_orphans_retry',
   DRIVER_SETTLEMENT_GENERATE = 'driver_settlement_generate',
   DRIVER_SETTLEMENT_ALERT = 'driver_settlement_alert',
+  DRIVER_CASH_ALERT = 'driver_cash_alert',
   COVERAGE_ZONE_EXPIRY = 'coverage_zone_expiry',
   FINE_DUE_ALERTS = 'fine_due_alerts',
   FINANCE_RECONCILIATION = 'finance_reconciliation',
@@ -95,6 +96,11 @@ const HORA = 60 * MIN;
 const DIA = 24 * HORA;
 
 export const CATALOGO: Readonly<Record<ProcessName, ProcessCatalogEntry>> = {
+  [ProcessName.DRIVER_CASH_ALERT]: {
+    module: null,
+    title: 'Aviso de efectivo cobrado sin rendir',
+    periodSeconds: HORA,
+  },
   [ProcessName.DOCUMENT_READING_PROPOSALS]: {
     module: 'M6',
     title: 'Lectura de documentos: vencimiento de propuestas',

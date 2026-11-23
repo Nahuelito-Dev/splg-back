@@ -286,6 +286,54 @@ describe('CreateOrderUseCase', () => {
     });
   });
 
+  describe('aviso del efectivo al confirmar (C4)', () => {
+    it('un pedido en efectivo le dice al cliente cuánto paga al recibirlo', async () => {
+      await useCase.execute({ ...baseDto, paymentMethod: PaymentMethod.CASH });
+
+      const efectivo = (
+        notificationService.sendOrderConfirmation.mock.calls[0] as unknown[]
+      )[3];
+      expect(efectivo).toEqual({
+        monto: expect.any(Number) as number,
+        senaDescontada: 0,
+      });
+      expect((efectivo as { monto: number }).monto).toBeGreaterThan(0);
+    });
+
+    it('una reserva con seña en efectivo avisa lo que se paga al entregar, con la seña ya descontada aunque no esté confirmada', async () => {
+      await useCase.execute({
+        ...baseDto,
+        paymentMethod: PaymentMethod.CASH,
+        isReservation: true,
+        depositAmount: 100,
+        scheduledDate: '2099-01-01',
+      });
+
+      const [orden] = orderRepository.create.mock.calls[0] as unknown as [
+        { totalAmount: number },
+      ];
+      const efectivo = (
+        notificationService.sendOrderConfirmation.mock.calls[0] as unknown[]
+      )[3];
+      expect(efectivo).toEqual({
+        monto: orden.totalAmount - 100,
+        senaDescontada: 100,
+      });
+    });
+
+    it('un pedido online no menciona efectivo', async () => {
+      await useCase.execute({
+        ...baseDto,
+        paymentMethod: PaymentMethod.MERCADOPAGO,
+      });
+
+      const efectivo = (
+        notificationService.sendOrderConfirmation.mock.calls[0] as unknown[]
+      )[3];
+      expect(efectivo).toBeNull();
+    });
+  });
+
   describe('checkout del carrito (fromCart, CU-126)', () => {
     const sinItems: CreateOrderDto = { ...baseDto, items: undefined };
 

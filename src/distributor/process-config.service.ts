@@ -6,6 +6,7 @@ import { moduloDeshabilitado } from '../platform/access/errores';
 import {
   ESQUEMAS,
   PROCESOS_AUTOMATICOS,
+  PROCESOS_DEL_NUCLEO,
   CampoDeProceso,
   ProcesoAutomatico,
   ValoresDeProceso,
@@ -62,7 +63,13 @@ export class ProcessConfigService {
     distributorId: string,
   ): Promise<ProcesoAutomatico> {
     const configurable = this.procesoConfigurable(proceso);
-    if (!(await this.acceso.habilitado(distributorId, configurable))) {
+    if (PROCESOS_DEL_NUCLEO.includes(configurable)) return configurable;
+    if (
+      !(await this.acceso.habilitado(
+        distributorId,
+        configurable as Exclude<ProcesoAutomatico, 'cash_alerts'>,
+      ))
+    ) {
       throw moduloDeshabilitado();
     }
     return configurable;

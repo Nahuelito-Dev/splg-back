@@ -43,6 +43,41 @@ describe('OrderMapper · datos del panel', () => {
       deliveryMode: OrderDeliveryMode.STANDARD,
     }) as unknown as Order;
 
+  describe('cashToCollect (C4)', () => {
+    it('un pedido en efectivo sin cobrar trae el saldo calculado en el back', () => {
+      expect(OrderMapper.toDto(pedidoBase()).cashToCollect).toBe(22600);
+    });
+
+    it('descuenta la seña ya paga', () => {
+      const dto = OrderMapper.toDto({
+        ...pedidoBase(),
+        depositAmount: 5000,
+        depositPaid: true,
+      });
+      expect(dto.cashToCollect).toBe(17600);
+    });
+
+    it('una reserva con la seña todavía sin confirmar ya trae el saldo: lo que se paga al entregar', () => {
+      const dto = OrderMapper.toDto({
+        ...pedidoBase(),
+        status: OrderStatus.RESERVED,
+        depositAmount: 5000,
+        depositPaid: false,
+      });
+      expect(dto.cashToCollect).toBe(17600);
+    });
+
+    it.each([
+      ['online', { paymentMethod: PaymentMethod.MERCADOPAGO }],
+      ['ya cobrado', { paymentStatus: PaymentStatus.PAID }],
+      ['entregado', { status: OrderStatus.DELIVERED }],
+      ['cancelado', { status: OrderStatus.CANCELLED }],
+    ])('sale null si el pedido está %s', (_caso, cambio) => {
+      const dto = OrderMapper.toDto({ ...pedidoBase(), ...cambio });
+      expect(dto.cashToCollect).toBeNull();
+    });
+  });
+
   it('expone el recargo por medio de pago con el % con que se calculó', () => {
     const dto = OrderMapper.toDto({
       ...pedidoBase(),

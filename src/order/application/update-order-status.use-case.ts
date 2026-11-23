@@ -1,3 +1,4 @@
+import { claveDeSalida, efectivoDelPedido } from '../domain/efectivo-a-cobrar';
 import {
   esperaPagoOnline,
   mensajeDeEspera,
@@ -368,6 +369,8 @@ export class UpdateOrderStatusUseCase {
       );
     }
     await this.notifyCustomer(order);
+    // El aviso del efectivo no demora la respuesta del chofer.
+    if (status === OrderStatus.ON_THE_WAY) void this.avisarEfectivo(order);
 
     return order;
   }
@@ -1082,6 +1085,35 @@ export class UpdateOrderStatusUseCase {
       // Errores de WebSocket no rompen la actualización del pedido.
       this.logger.warn(
         `No se pudo emitir el evento de WebSocket "${eventName}" del pedido ${order.orderId}: ${errorMessage(error)}`,
+      );
+    }
+  }
+
+  /**
+   * «Tené listos $X en efectivo» al salir el chofer (best-effort, una vez por
+   * pedido, monto y salida). La salida la da el chofer asignado y los intentos
+   * fallidos de la parada: si vuelve después de una entrega fallida se avisa otra vez.
+   */
+  private async avisarEfectivo(order: Order): Promise<void> {
+    const monto = efectivoDelPedido(order);
+    if (monto === null) return;
+    try {
+      const filas: Array<{ intentos: number }> = await this.dataSource.query(
+        `SELECT "failed_attempts" AS "intentos" FROM "route_batch_stop"
+          WHERE "order_id" = $1 AND "active" LIMIT 1`,
+        [order.orderId],
+      );
+      await this.notificationService.sendCashReadyPush(
+        order.customerId,
+        order.orderId,
+        {
+          monto,
+          salida: claveDeSalida(order.deliveryId, filas[0]?.intentos),
+        },
+      );
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo avisar el efectivo del pedido ${order.orderId}: ${errorMessage(error)}`,
       );
     }
   }

@@ -413,6 +413,7 @@ export class RouteSheetQueryService {
           emptiesExpected: p?.collectUnits ?? 0,
           weightKg: p?.weightKg ?? 0,
           unpaidOnline: p?.unpaidOnline ?? false,
+          cashToCollect: p?.cashToCollect ?? null,
         };
       });
       const noPlanificables = propias.filter((s) => {

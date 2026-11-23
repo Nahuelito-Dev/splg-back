@@ -226,8 +226,9 @@ describe('process-config', () => {
     });
   });
 
-  it('son seis procesos; el despacho, las tareas, el express y el control de stock no están', () => {
+  it('son siete procesos; el despacho, las tareas, el express y el control de stock no están', () => {
     expect([...PROCESOS_AUTOMATICOS].sort()).toEqual([
+      'cash_alerts',
       'cylinder_recovery',
       'document_reading',
       'fleet_planner',
@@ -240,6 +241,50 @@ describe('process-config', () => {
     expect(esProcesoAutomatico('stock_control')).toBe(false);
     // El express tiene su propia ruta y servicio (ExpressSettingsService).
     expect(esProcesoAutomatico('express_dispatch')).toBe(false);
+  });
+
+  describe('aviso de efectivo sin rendir (cash_alerts)', () => {
+    const CASH = ESQUEMAS[ConfigurableProcess.CASH_ALERTS];
+
+    it('viene encendido, cierra a las 20 y avisa con más de 24 h', () => {
+      expect(valoresPorOmision(CASH)).toEqual({
+        enabled: 1,
+        closeHour: 20,
+        minHours: 24,
+      });
+    });
+
+    it('acepta valores dentro de rango', () => {
+      expect(
+        validarParametros(CASH, { enabled: 0, closeHour: 23, minHours: 720 }),
+      ).toEqual([]);
+    });
+
+    it.each([
+      [{ closeHour: 24 }, 'Hora de cierre'],
+      [{ closeHour: -1 }, 'Hora de cierre'],
+      [{ minHours: 0 }, 'Antigüedad mínima'],
+      [{ minHours: 721 }, 'Antigüedad mínima'],
+      [{ minHours: 1.5 }, 'Antigüedad mínima'],
+      [{ enabled: 2 }, 'Habilitado'],
+      [{ closeHour: '20' }, 'Hora de cierre'],
+      [{ inventado: 1 }, 'no corresponde'],
+    ])('rechaza %j', (cuerpo, campo) => {
+      const errores = validarParametros(CASH, cuerpo);
+      expect(errores.join(' ')).toContain(campo);
+    });
+
+    it('lo respalda un CHECK en la base con los mismos rangos', () => {
+      const checks = getMetadataArgsStorage().checks.filter(
+        (c) => c.target === ModuleConfig,
+      );
+      const aviso = checks.find(
+        (c) => c.name === 'CHK_module_config_aviso_efectivo',
+      );
+      expect(aviso?.expression).toContain(`'cash_alerts'`);
+      expect(aviso?.expression).toContain('BETWEEN 0 AND 23');
+      expect(aviso?.expression).toContain('BETWEEN 1 AND 720');
+    });
   });
 
   it.each(PROCESOS_AUTOMATICOS)(

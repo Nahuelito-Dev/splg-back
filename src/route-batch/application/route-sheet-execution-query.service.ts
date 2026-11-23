@@ -263,6 +263,7 @@ export class RouteSheetExecutionQueryService {
         emptiesExpected: p?.collectUnits ?? 0,
         weightKg: p?.weightKg ?? 0,
         unpaidOnline: p?.unpaidOnline ?? false,
+        cashToCollect: p?.cashToCollect ?? null,
         items: renglones.get(s.orderId) ?? [],
       };
     });

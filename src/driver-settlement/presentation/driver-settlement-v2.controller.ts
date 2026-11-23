@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -23,6 +24,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { DriverSettlementQueryService } from '../application/driver-settlement-query.service';
 import {
+  EfectivoSinRendirDto,
   PreviewDriverSettlementDto,
   SettlementPreviewDto,
 } from '../dto/driver-settlement.dto';
@@ -35,6 +37,21 @@ import { SoloLectura } from '../../audit/solo-lectura.decorator';
 @Controller({ path: 'driver-settlements', version: '2' })
 export class DriverSettlementV2Controller {
   constructor(private readonly consultas: DriverSettlementQueryService) {}
+
+  @Permiso('finanzas.ver')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Get('unreported-cash')
+  @ApiOperation({
+    summary: 'Efectivo cobrado y no rendido, por chofer',
+    description:
+      'Por chofer, el efectivo de pedidos entregados que todavía no entró en una rendición: cantidad de pedidos, monto (total menos la seña ya paga, calculado en el back), antigüedad del más viejo y si pasó el umbral del aviso (`cash_alerts.minHours`). No incluye los pedidos cuyo cobro resolvió un administrador.',
+  })
+  @ApiOkResponse({ type: EfectivoSinRendirDto })
+  efectivoSinRendir(
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<EfectivoSinRendirDto> {
+    return this.consultas.efectivoSinRendir(distributorId);
+  }
 
   @Permiso('finanzas.gestionar')
   @Post(':id/preview')

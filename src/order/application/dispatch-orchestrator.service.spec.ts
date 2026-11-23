@@ -48,6 +48,7 @@ describe('DispatchOrchestratorService', () => {
   let expressSettings: { obtener: jest.Mock };
   let expressDegrade: { pasarAlRepartoComun: jest.Mock };
   let events: { emit: jest.Mock };
+  let notifications: { sendOfferPushToDriver: jest.Mock };
   let truckGate: {
     choferesQuePuedenRecibir: jest.Mock;
     motivoParaNoRecibir: jest.Mock;
@@ -160,7 +161,7 @@ describe('DispatchOrchestratorService', () => {
       motivoParaNoRecibir: jest.fn().mockResolvedValue(null),
       motivoParaElAdmin: jest.fn().mockResolvedValue(null),
     };
-    const notifications = {
+    notifications = {
       sendOfferPushToDriver: jest.fn().mockResolvedValue(undefined),
     };
     orchestrator = new DispatchOrchestratorService(
@@ -423,6 +424,24 @@ describe('DispatchOrchestratorService', () => {
         expect.objectContaining({ deliveryMode: OrderDeliveryMode.EXPRESS }),
       );
       expect(expressDegrade.pasarAlRepartoComun).not.toHaveBeenCalled();
+    });
+
+    it('la oferta en efectivo lleva el monto a cobrar también en el push FCM', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValue(['moto-1']);
+      const pedido = express({ totalAmount: 22600 });
+      orders.findByIdFull.mockResolvedValue(pedido);
+
+      await orchestrator.offerToNextDriver(pedido);
+
+      expect(notifications.sendOfferPushToDriver).toHaveBeenCalledWith(
+        'moto-1',
+        pedido.orderId,
+        22600,
+      );
+      expect(dispatch.notifyDriverNewOrder).toHaveBeenCalledWith(
+        'moto-1',
+        expect.objectContaining({ cashToCollect: 22600 }),
+      );
     });
 
     it('saltea al que no va en moto', async () => {

@@ -53,7 +53,10 @@ describe('UpdateOrderStatusUseCase', () => {
     startTracking: jest.Mock;
     stopTracking: jest.Mock;
   };
-  let notifications: { sendOrderConfirmation: jest.Mock };
+  let notifications: {
+    sendOrderConfirmation: jest.Mock;
+    sendCashReadyPush: jest.Mock;
+  };
   let orders: {
     findByIdFull: jest.Mock<Promise<Order | null>, [string]>;
     findInProgressOfDeliveries: jest.Mock;
@@ -141,6 +144,7 @@ describe('UpdateOrderStatusUseCase', () => {
     };
     notifications = {
       sendOrderConfirmation: jest.fn().mockResolvedValue(null),
+      sendCashReadyPush: jest.fn().mockResolvedValue('sent'),
     };
     orders = {
       findByIdFull: jest.fn<Promise<Order | null>, [string]>(),
@@ -204,6 +208,8 @@ describe('UpdateOrderStatusUseCase', () => {
     };
     const dataSource = {
       createQueryRunner: jest.fn().mockReturnValue(queryRunner),
+      // Intentos fallidos de la parada (salida del chofer, para el aviso del efectivo).
+      query: jest.fn().mockResolvedValue([]),
     };
     stockDelivery = {
       onOrderDelivered: jest.fn().mockResolvedValue(undefined),
@@ -1170,6 +1176,46 @@ describe('UpdateOrderStatusUseCase', () => {
           useCase.execute('ord-1', OrderStatus.ON_THE_WAY),
         ).resolves.toMatchObject({ status: OrderStatus.ON_THE_WAY });
       }
+    });
+
+    it('en efectivo avisa al cliente cuánto tener listo (C4)', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({
+          status: OrderStatus.ACCEPTED,
+          totalAmount: 22600,
+          depositAmount: 5000,
+          depositPaid: true,
+        }),
+      );
+      await useCase.execute('ord-1', OrderStatus.ON_THE_WAY);
+      await new Promise((r) => setImmediate(r));
+      expect(notifications.sendCashReadyPush).toHaveBeenCalledWith(
+        'cust-1',
+        'ord-1',
+        { monto: 17600, salida: expect.stringMatching(/:0$/) as string },
+      );
+    });
+
+    it('un pedido online o ya cobrado no dispara el aviso del efectivo', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({
+          status: OrderStatus.ACCEPTED,
+          paymentMethod: PaymentMethod.MERCADOPAGO,
+          totalAmount: 22600,
+        }),
+      );
+      await useCase.execute('ord-1', OrderStatus.ON_THE_WAY);
+      await new Promise((r) => setImmediate(r));
+      expect(notifications.sendCashReadyPush).not.toHaveBeenCalled();
+    });
+
+    it('si el aviso del efectivo falla, el pedido sale igual en camino', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ status: OrderStatus.ACCEPTED, totalAmount: 22600 }),
+      );
+      notifications.sendCashReadyPush.mockRejectedValue(new Error('FCM caído'));
+      const result = await useCase.execute('ord-1', OrderStatus.ON_THE_WAY);
+      expect(result.status).toBe(OrderStatus.ON_THE_WAY);
     });
 
     it('onTheWayAt sale del reloj de la base, no del de Node', async () => {

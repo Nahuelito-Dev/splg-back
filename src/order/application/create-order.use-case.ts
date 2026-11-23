@@ -1,3 +1,4 @@
+import { desgloseDelPedido } from '../domain/efectivo-a-cobrar';
 import { bloquearCuentaParaPedido } from '../../common/locks/cuenta-lock';
 import {
   assertSenaConMercadoPago,
@@ -528,7 +529,7 @@ export class CreateOrderUseCase {
           .catch(() => undefined);
       }
 
-      await this.sendConfirmation(savedOrder.orderId, createOrderDto);
+      await this.sendConfirmation(savedOrder, createOrderDto);
 
       // Panel admin en vivo: nuevo pedido. Sólo a los admins DE ESA
       // distribuidora (+ super admin, que ven todas).
@@ -840,14 +841,16 @@ export class CreateOrderUseCase {
   }
 
   private async sendConfirmation(
-    orderId: string,
+    order: Order,
     dto: CreateOrderDto,
   ): Promise<void> {
+    const orderId = order.orderId;
     try {
       await this.notificationService.sendOrderConfirmation(
         dto.customerId,
         orderId,
         dto.notificationToken,
+        desgloseDelPedido(order),
       );
     } catch (error) {
       // Best-effort: errores de notificación no rompen la creación del pedido.

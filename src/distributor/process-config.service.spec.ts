@@ -48,6 +48,14 @@ describe('ProcessConfigService', () => {
     ).resolves.toBe('document_reading');
   });
 
+  it('el aviso de efectivo es del núcleo: no pide módulo habilitado', async () => {
+    acceso.habilitado.mockResolvedValue(false);
+    await expect(service.procesoHabilitado('cash_alerts', 'd-a')).resolves.toBe(
+      'cash_alerts',
+    );
+    expect(acceso.habilitado).not.toHaveBeenCalled();
+  });
+
   it('el 404 de un proceso que no existe va antes que el módulo', async () => {
     await expect(
       service.procesoHabilitado('dispatch', 'd-a'),
@@ -105,7 +113,7 @@ describe('ProcessConfigService', () => {
     expect(v.minOrders).toBe(6);
   });
 
-  it('todos devuelve los seis procesos (el express tiene su propia ruta)', async () => {
-    expect(await service.todos('d1')).toHaveLength(6);
+  it('todos devuelve los siete procesos (el express tiene su propia ruta)', async () => {
+    expect(await service.todos('d1')).toHaveLength(7);
   });
 });

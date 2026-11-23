@@ -10,6 +10,8 @@ import { DeliveryModule } from '../delivery/delivery.module';
 import { EmployeeModule } from '../employee/employee.module';
 import { EgresoDelChoferRule } from './application/egreso-del-chofer.rule';
 import { DriverSettlementCron } from './application/driver-settlement.cron';
+import { DriverCashAlertCron } from './application/driver-cash-alert.cron';
+import { DistributorModule } from '../distributor/distributor.module';
 import { DriverSettlementQueryService } from './application/driver-settlement-query.service';
 import { AttachmentModule } from '../attachment/attachment.module';
 import { DriverSettlementAttachmentOwnerResolver } from './application/driver-settlement-attachment-owner.resolver';
@@ -44,12 +46,14 @@ import { DriverSettlementV2Controller } from './presentation/driver-settlement-v
     RedisModule,
     DeliveryModule, // el perfil de chofer del legajo
     EmployeeModule, // regla de egreso del chofer (CU-181)
+    DistributorModule, // parámetros del aviso de efectivo sin rendir (`cash_alerts`)
   ],
   controllers: [DriverSettlementController, DriverSettlementV2Controller],
   providers: [
     DriverSettlementService,
     DriverSettlementQueryService,
     DriverSettlementCron,
+    DriverCashAlertCron,
     DriverSettlementAttachmentOwnerResolver,
     EgresoDelChoferRule,
   ],

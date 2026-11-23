@@ -2,6 +2,7 @@ import type { Point } from 'typeorm';
 import { coordenadasDePunto } from '../common/geo/punto';
 import { Order, OrderStatus, PaymentType } from './entities/order.entity';
 import { esEditable } from './domain/order-editable';
+import { efectivoACobrar } from './domain/efectivo-a-cobrar';
 import type { User } from '../users/entities/user.entity';
 import {
   CustomerDeOrderDto,
@@ -167,6 +168,15 @@ export class OrderMapper {
     // Saldo a cobrar al entregar = total menos la seña YA paga.
     dto.remainingBalance =
       Number(order.totalAmount) - (order.depositPaid ? dto.depositAmount : 0);
+
+    dto.cashToCollect = efectivoACobrar({
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      status: order.status,
+      total: Number(order.totalAmount),
+      depositAmount: dto.depositAmount,
+      depositPaid: dto.depositPaid,
+    });
 
     // Payment Method Mapping
     dto.paymentMethod = this.mapPaymentType(order.paymentType);

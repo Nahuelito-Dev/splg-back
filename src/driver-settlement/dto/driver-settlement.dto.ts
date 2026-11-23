@@ -262,3 +262,51 @@ export class DriverSettlementDetailDto extends DriverSettlementResponseDto {
   @ApiProperty({ type: [SettlementExpenseResponseDto] })
   expenses!: SettlementExpenseResponseDto[];
 }
+
+export class EfectivoSinRendirDeChoferDto {
+  @ApiProperty({ format: 'uuid' }) deliveryId!: string;
+  @ApiProperty({ type: String, nullable: true, example: 'Juan Pérez' })
+  driverName!: string | null;
+  @ApiProperty({
+    example: 3,
+    description: 'Pedidos en efectivo entregados que ninguna rendición tomó',
+  })
+  orders!: number;
+  @ApiProperty({
+    example: 54000,
+    description:
+      'Lo que cobró el chofer en esos pedidos (total menos la seña ya paga), calculado en el back',
+  })
+  amount!: number;
+  @ApiProperty({ description: 'Entrega del pedido más viejo sin rendir' })
+  oldestDeliveredAt!: Date;
+  @ApiProperty({
+    example: 30,
+    description: 'Horas desde esa entrega (redondeadas hacia abajo)',
+  })
+  ageHours!: number;
+  @ApiProperty({
+    description:
+      'Lleva sin rendir más horas que `minHours`: es lo que dispara el aviso del cierre del día',
+  })
+  overdue!: boolean;
+}
+
+export class EfectivoSinRendirDto {
+  @ApiProperty({ type: [EfectivoSinRendirDeChoferDto] })
+  items!: EfectivoSinRendirDeChoferDto[];
+  @ApiProperty({ example: 108000 }) totalAmount!: number;
+  @ApiProperty({ example: 6 }) totalOrders!: number;
+  @ApiProperty({
+    example: 24,
+    description:
+      'Antigüedad (horas) configurada para el aviso (`cash_alerts.minHours`)',
+  })
+  minHours!: number;
+  @ApiProperty({
+    example: true,
+    description:
+      'El aviso del cierre del día está encendido (`cash_alerts.enabled`); si es `false` el panel no dice que se avisa',
+  })
+  enabled!: boolean;
+}

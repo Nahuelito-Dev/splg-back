@@ -4,6 +4,7 @@ import { FcmPort } from '../firebase/ports/fcm.port';
 import { CustomersService } from '../customer/customer.service';
 import { DeliveryService } from '../delivery/delivery.service';
 import { OrderLookupService } from '../order/lookup/order-lookup.service';
+import { RedisService } from '../redis/redis.service';
 
 /**
  * El servicio de notificaciones arma los mensajes y los manda por FcmPort. Los
@@ -23,7 +24,12 @@ describe('NotificationsService', () => {
     saveNotificationToken: jest.Mock;
   };
   let sendToToken: jest.Mock;
+  const mensajeEnviado = () =>
+    (
+      sendToToken.mock.calls[0] as [string, { notification: { body: string } }]
+    )[1];
   let orders: { findRef: jest.Mock };
+  let redis: { setIfAbsent: jest.Mock; del: jest.Mock };
 
   beforeEach(() => {
     customers = {
@@ -38,12 +44,208 @@ describe('NotificationsService', () => {
     sendToToken = jest.fn().mockResolvedValue('msg-1');
     orders = { findRef: jest.fn().mockResolvedValue({ customerId: 'c1' }) };
 
+    redis = {
+      setIfAbsent: jest.fn().mockResolvedValue(true),
+      del: jest.fn().mockResolvedValue(undefined),
+    };
+
     service = new NotificationsService(
       customers as unknown as CustomersService,
       deliveries as unknown as DeliveryService,
       { sendToToken } as unknown as FcmPort,
       orders as unknown as OrderLookupService,
+      redis as unknown as RedisService,
     );
+  });
+
+  const salida = (monto: number, salidaId = 'd1:0') => ({
+    monto,
+    salida: salidaId,
+  });
+
+  describe('avisos del efectivo (C4)', () => {
+    it('la confirmación del pedido en efectivo dice cuánto se paga al recibirlo', async () => {
+      customers.findNotificationToken.mockResolvedValue({
+        esCliente: true,
+        token: 'tok',
+      });
+
+      await service.sendOrderConfirmation('c1', 'order-12345678', undefined, {
+        monto: 12500,
+        senaDescontada: 0,
+      });
+
+      const mensaje = mensajeEnviado();
+      expect(mensaje.notification.body).toContain(
+        'Pagás $12.500 en efectivo cuando te lo entreguen.',
+      );
+    });
+
+    it('la confirmación de una reserva con seña dice que ya está descontada', async () => {
+      customers.findNotificationToken.mockResolvedValue({
+        esCliente: true,
+        token: 'tok',
+      });
+
+      await service.sendOrderConfirmation('c1', 'order-12345678', undefined, {
+        monto: 17600,
+        senaDescontada: 5000,
+      });
+
+      expect(mensajeEnviado().notification.body).toContain(
+        'Pagás $17.600 en efectivo cuando te lo entreguen (ya descontada la seña de $5.000).',
+      );
+    });
+
+    it('la confirmación de un pedido que no es en efectivo no menciona efectivo', async () => {
+      customers.findNotificationToken.mockResolvedValue({
+        esCliente: true,
+        token: 'tok',
+      });
+
+      await service.sendOrderConfirmation(
+        'c1',
+        'order-12345678',
+        undefined,
+        null,
+      );
+
+      const mensaje = mensajeEnviado();
+      expect(mensaje.notification.body).not.toContain('efectivo');
+    });
+
+    it('al salir el chofer avisa «Tené listos $X» con el evento CASH_READY', async () => {
+      customers.findNotificationToken.mockResolvedValue({ token: 'tok' });
+
+      const r = await service.sendCashReadyPush('c1', 'order-1', salida(12000));
+
+      expect(r).toBe('sent');
+      expect(mensajeEnviado().notification.body).toBe(
+        'Tené listos $12.000 en efectivo.',
+      );
+      expect(sendToToken).toHaveBeenCalledWith(
+        'tok',
+        expect.objectContaining({
+          data: { event: 'CASH_READY', orderId: 'order-1' },
+        }),
+      );
+    });
+
+    it('con un monto no redondo sugiere juntar el monto exacto', async () => {
+      customers.findNotificationToken.mockResolvedValue({ token: 'tok' });
+
+      await service.sendCashReadyPush('c1', 'order-1', salida(12345.5));
+
+      const mensaje = mensajeEnviado();
+      expect(mensaje.notification.body).toContain('$12.345,50');
+      expect(mensaje.notification.body).toContain('monto exacto');
+    });
+
+    it('no repite el aviso del mismo pedido', async () => {
+      redis.setIfAbsent.mockResolvedValue(false);
+
+      const r = await service.sendCashReadyPush('c1', 'order-1', salida(12000));
+
+      expect(r).toBe('duplicate');
+      expect(sendToToken).not.toHaveBeenCalled();
+    });
+
+    it('la clave de dedupe lleva pedido, monto y salida: otro monto u otra salida avisa de nuevo', async () => {
+      customers.findNotificationToken.mockResolvedValue({ token: 'tok' });
+
+      await service.sendCashReadyPush('c1', 'order-1', salida(12000));
+      await service.sendCashReadyPush('c1', 'order-1', salida(13000));
+      await service.sendCashReadyPush('c1', 'order-1', salida(12000, 'd1:1'));
+
+      expect(redis.setIfAbsent.mock.calls.map((c: unknown[]) => c[0])).toEqual([
+        'aviso:efectivo-listo:order-1:12000:d1:0',
+        'aviso:efectivo-listo:order-1:13000:d1:0',
+        'aviso:efectivo-listo:order-1:12000:d1:1',
+      ]);
+      expect(sendToToken).toHaveBeenCalledTimes(3);
+    });
+
+    it('si Redis no responde avisa igual y lo deja en el log', async () => {
+      customers.findNotificationToken.mockResolvedValue({ token: 'tok' });
+      redis.setIfAbsent.mockRejectedValue(new Error('Redis caído'));
+
+      const r = await service.sendCashReadyPush('c1', 'order-1', salida(12000));
+
+      expect(r).toBe('sent');
+      expect(sendToToken).toHaveBeenCalledTimes(1);
+      expect(redis.del).not.toHaveBeenCalled();
+    });
+
+    it('el push de «en camino» de un pedido en efectivo suma el efectivo en un solo aviso', async () => {
+      customers.findNotificationToken.mockResolvedValue({ token: 'tok' });
+
+      await service.sendOrderNoticePush(
+        'c1',
+        'order-1',
+        {
+          title: 'Tu pedido está en camino',
+          body: 'El chofer salió con tu pedido.',
+          event: 'ORDER_TRIP_STARTED',
+        },
+        salida(12000),
+      );
+
+      expect(sendToToken).toHaveBeenCalledTimes(1);
+      expect(mensajeEnviado().notification.body).toBe(
+        'El chofer salió con tu pedido. Tené listos $12.000 en efectivo.',
+      );
+    });
+
+    it('si el aviso del efectivo ya salió, «en camino» sale sin repetirlo', async () => {
+      customers.findNotificationToken.mockResolvedValue({ token: 'tok' });
+      redis.setIfAbsent.mockResolvedValue(false);
+
+      await service.sendOrderNoticePush(
+        'c1',
+        'order-1',
+        { title: 'Tu pedido está en camino', body: 'Salió.', event: 'X' },
+        salida(12000),
+      );
+
+      expect(mensajeEnviado().notification.body).toBe('Salió.');
+    });
+
+    it('si el push combinado no sale libera la marca del efectivo', async () => {
+      customers.findNotificationToken.mockResolvedValue({ token: 'tok' });
+      sendToToken.mockRejectedValue(new Error('FCM caído'));
+
+      await service.sendOrderNoticePush(
+        'c1',
+        'order-1',
+        { title: 't', body: 'b', event: 'X' },
+        salida(12000),
+      );
+
+      expect(redis.del).toHaveBeenCalledWith(
+        'aviso:efectivo-listo:order-1:12000:d1:0',
+      );
+    });
+
+    it('si no salió (sin token) libera la marca para poder reintentar', async () => {
+      customers.findNotificationToken.mockResolvedValue({ token: null });
+
+      const r = await service.sendCashReadyPush('c1', 'order-1', salida(12000));
+
+      expect(r).toBe('no_token');
+      expect(redis.del).toHaveBeenCalledWith(
+        'aviso:efectivo-listo:order-1:12000:d1:0',
+      );
+    });
+
+    it('si FCM falla no lanza y libera la marca', async () => {
+      customers.findNotificationToken.mockResolvedValue({ token: 'tok' });
+      sendToToken.mockRejectedValue(new Error('FCM caído'));
+
+      await expect(
+        service.sendCashReadyPush('c1', 'order-1', salida(12000)),
+      ).resolves.toBe('failed');
+      expect(redis.del).toHaveBeenCalled();
+    });
   });
 
   describe('sendOfferPushToDriver', () => {
@@ -56,6 +258,28 @@ describe('NotificationsService', () => {
         'fcm-token-driver',
         expect.objectContaining({
           data: { event: 'NEW_ORDER', orderId: 'order-99' },
+        }),
+      );
+    });
+
+    it('la oferta de un pedido en efectivo trae el monto a cobrar en el push', async () => {
+      deliveries.findNotificationToken.mockResolvedValue('fcm-token-driver');
+
+      await service.sendOfferPushToDriver('driver-1', 'order-99', 22600);
+
+      expect(sendToToken).toHaveBeenCalledWith(
+        'fcm-token-driver',
+        expect.objectContaining({
+          data: {
+            event: 'NEW_ORDER',
+            orderId: 'order-99',
+            cashToCollect: '22600',
+          },
+          notification: expect.objectContaining({
+            body: expect.stringContaining(
+              'Se cobra en efectivo: $22.600',
+            ) as string,
+          }) as unknown,
         }),
       );
     });

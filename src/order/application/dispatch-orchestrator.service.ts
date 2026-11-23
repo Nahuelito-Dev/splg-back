@@ -1,4 +1,5 @@
 import { esperaPagoOnline } from '../domain/espera-pago-online';
+import { efectivoDelPedido } from '../domain/efectivo-a-cobrar';
 import { coordenadasDePunto } from '../../common/geo/punto';
 import { Injectable, Logger } from '@nestjs/common';
 import {
@@ -251,13 +252,18 @@ export class DispatchOrchestratorService {
       orderId: order.orderId,
       totalAmount: fresco.totalAmount,
       paymentMethod: fresco.paymentMethod,
+      cashToCollect: efectivoDelPedido(fresco),
       expiresAt: expiresAt.toISOString(),
       items: fresco.items,
     });
 
     // Push FCM complementario: si el chofer tiene la app cerrada/en background,
     // el socket no llega pero el push sí. Best-effort, no bloquea el dispatch.
-    void this.notifications.sendOfferPushToDriver(candidate, order.orderId);
+    void this.notifications.sendOfferPushToDriver(
+      candidate,
+      order.orderId,
+      efectivoDelPedido(fresco),
+    );
 
     this.logger.log(
       `Pedido ${order.orderId} ofrecido a chofer ${candidate} (vence ${expiresAt.toISOString()})`,
@@ -330,10 +336,15 @@ export class DispatchOrchestratorService {
       deliveryMode: OrderDeliveryMode.EXPRESS,
       totalAmount: fresco.totalAmount,
       paymentMethod: fresco.paymentMethod,
+      cashToCollect: efectivoDelPedido(fresco),
       expiresAt: expiresAt.toISOString(),
       items: fresco.items,
     });
-    void this.notifications.sendOfferPushToDriver(candidate, fresco.orderId);
+    void this.notifications.sendOfferPushToDriver(
+      candidate,
+      fresco.orderId,
+      efectivoDelPedido(fresco),
+    );
 
     this.logger.log(
       `Pedido express ${fresco.orderId} ofrecido a la moto ${candidate} (vence ${expiresAt.toISOString()})`,

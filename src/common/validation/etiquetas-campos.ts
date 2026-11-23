@@ -114,6 +114,8 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   staleDays: 'Días sin comprar para dejar de ofrecer',
   cutoffHour: 'Hora de corte',
   cutoffMinute: 'Minuto de corte',
+  closeHour: 'Hora de cierre',
+  minHours: 'Antigüedad mínima (horas)',
   autoPropose: 'Proponer automáticamente',
   autoConfirm: 'Confirmar automáticamente',
   reviewMinutes: 'Minutos de revisión antes de confirmar',
