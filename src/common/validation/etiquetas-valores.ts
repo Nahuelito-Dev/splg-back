@@ -65,6 +65,10 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   'reason:wrong_address': 'La dirección no es correcta',
   'reason:no_access': 'No se pudo llegar al domicilio',
   'reason:other': 'Otro motivo',
+  // Entrega fallida y nueva visita (C5).
+  'reason:address_closed': 'El domicilio estaba cerrado',
+  'status:awaiting_admin': 'Espera la decisión del administrador',
+  'status:all': 'Todos',
   'role:delivery': 'Chofer',
   // La cuenta corriente es femenina: «una cuenta activa / bloqueada / cerrada».
   'accountStatus:active': 'Activa',

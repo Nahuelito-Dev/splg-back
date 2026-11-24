@@ -68,6 +68,7 @@ export const ETIQUETAS_ENTIDADES: Readonly<Record<string, string>> = {
   Order: 'Pedido',
   OrderAddressChange: 'Cambio de dirección del pedido',
   OrderItem: 'Renglón de pedido',
+  OrderFailedVisit: 'Visita fallida',
   Payment: 'Pago',
   Rating: 'Calificación',
   RepurchaseInvitation: 'Invitación de recompra',

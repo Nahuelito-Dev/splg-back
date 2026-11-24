@@ -9,6 +9,7 @@ import {
   sqlPedidoEnLoteVivo,
   sqlPedidoRetenidoPorAgrupacion,
 } from './lote-de-recorrido.sql';
+import { sqlPedidoEsperaNuevaVisita } from './nueva-visita.sql';
 import {
   inicioDelDiaArgentino,
   rangoDelDiaArgentino,
@@ -207,7 +208,7 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
         deliveryId: IsNull(),
         orderId: Raw(
           (pedido) =>
-            `NOT ${sqlPedidoEnLoteVivo(pedido)} AND NOT ${sqlPedidoRetenidoPorAgrupacion(pedido)} AND NOT ${sqlPedidoEnHojaDeRuta(pedido)}`,
+            `NOT ${sqlPedidoEnLoteVivo(pedido)} AND NOT ${sqlPedidoRetenidoPorAgrupacion(pedido)} AND NOT ${sqlPedidoEnHojaDeRuta(pedido)} AND NOT ${sqlPedidoEsperaNuevaVisita(pedido)}`,
         ),
       },
       select: { orderId: true, distributorId: true },
@@ -229,10 +230,11 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
       // Ni los de un lote de recorrido vivo, ni los que M4 retiene hasta su
       // margen, ni las paradas de una hoja de ruta en borrador o confirmada (F34):
       // se excluyen en la consulta para que no llenen la página (el
-      // barrido de M1 toma de a 50) ni el pool los deje tomar sueltos.
+      // barrido de M1 toma de a 50) ni el pool los deje tomar sueltos. Tampoco
+      // los que esperan su nueva visita después de una entrega fallida (C5).
       orderId: Raw(
         (pedido) =>
-          `NOT ${sqlPedidoEnLoteVivo(pedido)} AND NOT ${sqlPedidoRetenidoPorAgrupacion(pedido)} AND NOT ${sqlPedidoEnHojaDeRuta(pedido)}`,
+          `NOT ${sqlPedidoEnLoteVivo(pedido)} AND NOT ${sqlPedidoRetenidoPorAgrupacion(pedido)} AND NOT ${sqlPedidoEnHojaDeRuta(pedido)} AND NOT ${sqlPedidoEsperaNuevaVisita(pedido)}`,
       ),
       // Ni los que Mercado Pago retuvo por una alerta de fraude.
       paymentFraudHold: false,

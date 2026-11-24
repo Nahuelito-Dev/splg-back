@@ -64,7 +64,10 @@ import { RouteSheetCloseService } from '../application/route-sheet-close.service
 import { RouteSheetExecutionQueryService } from '../application/route-sheet-execution-query.service';
 import { RouteSheetInProgressEditingService } from '../application/route-sheet-in-progress-editing.service';
 import { RouteSheetStartService } from '../application/route-sheet-start.service';
-import { RouteSheetStopsService } from '../application/route-sheet-stops.service';
+import {
+  RouteSheetStopsService,
+  resultadoParaLaHoja,
+} from '../application/route-sheet-stops.service';
 import {
   CloseRouteSheetDto,
   CloseRouteSheetResponseDto,
@@ -585,19 +588,21 @@ export class RouteSheetsController {
     description: `${NOT_FOUND}; o el pedido no es parada activa (ROUTE_STOP_NOT_FOUND)`,
   })
   @ApiConflictResponse({ description: STOP_CONFLICT })
-  noEntregada(
+  async noEntregada(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('orderId', ParseUUIDPipe) orderId: string,
     @Body() body: FailedStopDto,
     @CurrentUser('user_id') userId: string,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<RouteSheetStopActionResponseDto> {
-    return this.stops.noEntregada(
-      distributorId,
-      id,
-      orderId,
-      { userId, esChofer: false },
-      body,
+    return resultadoParaLaHoja(
+      await this.stops.noEntregada(
+        distributorId,
+        id,
+        orderId,
+        { userId, esChofer: false },
+        body,
+      ),
     );
   }
 

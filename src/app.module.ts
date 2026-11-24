@@ -51,6 +51,7 @@ import { CylinderModule } from './cylinder/cylinder.module';
 import { CylinderRecoveryModule } from './cylinder/recovery/cylinder-recovery.module';
 import { FleetModule } from './fleet/fleet.module';
 import { RouteBatchModule } from './route-batch/route-batch.module';
+import { FailedVisitModule } from './failed-visit/failed-visit.module';
 import { FleetExpenseModule } from './fleet-expense/fleet-expense.module';
 import { InsuranceModule } from './insurance/insurance.module';
 import { CartModule } from './cart/cart.module';
@@ -279,6 +280,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     CylinderRecoveryModule,
     FleetModule,
     RouteBatchModule,
+    FailedVisitModule, // entrega fallida y nueva visita (C5)
     FleetExpenseModule,
     InsuranceModule,
     CartModule,

@@ -127,6 +127,7 @@ export class VencimientoSinChoferService {
           AND NOT o."payment_fraud_hold"
           AND (o."paymentMethod" <> 'mercadopago' OR o."paymentStatus" = 'paid' OR o."deposit_paid")
           AND NOT ${sqlPedidoEnLoteVivo('o.order_id')}
+          AND o."revisit_status" IS DISTINCT FROM 'awaiting_admin'
           AND ${SQL_INICIO_DE_LA_ESPERA} + make_interval(mins => $2) <= $3
         ORDER BY ${SQL_INICIO_DE_LA_ESPERA} ASC, o."order_id" ASC
         LIMIT ${VENCIDOS_POR_TIC}`,
@@ -146,6 +147,8 @@ export class VencimientoSinChoferService {
     minutos: number,
     ahora: Date,
   ): Promise<boolean> {
+    // Entrega fallida que espera la decisión del admin (C5): no vence sola.
+    if (locked.revisitStatus === 'awaiting_admin') return false;
     const franja: Array<{ startTime: string | null }> = locked.timeSlotId
       ? await manager.query(
           `SELECT "startTime" FROM "time_slot" WHERE "time_slot_id" = $1`,

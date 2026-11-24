@@ -226,13 +226,31 @@ export function diaDeReprogramacion(
   cal: CalendarioLaboral = CALENDARIO_POR_OMISION,
   horizonte = HORIZONTE_DE_REPROGRAMACION,
 ): string | null {
+  return diasDeReprogramacion(desde, planes, nowMs, cal, horizonte)[0] ?? null;
+}
+
+/**
+ * Todos los días que sirven para reprogramar (la misma regla que
+ * [diaDeReprogramacion]), en orden: si el primero no tiene franja con cupo, la
+ * nueva visita (C5) busca en los siguientes.
+ */
+export function diasDeReprogramacion(
+  desde: string,
+  planes: ReadonlyMap<string, PlanificacionDelDia>,
+  nowMs: number,
+  cal: CalendarioLaboral = CALENDARIO_POR_OMISION,
+  horizonte = HORIZONTE_DE_REPROGRAMACION,
+): string[] {
+  const dias: string[] = [];
   const hasta = sumarDias(desde, horizonte);
   for (let dia = sumarDias(desde, 1); dia <= hasta; dia = sumarDias(dia, 1)) {
     if (!esDiaHabil(dia, cal)) continue;
     const plan = planes.get(dia);
-    if (!plan || (plan.status === 'open' && plan.cutoffMs > nowMs)) return dia;
+    if (!plan || (plan.status === 'open' && plan.cutoffMs > nowMs)) {
+      dias.push(dia);
+    }
   }
-  return null;
+  return dias;
 }
 
 /**

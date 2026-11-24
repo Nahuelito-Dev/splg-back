@@ -75,6 +75,15 @@ export enum PaymentStatus {
   `"payment_fraud_released_at" IS NULL OR ("payment_fraud_released_by" IS NOT NULL AND char_length(btrim("payment_fraud_released_reason")) >= 10)`,
 )
 @Check('CHK_order_intentos_codigo', `"delivery_code_attempts" >= 0`)
+@Check('CHK_order_visitas_fallidas', `"failed_visit_count" >= 0`)
+@Check(
+  'CHK_order_nueva_visita_estado',
+  `"revisit_status" IS NULL OR "revisit_status" IN ('proposed', 'confirmed', 'awaiting_admin')`,
+)
+@Check(
+  'CHK_order_nueva_visita_con_visita_fallida',
+  `"revisit_status" IS NULL OR ("failed_visit_count" >= 1 AND "last_failed_visit_at" IS NOT NULL)`,
+)
 @Check(
   'CHK_order_montos',
   `"totalAmount" >= 0 AND "subtotal_items" >= 0 AND "zone_surcharge_amount" >= 0 AND "express_surcharge_amount" >= 0 AND "payment_surcharge_amount" >= 0 AND "deposit_amount" >= 0`,
@@ -521,6 +530,37 @@ export class Order {
     nullable: true,
   })
   deliveryConfirmedByRole!: string | null;
+
+  /**
+   * Visitas en las que no se pudo entregar (C5). No cuenta el reintento dentro
+   * de la misma hoja de ruta. Al llegar a `MAX_VISITAS_FALLIDAS` el sistema
+   * deja de reprogramar y decide el admin. El detalle está en `order_failed_visit`.
+   */
+  @Column({ name: 'failed_visit_count', type: 'int', default: 0 })
+  failedVisitCount!: number;
+
+  /**
+   * Nueva visita después de una entrega fallida: `proposed` (la propuso el
+   * sistema; si el cliente no contesta, queda), `confirmed` (el cliente la
+   * aceptó o eligió otra, la acordó el chofer o la fijó el admin) o
+   * `awaiting_admin` (decide el admin). El día y la franja son los del pedido
+   * (`scheduled_date`, `time_slot_id`). Mientras el pedido esté pendiente sin
+   * chofer, el despacho no lo ofrece hasta el inicio de esa franja.
+   */
+  @Column({
+    name: 'revisit_status',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+  })
+  revisitStatus!: string | null;
+
+  /**
+   * Cuándo fue la última visita fallida. Las ofertas de despacho anteriores no
+   * cuentan para la nueva visita: el mismo chofer puede volver a recibirla.
+   */
+  @Column({ name: 'last_failed_visit_at', type: 'timestamptz', nullable: true })
+  lastFailedVisitAt!: Date | null;
 
   @Column({
     name: 'receiver_name',

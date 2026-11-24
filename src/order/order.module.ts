@@ -192,6 +192,7 @@ import { VencimientoSinChoferService } from './application/vencimiento-sin-chofe
     QuoteOrderUseCase,
     CashCollectionUseCase,
     DispatchOrchestratorService,
+    ReleaseOrderUseCase, // la entrega fallida libera al chofer por el camino único (C5)
   ],
 })
 export class OrderModule {}

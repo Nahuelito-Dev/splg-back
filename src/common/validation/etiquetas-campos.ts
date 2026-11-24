@@ -354,6 +354,7 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   lat_lang: 'Coordenadas',
   latitude: 'Latitud',
   accuracyMeters: 'Precisión del GPS',
+  agreed: 'Acuerdo con el cliente',
   leadTimeDays: 'Días de anticipación',
   legajo: 'Legajo',
   legal_name: 'Razón social',

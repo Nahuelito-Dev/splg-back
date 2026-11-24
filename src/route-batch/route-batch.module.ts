@@ -9,6 +9,7 @@ import { RouteBatch } from '../order/entities/route-batch.entity';
 import { RoutePlan } from '../order/entities/route-plan.entity';
 import { RouteBatchOffer } from '../order/entities/route-batch-offer.entity';
 import { RouteBatchStop } from '../order/entities/route-batch-stop.entity';
+import { FailedVisitCoreModule } from '../failed-visit/failed-visit-core.module';
 import { OrderModule } from '../order/order.module';
 import { RedisModule } from '../redis/redis.module';
 import { DriverRouteBatchesController } from './driver-route-batches.controller';
@@ -84,6 +85,7 @@ import { RoutePlanningHoliday } from '../order/entities/route-planning-holiday.e
     S3Module, // el logo de la distribuidora en el PDF de la hoja
     TruckLoadModule, // la carga abierta del chofer al iniciar la hoja (E4)
     NotificationsModule, // push al cliente con su franja estimada (E5)
+    FailedVisitCoreModule, // historial de visitas fallidas y nueva visita (C5)
   ],
   controllers: [
     RouteBatchController,
@@ -129,5 +131,7 @@ import { RoutePlanningHoliday } from '../order/entities/route-planning-holiday.e
     RouteSheetExecutionQueryService,
     RoutePlanningCalendarService, // días hábiles y feriados
   ],
+  // El «No pude entregar» único (C5) delega acá las paradas de una hoja en curso.
+  exports: [RouteSheetStopsService],
 })
 export class RouteBatchModule {}

@@ -21,6 +21,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import {
   And,
   DataSource,
+  EntityManager,
   LessThan,
   MoreThanOrEqual,
   Repository,
@@ -1239,26 +1240,45 @@ export class OrderService {
    * (idempotente). Otro estado, u otro chofer: 409.
    */
   async postergarEntrega(orderId: string, deliveryId: string): Promise<Order> {
-    const order = await this.dataSource.transaction(async (manager) => {
-      const locked = await manager
-        .createQueryBuilder(Order, 'ord')
-        .setLock('pessimistic_write', undefined, ['ord'])
-        .where('ord.orderId = :id', { id: orderId })
-        .getOne();
-      if (!locked) throw new NotFoundException('Pedido no encontrado');
-      if (locked.deliveryId !== deliveryId) {
-        throw new ConflictException('El pedido ya no es de este chofer');
-      }
-      if (locked.status === OrderStatus.ACCEPTED) return locked;
-      if (locked.status !== OrderStatus.ON_THE_WAY) {
-        throw new ConflictException('El pedido ya no está en camino');
-      }
-      locked.items = await manager.find(OrderItem, {
-        where: { orderId: locked.orderId },
-      });
-      transitionOrder(locked, OrderStatus.ACCEPTED);
-      return manager.save(locked);
+    const order = await this.dataSource.transaction((manager) =>
+      this.postergarEntregaEn(manager, orderId, deliveryId),
+    );
+    await this.avisarPostergada(order, deliveryId);
+    return order;
+  }
+
+  /**
+   * `postergarEntrega` dentro de la transacción de quien llama (la parada y la
+   * visita fallida se escriben en la misma): sin avisos, que van después del
+   * commit con `avisarPostergada`.
+   */
+  async postergarEntregaEn(
+    manager: EntityManager,
+    orderId: string,
+    deliveryId: string,
+  ): Promise<Order> {
+    const locked = await manager
+      .createQueryBuilder(Order, 'ord')
+      .setLock('pessimistic_write', undefined, ['ord'])
+      .where('ord.orderId = :id', { id: orderId })
+      .getOne();
+    if (!locked) throw new NotFoundException('Pedido no encontrado');
+    if (locked.deliveryId !== deliveryId) {
+      throw new ConflictException('El pedido ya no es de este chofer');
+    }
+    if (locked.status === OrderStatus.ACCEPTED) return locked;
+    if (locked.status !== OrderStatus.ON_THE_WAY) {
+      throw new ConflictException('El pedido ya no está en camino');
+    }
+    locked.items = await manager.find(OrderItem, {
+      where: { orderId: locked.orderId },
     });
+    transitionOrder(locked, OrderStatus.ACCEPTED);
+    return manager.save(locked);
+  }
+
+  /** Los avisos de un pedido postergado, con la transacción ya confirmada. */
+  async avisarPostergada(order: Order, deliveryId: string): Promise<void> {
     try {
       const chofer = await this.deliveries.findById(deliveryId);
       if (chofer) this.dispatch.stopTracking(chofer.userId);
@@ -1269,10 +1289,9 @@ export class OrderService {
       );
     } catch (error) {
       this.logger.warn(
-        `Pedido ${orderId} postergado, pero falló un aviso: ${errorMessage(error)}`,
+        `Pedido ${order.orderId} postergado, pero falló un aviso: ${errorMessage(error)}`,
       );
     }
-    return order;
   }
 
   /**
@@ -1284,8 +1303,12 @@ export class OrderService {
    * liberado de la hoja); si no, 409. La auditoría de la base registra el
    * cambio de fecha y de franja con el actor de la transacción.
    */
-  async reprogramarEntrega(orderId: string, fecha: string): Promise<Order> {
-    return this.dataSource.transaction(async (manager) => {
+  async reprogramarEntrega(
+    orderId: string,
+    fecha: string,
+    enTransaccion?: EntityManager,
+  ): Promise<Order> {
+    const reprogramar = async (manager: EntityManager): Promise<Order> => {
       const locked = await manager
         .createQueryBuilder(Order, 'ord')
         .setLock('pessimistic_write', undefined, ['ord'])
@@ -1305,7 +1328,11 @@ export class OrderService {
       locked.scheduledDate = fecha;
       locked.timeSlotId = null;
       return locked;
-    });
+    };
+    // Con la transacción de quien llama (la salida de la hoja y la visita fallida van juntas).
+    return enTransaccion
+      ? reprogramar(enTransaccion)
+      : this.dataSource.transaction(reprogramar);
   }
 
   /** El pedido releído; si la relectura falla, el recién asignado (ya confirmado). */

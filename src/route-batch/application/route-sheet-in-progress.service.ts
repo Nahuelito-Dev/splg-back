@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { RoleType } from '../../common/constants/role-type.enum';
 import { errorMessage } from '../../common/errors/error-message';
 import { Delivery } from '../../delivery/entities/delivery.entity';
@@ -17,8 +17,8 @@ import { RouteBatchKind, RouteBatchStatus } from '../domain/route-batch.enums';
 import {
   HORIZONTE_DE_REPROGRAMACION,
   PlanificacionDelDia,
-  diaDeReprogramacion,
   diaHabilSiguiente,
+  diasDeReprogramacion,
 } from '../domain/route-sheet-execution';
 import { idCortoDePedido } from '../../common/events/aviso-al-admin';
 import { versionVigente } from '../domain/route-sheet-rules';
@@ -47,6 +47,20 @@ import {
 export type RecalculoEnCurso = CalculoEnCurso & {
   postergado: FranjaEstimada | null;
 };
+
+/**
+ * Cómo se reprograma un pedido que salió de la hoja (ver
+ * `RouteSheetInProgress.reprogramar`), calculado antes de escribir.
+ */
+export interface PlanDeReprogramacion {
+  /** El día nuevo; `null`: queda esperando al admin con la fecha que tenía. */
+  fecha: string | null;
+  /** Los días que sirven, en orden (el primero es `fecha`): la nueva visita (C5) busca cupo en ellos. */
+  dias: string[];
+  /** La parada queda esperando al admin (`needs_reschedule`). */
+  esperaAlAdmin: boolean;
+  causa: 'planificacion' | 'sin_dia' | 'apagada' | 'sin_franjas' | 'error';
+}
 
 /** Quién opera la parada: el chofer de la hoja o un admin. */
 export interface QuienOpera {
@@ -151,8 +165,48 @@ export class RouteSheetInProgress {
   async reprogramar(
     sheet: RouteBatch,
     orderId: string,
+    { avisarAlCliente = true }: { avisarAlCliente?: boolean } = {},
   ): Promise<string | null> {
-    const corto = idCortoDePedido(orderId);
+    const plan = await this.planDeReprogramacion(sheet, orderId);
+    try {
+      if (plan.fecha) {
+        const order = await this.orders.reprogramarEntrega(orderId, plan.fecha);
+        if (avisarAlCliente) {
+          await this.notifier
+            .reprogramadoAlCliente(order.customerId, orderId, plan.fecha)
+            .catch(() => undefined);
+        }
+      }
+      if (plan.esperaAlAdmin) await this.esperarAlAdmin(sheet, orderId);
+    } catch (error) {
+      this.logger.warn(
+        `Hoja ${sheet.batchId}: no se pudo reprogramar el pedido ${orderId}: ${errorMessage(error)}`,
+      );
+      const fallida: PlanDeReprogramacion = {
+        fecha: null,
+        dias: [],
+        esperaAlAdmin: true,
+        causa: 'error',
+      };
+      await this.esperarAlAdmin(sheet, orderId);
+      this.avisarReprogramacion(sheet, orderId, fallida, null);
+      return null;
+    }
+    this.avisarReprogramacion(sheet, orderId, plan, plan.fecha);
+    return plan.fecha;
+  }
+
+  /**
+   * El día al que se reprograma (ver [reprogramar]), sin escribir nada: con la
+   * planificación encendida, los días con la planificación abierta (`dias`, el
+   * primero es `fecha`); apagada o sin jornada, el día hábil siguiente (y los
+   * hábiles que siguen), esperando al admin. Si no se puede calcular, espera al
+   * admin (`causa: error`).
+   */
+  async planDeReprogramacion(
+    sheet: RouteBatch,
+    orderId: string,
+  ): Promise<PlanDeReprogramacion> {
     const planDate = sheet.planDate as string;
     try {
       const encendida = await this.planificacionEncendida(sheet.distributorId);
@@ -162,7 +216,7 @@ export class RouteSheetInProgress {
         planDate,
       );
       if (encendida && conJornada) {
-        const fecha = diaDeReprogramacion(
+        const dias = diasDeReprogramacion(
           planDate,
           await this.planesSiguientes(sheet),
           Date.now(),
@@ -170,65 +224,147 @@ export class RouteSheetInProgress {
         );
         // Ningún día con la planificación abierta en el horizonte: no se le
         // inventa una fecha; espera al admin con la fecha que tenía.
-        if (!fecha) {
-          await this.esperarAlAdmin(sheet, orderId);
-          this.notifier.aLaBandeja(sheet.distributorId, {
-            kind: 'route_sheet_reschedule_needs_admin',
-            title: 'Pedido no entregado: reprogramalo vos',
-            body: `El pedido ${corto} no se pudo entregar y no hay un día con la hoja de ruta abierta en los próximos ${HORIZONTE_DE_REPROGRAMACION} días: reprogramalo, asignalo o cancelalo (no lo toma el despacho solo).`,
-            dedupeKey: `route-sheet-rescheduled:${sheet.batchId}:${orderId}`,
-          });
-          return null;
+        if (dias.length === 0) {
+          return { fecha: null, dias, esperaAlAdmin: true, causa: 'sin_dia' };
         }
-        const order = await this.orders.reprogramarEntrega(orderId, fecha);
-        await this.notifier
-          .reprogramadoAlCliente(order.customerId, orderId, fecha)
-          .catch(() => undefined);
-        this.notifier.aLaBandeja(sheet.distributorId, {
-          kind: 'route_sheet_order_rescheduled',
-          title: 'Pedido reprogramado',
-          body: `El pedido ${corto} no se pudo entregar y se reprogramó solo para el ${diaLegible(fecha)}: entra en la hoja de ruta de ese día. Si hace falta, cambiale la fecha o cancelalo.`,
-          dedupeKey: `route-sheet-rescheduled:${sheet.batchId}:${orderId}`,
-        });
-        return fecha;
+        return {
+          fecha: dias[0],
+          dias,
+          esperaAlAdmin: false,
+          causa: 'planificacion',
+        };
       }
       // Apagada, o sin franjas activas (sin jornada el planificador no lo
       // tomaría): el día hábil siguiente y queda esperando al admin, retenido
       // del despacho y del pool (`needs_reschedule` espera sin importar la fecha).
       const fecha = diaHabilSiguiente(planDate, cal);
-      const order = await this.orders.reprogramarEntrega(orderId, fecha);
-      await this.notifier
-        .reprogramadoAlCliente(order.customerId, orderId, fecha)
-        .catch(() => undefined);
-      await this.esperarAlAdmin(sheet, orderId);
-      this.notifier.aLaBandeja(sheet.distributorId, {
-        kind: 'route_sheet_reschedule_needs_admin',
-        title: 'Pedido reprogramado: asignalo vos',
-        body: `El pedido ${corto} no se pudo entregar y se reprogramó para el ${diaLegible(fecha)}, pero ${encendida ? 'la distribuidora no tiene franjas horarias activas' : 'la hoja de ruta está apagada'}: asignalo, agregalo a una hoja o cancelalo (no lo toma el despacho solo).`,
-        dedupeKey: `route-sheet-rescheduled:${sheet.batchId}:${orderId}`,
-      });
-      return fecha;
+      return {
+        fecha,
+        dias: [fecha, ...diasDeReprogramacion(fecha, new Map(), 0, cal)],
+        esperaAlAdmin: true,
+        causa: encendida ? 'sin_franjas' : 'apagada',
+      };
     } catch (error) {
       this.logger.warn(
-        `Hoja ${sheet.batchId}: no se pudo reprogramar el pedido ${orderId}: ${errorMessage(error)}`,
+        `Hoja ${sheet.batchId}: no se pudo calcular la reprogramación del pedido ${orderId}: ${errorMessage(error)}`,
       );
-      await this.esperarAlAdmin(sheet, orderId);
+      return { fecha: null, dias: [], esperaAlAdmin: true, causa: 'error' };
+    }
+  }
+
+  /**
+   * La reprogramación dentro de la transacción de quien llama (la salida de la
+   * hoja y la visita fallida, C5): revalida el plan (ver [revalidar]), deja la
+   * fecha nueva del pedido y, si corresponde, la parada esperando al admin.
+   * Devuelve el plan que quedó. Un error sube y deshace todo.
+   */
+  async aplicarReprogramacion(
+    manager: EntityManager,
+    sheet: RouteBatch,
+    orderId: string,
+    plan: PlanDeReprogramacion,
+  ): Promise<PlanDeReprogramacion> {
+    const vigente = await this.revalidar(manager, sheet, plan);
+    if (vigente.fecha) {
+      await this.orders.reprogramarEntrega(orderId, vigente.fecha, manager);
+    }
+    if (vigente.esperaAlAdmin) {
+      await this.esperarAlAdmin(sheet, orderId, manager);
+    }
+    return vigente;
+  }
+
+  /**
+   * El plan se calculó fuera de la transacción: con la planificación encendida,
+   * se vuelven a leer las planificaciones de esos días con sus filas bloqueadas
+   * (`FOR SHARE`: un cierre o una propuesta espera a que esto confirme) y se
+   * descartan los días que dejaron de estar abiertos. Si no queda ninguno,
+   * espera al admin (`sin_dia`).
+   */
+  private async revalidar(
+    manager: EntityManager,
+    sheet: RouteBatch,
+    plan: PlanDeReprogramacion,
+  ): Promise<PlanDeReprogramacion> {
+    if (plan.causa !== 'planificacion' || plan.dias.length === 0) return plan;
+    const filas: Array<{ fecha: string; status: string; cutoffAt: Date }> =
+      await manager.query(
+        `SELECT to_char("plan_date", 'YYYY-MM-DD') AS "fecha", "status"::text AS "status", "cutoff_at" AS "cutoffAt"
+           FROM "route_plan"
+          WHERE "distributor_id" = $1 AND "plan_date" = ANY($2::date[])
+          FOR SHARE`,
+        [sheet.distributorId, plan.dias],
+      );
+    const ahora = Date.now();
+    const cerrados = new Set(
+      filas
+        .filter(
+          (f) =>
+            !(f.status === 'open' && new Date(f.cutoffAt).getTime() > ahora),
+        )
+        .map((f) => f.fecha),
+    );
+    const dias = plan.dias.filter((d) => !cerrados.has(d));
+    if (dias.length === 0) {
+      return { fecha: null, dias: [], esperaAlAdmin: true, causa: 'sin_dia' };
+    }
+    return { ...plan, fecha: dias[0], dias };
+  }
+
+  /**
+   * La bandeja del admin después de reprogramar (ya confirmado). `fecha`: el día
+   * en que quedó el pedido (la nueva visita puede haberlo corrido a otro con
+   * cupo).
+   */
+  avisarReprogramacion(
+    sheet: RouteBatch,
+    orderId: string,
+    plan: PlanDeReprogramacion,
+    fecha: string | null,
+  ): void {
+    const corto = idCortoDePedido(orderId);
+    if (plan.causa === 'error') {
       this.notifier.aLaBandeja(sheet.distributorId, {
         kind: 'route_sheet_reschedule_failed',
         title: 'Pedido no entregado: decidí qué hacer',
         body: `El pedido ${corto} no se pudo entregar y no se pudo reprogramar solo: reprogramalo o cancelalo.`,
         dedupeKey: `route-sheet-reschedule-failed:${sheet.batchId}:${orderId}`,
       });
-      return null;
+      return;
     }
+    if (plan.causa === 'sin_dia' || !fecha) {
+      this.notifier.aLaBandeja(sheet.distributorId, {
+        kind: 'route_sheet_reschedule_needs_admin',
+        title: 'Pedido no entregado: reprogramalo vos',
+        body: `El pedido ${corto} no se pudo entregar y no hay un día con la hoja de ruta abierta en los próximos ${HORIZONTE_DE_REPROGRAMACION} días: reprogramalo, asignalo o cancelalo (no lo toma el despacho solo).`,
+        dedupeKey: `route-sheet-rescheduled:${sheet.batchId}:${orderId}`,
+      });
+      return;
+    }
+    if (plan.causa === 'planificacion') {
+      this.notifier.aLaBandeja(sheet.distributorId, {
+        kind: 'route_sheet_order_rescheduled',
+        title: 'Pedido reprogramado',
+        body: `El pedido ${corto} no se pudo entregar y se reprogramó solo para el ${diaLegible(fecha)}: entra en la hoja de ruta de ese día. Si hace falta, cambiale la fecha o cancelalo.`,
+        dedupeKey: `route-sheet-rescheduled:${sheet.batchId}:${orderId}`,
+      });
+      return;
+    }
+    this.notifier.aLaBandeja(sheet.distributorId, {
+      kind: 'route_sheet_reschedule_needs_admin',
+      title: 'Pedido reprogramado: asignalo vos',
+      body: `El pedido ${corto} no se pudo entregar y se reprogramó para el ${diaLegible(fecha)}, pero ${plan.causa === 'sin_franjas' ? 'la distribuidora no tiene franjas horarias activas' : 'la hoja de ruta está apagada'}: asignalo, agregalo a una hoja o cancelalo (no lo toma el despacho solo).`,
+      dedupeKey: `route-sheet-rescheduled:${sheet.batchId}:${orderId}`,
+    });
   }
 
   /** La parada que salió queda esperando al admin (`needs_reschedule`). */
   private async esperarAlAdmin(
     sheet: RouteBatch,
     orderId: string,
+    manager: EntityManager = this.dataSource.manager,
   ): Promise<void> {
-    await this.dataSource.manager.update(
+    await manager.update(
       RouteBatchStop,
       { batchId: sheet.batchId, orderId, active: false },
       { removedReason: RouteStopRemovedReason.NEEDS_RESCHEDULE },

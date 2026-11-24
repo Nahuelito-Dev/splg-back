@@ -325,6 +325,12 @@
         "functions": 44,
         "lines": 65
       },
+      "./src/failed-visit/": {
+        "statements": 98,
+        "branches": 84,
+        "functions": 93,
+        "lines": 98
+      },
       "./src/finance/": {
         "statements": 48,
         "branches": 45,

@@ -62,6 +62,7 @@ describe('DispatchOrchestratorService', () => {
     isInPlannedRouteSheet: jest.Mock;
     isHeldForBatching: jest.Mock;
     isAwaitingReschedule: jest.Mock;
+    isAwaitingRevisit: jest.Mock;
     findExpired: jest.Mock;
     updateStatus: jest.Mock;
     closeActiveOffer: jest.Mock;
@@ -124,6 +125,7 @@ describe('DispatchOrchestratorService', () => {
       isInPlannedRouteSheet: jest.fn().mockResolvedValue(false),
       isHeldForBatching: jest.fn().mockResolvedValue(false),
       isAwaitingReschedule: jest.fn().mockResolvedValue(false),
+      isAwaitingRevisit: jest.fn().mockResolvedValue(false),
       findExpired: jest.fn().mockResolvedValue([]),
       updateStatus: jest.fn().mockResolvedValue(true),
       closeActiveOffer: jest.fn().mockResolvedValue(true),
@@ -746,6 +748,15 @@ describe('DispatchOrchestratorService', () => {
       expect(await orchestrator.offerToNextDriver(makeOrder())).toBeNull();
       expect(offers.isInPlannedRouteSheet).toHaveBeenCalledWith('ord-1');
       expect(dispatch.findNearbyDrivers).not.toHaveBeenCalled();
+      expect(offers.create).not.toHaveBeenCalled();
+    });
+
+    it('C5: un pedido que espera su nueva visita (o al admin) tras una entrega fallida no se ofrece', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['near']);
+      offers.isAwaitingRevisit.mockResolvedValue(true);
+
+      expect(await orchestrator.offerToNextDriver(makeOrder())).toBeNull();
+      expect(offers.isAwaitingRevisit).toHaveBeenCalledWith('ord-1');
       expect(offers.create).not.toHaveBeenCalled();
     });
 

@@ -191,6 +191,11 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     ['chat_agent_settings', 'user_id', 'admin'],
     // Responsable de la tarea de flota en el tablero
     ['maintenance_task', 'assignee_employee_id', 'employee'],
+    // Visitas fallidas y nueva visita (C5)
+    ['order_failed_visit', 'order_id', 'order'],
+    ['order_failed_visit', 'delivery_id', 'delivery'],
+    ['order_failed_visit', 'proposed_time_slot_id', 'time_slot'],
+    ['order_failed_visit', 'final_time_slot_id', 'time_slot'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>

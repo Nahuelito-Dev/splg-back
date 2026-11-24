@@ -312,6 +312,46 @@ export class DeliveryConfirmationDto {
   outOfRange!: boolean;
 }
 
+/** La nueva visita del pedido después de una entrega fallida (C5). */
+export class RevisitDeOrderDto {
+  @ApiProperty({
+    enum: ['proposed', 'confirmed', 'awaiting_admin'],
+    description:
+      '`proposed`: la propuso el sistema (si el cliente no contesta, queda); `confirmed`: el cliente la aceptó o eligió otra, la acordó el chofer o la fijó el admin; `awaiting_admin`: decide la distribuidora',
+  })
+  status!: 'proposed' | 'confirmed' | 'awaiting_admin';
+
+  @ApiProperty({ example: 2, description: 'Visitas fallidas del pedido' })
+  failedVisitCount!: number;
+
+  @ApiProperty({
+    type: String,
+    format: 'date',
+    nullable: true,
+    description:
+      'Día de la nueva visita (`null` si decide el admin y todavía no lo fijó)',
+  })
+  scheduledDate!: string | null;
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  timeSlotId!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: 'Mañana' })
+  timeSlotName!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: '09:00:00' })
+  windowStart!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: '13:00:00' })
+  windowEnd!: string | null;
+
+  @ApiProperty({
+    description:
+      'El cliente todavía puede contestar («Me sirve» / «Elegir otro día y horario»): es una propuesta y el pedido sigue pendiente sin chofer',
+  })
+  canRespond!: boolean;
+}
+
 export class OrderResponseDto {
   @ApiProperty({ name: 'order_id', format: 'uuid' })
   @Expose({ name: 'order_id' })
@@ -685,4 +725,14 @@ export class OrderResponseDto {
   @Expose({ name: 'deliveryConfirmation' })
   @Type(() => DeliveryConfirmationDto)
   deliveryConfirmation!: DeliveryConfirmationDto | null;
+
+  /**
+   * Nueva visita después de una entrega fallida (C5): el día y la franja en que
+   * se vuelve a pasar y si el cliente todavía puede contestar. `null` si el
+   * pedido no tuvo visitas fallidas, o ya se entregó o canceló.
+   */
+  @ApiProperty({ name: 'revisit', type: RevisitDeOrderDto, nullable: true })
+  @Expose({ name: 'revisit' })
+  @Type(() => RevisitDeOrderDto)
+  revisit!: RevisitDeOrderDto | null;
 }

@@ -162,6 +162,8 @@ export class DispatchOrchestratorService {
     if (await this.offers.isInPlannedRouteSheet(order.orderId)) return null;
     // Salió de una hoja en la calle y espera al admin: no vuelve solo al despacho.
     if (await this.offers.isAwaitingReschedule(order.orderId)) return null;
+    // Entrega fallida (C5): espera el día y la franja de su nueva visita, o al admin.
+    if (await this.offers.isAwaitingRevisit(order.orderId)) return null;
     // Con M4 encendido, un programado espera a la agrupación hasta
     // `batchingHoldMinutes` antes de su franja; pasado el margen lo toma M1.
     if (await this.offers.isHeldForBatching(order.orderId)) return null;

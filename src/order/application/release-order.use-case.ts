@@ -173,10 +173,16 @@ export class ReleaseOrderUseCase {
    * (sala `driver_<user_id>`, nunca por `deliveryId`: son ids distintos), al
    * cliente (vuelve a buscar chofer) y al panel. Nunca dispara el push de
    * "¡Pedido Confirmado!" (ese es sólo para pedidos nuevos).
+   *
+   * `porEntregaFallida` (C5): el chofer fue y no pudo entregar. No queda la
+   * constancia que le impide volver a recibir el pedido (la nueva visita puede
+   * tocarle a él), y ni al cliente se le dice «buscando chofer» ni al panel
+   * «pedido liberado»: la nueva visita la avisa quien llama.
    */
   async notifyReleased(
     order: Order,
     previousDriverUserId: string | null,
+    { porEntregaFallida = false }: { porEntregaFallida?: boolean } = {},
   ): Promise<void> {
     if (previousDriverUserId) {
       const cambio: ChoferDelPedidoCambiado = {
@@ -187,13 +193,20 @@ export class ReleaseOrderUseCase {
       };
       this.events?.emit(EVENTO_CHOFER_DEL_PEDIDO_CAMBIADO, cambio);
       this.dispatch.stopTracking(previousDriverUserId);
-      await this.dispatchOrchestrator
-        .releaseOffer(order.orderId, previousDriverUserId)
-        .catch(() => undefined);
+      await (
+        porEntregaFallida
+          ? this.dispatchOrchestrator.onOrderClosed(order.orderId)
+          : this.dispatchOrchestrator.releaseOffer(
+              order.orderId,
+              previousDriverUserId,
+            )
+      ).catch(() => undefined);
       this.dispatch.notifyDriverOrderCancelled(previousDriverUserId, {
         orderId: order.orderId,
         status: order.status,
-        message: 'El pedido se liberó. No hace falta que vayas.',
+        message: porEntregaFallida
+          ? 'Quedó registrado que no pudiste entregar. El pedido se reprograma.'
+          : 'El pedido se liberó. No hace falta que vayas.',
       });
     } else {
       await this.dispatchOrchestrator
@@ -201,15 +214,20 @@ export class ReleaseOrderUseCase {
         .catch(() => undefined);
     }
 
-    this.dispatch.notifyCustomer(order.customerId, 'order:searching-driver', {
-      orderId: order.orderId,
-      status: order.status,
-    });
+    if (!porEntregaFallida) {
+      this.dispatch.notifyCustomer(order.customerId, 'order:searching-driver', {
+        orderId: order.orderId,
+        status: order.status,
+      });
+    }
 
-    this.dispatch.notifyAdmins(
-      'order:pending',
-      { orderId: order.orderId, status: order.status },
-      order.distributorId,
-    );
+    // Por entrega fallida el panel recibe `order:failed-visit`: un solo aviso.
+    if (!porEntregaFallida) {
+      this.dispatch.notifyAdmins(
+        'order:pending',
+        { orderId: order.orderId, status: order.status },
+        order.distributorId,
+      );
+    }
   }
 }
