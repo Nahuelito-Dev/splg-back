@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ReportsController } from './reports.controller';
 import { ReportsV2Controller } from './reports-v2.controller';
 import { ReportsService } from './reports.service';
+import { ReportsResolver } from './reports.resolver';
 import { Order } from '../order/entities/order.entity';
 import { OrderItem } from '../order/entities/order-item.entity';
 
@@ -11,7 +12,7 @@ import { OrderItem } from '../order/entities/order-item.entity';
   // (ver CONVENCIONES, excepción a la regla de encapsulamiento). No escribe.
   imports: [TypeOrmModule.forFeature([Order, OrderItem])],
   controllers: [ReportsController, ReportsV2Controller],
-  providers: [ReportsService],
+  providers: [ReportsService, ReportsResolver],
   exports: [ReportsService],
 })
 export class ReportsModule {}

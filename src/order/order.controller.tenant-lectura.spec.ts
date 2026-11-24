@@ -29,6 +29,7 @@ const tenantArg = (metodo: string): Arg => {
 
 const contexto = (role: RoleType, distributorId: string | null) =>
   ({
+    getType: () => 'http',
     switchToHttp: () => ({
       getRequest: () => ({ distributorId, user: { role } }),
     }),

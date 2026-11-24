@@ -102,6 +102,7 @@ import { PeoplePhotosModule } from './people-photos/people-photos.module';
 import { DocumentReaderModule } from './document-reader/document-reader.module';
 import { DocumentReadingModule } from './document-reading/document-reading.module';
 import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
+import { GraphqlApiModule } from './graphql/graphql-api.module';
 
 @Module({
   imports: [
@@ -315,6 +316,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     AssistantModule,
     AsistenteIaModule,
     AssistantLabModule,
+    GraphqlApiModule,
   ],
   providers: [
     // Guards globales. El ORDEN importa: ThrottlerGuard corta temprano (barato,

@@ -9,6 +9,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
+import { GqlArgumentsHost, type GqlContextType } from '@nestjs/graphql';
 import {
   BadRequestDomainError,
   ConflictDomainError,
@@ -34,6 +35,7 @@ import {
   reportarErrorDeRequest,
 } from '../sentry/reportar-a-sentry';
 import type { Request } from 'express';
+import type { ContextoGraphql } from '../contexto/request-del-contexto';
 
 /** `read_only_sql_transaction`: una escritura en una transacción de sólo lectura. */
 const TRANSACCION_DE_SOLO_LECTURA = '25006';
@@ -65,12 +67,16 @@ function conCodigoSiTiene<T extends HttpException>(
  * NO loguea el body/headers del request (podrían traer contraseñas, tokens,
  * datos de pago): solo método, path, status, request-id y el mensaje de la
  * excepción.
+ *
+ * En un resolver de GraphQL no hay respuesta HTTP que escribir: se devuelve la
+ * excepción ya traducida y Apollo la arma como error de GraphQL (ver
+ * `formatearErrorGraphql`), con el mismo texto y `code` que en REST.
  */
 @Catch()
 export class GlobalExceptionFilter extends BaseExceptionFilter {
   private readonly logger = new Logger('ExceptionFilter');
 
-  catch(exception: unknown, host: ArgumentsHost): void {
+  catch(exception: unknown, host: ArgumentsHost): HttpException | undefined {
     // Errores de DOMINIO (state machines, stock — dominio puro, sin
     // @nestjs/common, ver `common/errors/domain.error.ts`, P2-9): se convierten
     // acá a la MISMA HttpException que el código lanzaba antes de extraerlos a
@@ -81,8 +87,11 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     const original = exception;
     exception = this.mapDomainError(exception);
 
-    const ctx = host.switchToHttp();
-    const request = ctx.getRequest<Request | undefined>();
+    const graphql = host.getType<GqlContextType>() === 'graphql';
+    const request = graphql
+      ? GqlArgumentsHost.create(host).getContext<ContextoGraphql | undefined>()
+          ?.req
+      : host.switchToHttp().getRequest<Request | undefined>();
     const header = request?.headers?.['x-request-id'];
     const requestId =
       request?.requestId ?? (typeof header === 'string' ? header : '-');
@@ -115,7 +124,9 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     // A Sentry sólo los 5xx, con el error original (no la traducción).
     if (esErrorParaSentry(status)) reportarErrorDeRequest(original, request);
 
+    if (graphql) return traducida;
     super.catch(traducida, host);
+    return undefined;
   }
 
   /**

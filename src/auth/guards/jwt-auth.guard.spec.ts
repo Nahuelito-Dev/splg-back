@@ -49,6 +49,7 @@ function contextoCon(
 ): ExecutionContext {
   const instancia = new Controller();
   return {
+    getType: () => 'http',
     switchToHttp: () => ({ getRequest: () => request }),
     getHandler: () => instancia.metodo,
     getClass: () => Controller,

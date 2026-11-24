@@ -10,7 +10,7 @@ import { RoleType } from '../common/constants/role-type.enum';
 import { Auth } from '../common/decorators/auth.decorator';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { periodoAnterior } from './domain/totales-de-ventas';
+import { comparativoDeVentas } from './comparativo-de-ventas';
 import {
   ReportRangeQueryDto,
   ReportSummaryQueryDto,
@@ -125,32 +125,13 @@ export class ReportsV2Controller {
   @ApiBadRequestResponse({
     description: 'Fecha con formato inválido o from posterior a to',
   })
-  async resumenDeVentas(
+  resumenDeVentas(
     @Query() rango: ReportSummaryQueryDto,
     @CurrentDistributor() distributorId?: string | null,
   ): Promise<ComparativoDeVentasDto> {
-    const actual = rangoDelInforme(rango.from, rango.to);
-    const current = await this.reports.getSalesSummary(
-      actual.startDate,
-      actual.endDate,
-      distributorId,
+    return comparativoDeVentas(rango.from, rango.to, rango.compare, (s, e) =>
+      this.reports.getSalesSummary(s, e, distributorId),
     );
-    const currentRange = { from: actual.from, to: actual.to };
-    if (rango.compare === false) {
-      return { current, previous: null, currentRange, previousRange: null };
-    }
-    const previo = periodoAnterior(actual.from, actual.to);
-    const anterior = rangoDelInforme(previo.desde, previo.hasta);
-    return {
-      current,
-      previous: await this.reports.getSalesSummary(
-        anterior.startDate,
-        anterior.endDate,
-        distributorId,
-      ),
-      currentRange,
-      previousRange: { from: anterior.from, to: anterior.to },
-    };
   }
 
   @Permiso('reportes.ver')

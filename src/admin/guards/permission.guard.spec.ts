@@ -50,6 +50,7 @@ function contexto(
   return {
     getHandler: () => handler,
     getClass: () => clase,
+    getType: () => 'http',
     switchToHttp: () => ({ getRequest: () => ({ user }) }),
   } as unknown as ExecutionContext;
 }

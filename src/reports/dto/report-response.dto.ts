@@ -1,32 +1,59 @@
+import {
+  Field,
+  Float,
+  GraphQLISODateTime,
+  Int,
+  ObjectType,
+} from '@nestjs/graphql';
 import { ApiProperty } from '@nestjs/swagger';
 
+// Los informes de ventas también se consultan por GraphQL (`/api/graphql`): los
+// mismos DTOs describen la respuesta REST (Swagger) y el tipo de GraphQL.
+
+@ObjectType('SalesByDriverRow', { description: 'Ventas cobradas de un chofer' })
 export class VentasPorChoferDto {
+  @Field({ description: 'user_id del chofer' })
   @ApiProperty({ format: 'uuid', description: 'user_id del chofer' })
   driverId!: string;
-  @ApiProperty({ type: String, nullable: true }) driverName!:
-    | string
-    | undefined;
-  @ApiProperty() totalOrders!: number;
-  @ApiProperty() totalSales!: number;
+  @Field(() => String, { nullable: true })
+  @ApiProperty({ type: String, nullable: true })
+  driverName!: string | undefined;
+  @Field(() => Int) @ApiProperty() totalOrders!: number;
+  @Field(() => Float) @ApiProperty() totalSales!: number;
 }
 
+@ObjectType('SalesByProductRow', {
+  description: 'Unidades y ventas cobradas de un producto',
+})
 export class VentasPorProductoDto {
-  @ApiProperty({ example: '10kg' }) productType!: string;
-  @ApiProperty({ type: String, nullable: true }) description!: string | null;
-  @ApiProperty() totalQuantity!: number;
-  @ApiProperty() totalSales!: number;
+  @Field() @ApiProperty({ example: '10kg' }) productType!: string;
+  @Field(() => String, { nullable: true })
+  @ApiProperty({ type: String, nullable: true })
+  description!: string | null;
+  @Field(() => Int) @ApiProperty() totalQuantity!: number;
+  @Field(() => Float) @ApiProperty() totalSales!: number;
 }
 
+@ObjectType('SalesByPaymentRow', {
+  description: 'Ventas cobradas de un medio de pago',
+})
 export class VentasPorMedioDePagoDto {
-  @ApiProperty({ example: 'cash' }) method!: string;
-  @ApiProperty() totalOrders!: number;
-  @ApiProperty() totalSales!: number;
+  @Field({ description: 'Medio de pago (cash, transfer, mercadopago…)' })
+  @ApiProperty({ example: 'cash' })
+  method!: string;
+  @Field(() => Int) @ApiProperty() totalOrders!: number;
+  @Field(() => Float) @ApiProperty() totalSales!: number;
 }
 
+@ObjectType('SalesPeriod', { description: 'Ventas cobradas de un período' })
 export class EvolucionDeVentasDto {
-  @ApiProperty({ type: String, format: 'date-time' }) period!: Date;
-  @ApiProperty() totalOrders!: number;
-  @ApiProperty() totalSales!: number;
+  @Field(() => GraphQLISODateTime, {
+    description: 'Instante en que arranca el período (hora argentina)',
+  })
+  @ApiProperty({ type: String, format: 'date-time' })
+  period!: Date;
+  @Field(() => Int) @ApiProperty() totalOrders!: number;
+  @Field(() => Float) @ApiProperty() totalSales!: number;
 }
 
 export class CifraDeCobroDto {

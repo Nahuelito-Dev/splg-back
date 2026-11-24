@@ -41,6 +41,7 @@ describe('GlobalExceptionFilter — mapeo de errores de dominio (P2-9)', () => {
     const request = { method: 'PATCH', url: '/orders/ord-1/status' };
     const response = {};
     return {
+      getType: () => 'http',
       switchToHttp: () => ({
         getRequest: () => request,
         getResponse: () => response,

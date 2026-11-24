@@ -2,6 +2,10 @@ import { ExecutionContext, Injectable } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { createHash } from 'crypto';
 import type { Request } from 'express';
+import {
+  esGraphql,
+  requestYRespuestaDelContexto,
+} from '../contexto/request-del-contexto';
 
 /**
  * Rutas de acceso: las únicas donde además del cupo por IP se cuenta un cupo
@@ -48,15 +52,28 @@ export function esRutaDeAcceso(context: ExecutionContext): boolean {
  * campos no existen y la app se rompe. Igual que HTTP: el rate limiting de
  * WS (si hiciera falta) se maneja en la capa de socket, no acá.
  *
- * Se salta (no throttlea, deja pasar) cualquier context que NO sea HTTP.
+ * Se salta (no throttlea, deja pasar) cualquier context que NO sea HTTP ni
+ * GraphQL. Un resolver de GraphQL cuenta como una petición más del mismo
+ * cupo: lee la request y la respuesta de su contexto (`getRequestResponse`).
  */
 @Injectable()
 export class AppThrottlerGuard extends ThrottlerGuard {
   protected async shouldSkip(context: ExecutionContext): Promise<boolean> {
-    if (context.getType() !== 'http') {
+    if (context.getType() !== 'http' && !esGraphql(context)) {
       return true;
     }
     return super.shouldSkip(context);
+  }
+
+  protected getRequestResponse(context: ExecutionContext): {
+    req: Record<string, unknown>;
+    res: Record<string, unknown>;
+  } {
+    const { req, res } = requestYRespuestaDelContexto(context);
+    return {
+      req: req as unknown as Record<string, unknown>,
+      res: res as unknown as Record<string, unknown>,
+    };
   }
 
   /**
