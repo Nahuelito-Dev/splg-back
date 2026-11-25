@@ -183,6 +183,7 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   businessName: 'Razón social',
   capacity: 'Capacidad',
   carId: 'Vehículo',
+  vehicleId: 'Vehículo',
   carType: 'Tipo de vehículo',
   car_brand: 'Marca del vehículo',
   car_capacity: 'Capacidad',

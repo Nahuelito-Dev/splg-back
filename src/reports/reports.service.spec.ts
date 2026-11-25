@@ -6,6 +6,8 @@ import {
   PaymentStatus,
 } from '../order/entities/order.entity';
 import { OrderItem } from '../order/entities/order-item.entity';
+import { FleetCostService } from '../fleet-expense/fleet-cost.service';
+import { EntityPhotoService } from '../s3/entity-photo.service';
 
 /**
  * Los informes agregan pedidos entregados. Lo que se prueba acá es la cuenta:
@@ -48,6 +50,8 @@ describe('ReportsService', () => {
     service = new ReportsService(
       orders as unknown as Repository<Order>,
       {} as Repository<OrderItem>,
+      {} as FleetCostService,
+      {} as EntityPhotoService,
     );
   });
 

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, And, MoreThanOrEqual, LessThan } from 'typeorm';
+import Decimal from 'decimal.js';
 import {
   esVentaCobrada,
   soloVentaCobrada,
@@ -15,8 +16,13 @@ import { OrderItem } from '../order/entities/order-item.entity';
 import {
   diaArgentino,
   truncarEnArgentinaSql,
+  ZONA_ARGENTINA,
 } from '../common/utils/dias-argentina';
-import Decimal from 'decimal.js';
+import { EntityPhotoService } from '../s3/entity-photo.service';
+import { FleetCostSummaryDto } from '../fleet-expense/dto/fleet-cost.dto';
+import { RangoDelInforme } from './rango-del-informe';
+import { FleetCostService } from '../fleet-expense/fleet-cost.service';
+import { VehicleUtilizationReportDto } from './dto/vehicle-utilization-response.dto';
 import { saldoPendienteSql } from '../order/domain/saldo-pendiente';
 import {
   mayorVentaPrimero,
@@ -52,7 +58,164 @@ export class ReportsService {
     private readonly orderRepository: Repository<Order>,
     @InjectRepository(OrderItem)
     private readonly orderItemRepository: Repository<OrderItem>,
+    private readonly fleetCosts: FleetCostService,
+    private readonly photos: EntityPhotoService,
   ) {}
+
+  /**
+   * Agregado por vehículo. Costos y km salen del tablero de flota (misma
+   * fuente); entregas y días en uso, de los pedidos entregados en el rango
+   * `[startDate, endDate)` en hora argentina.
+   */
+  async getVehicleUtilization(
+    rango: RangoDelInforme,
+    distributorId: string,
+    vehicleId?: string,
+  ): Promise<VehicleUtilizationReportDto> {
+    const visible: FleetCostSummaryDto[] = vehicleId
+      ? [
+          await this.fleetCosts.costoDelVehiculo(
+            vehicleId,
+            distributorId,
+            rango.from,
+            rango.to,
+          ),
+        ]
+      : await this.fleetCosts.tablero(distributorId, rango.from, rango.to);
+
+    const deliveriesQuery = () => {
+      const query = this.orderRepository
+        .createQueryBuilder('order')
+        .where('order.distributorId = :distributorId', { distributorId })
+        .andWhere('order.status = :status', { status: OrderStatus.DELIVERED })
+        .andWhere('order.vehicleCarId IS NOT NULL')
+        .andWhere('order.deliveredAt >= :start AND order.deliveredAt < :end', {
+          start: rango.startDate,
+          end: rango.endDate,
+        });
+      if (vehicleId) {
+        query.andWhere('order.vehicleCarId = :vehicleId', { vehicleId });
+      }
+      return query;
+    };
+    const dayExpression = `DATE(order.deliveredAt AT TIME ZONE '${ZONA_ARGENTINA}')`;
+    const deliveries = await deliveriesQuery()
+      .select('order.vehicleCarId', 'vehicleId')
+      .addSelect('COUNT(*)', 'deliveries')
+      .addSelect(`COUNT(DISTINCT ${dayExpression})`, 'daysInUse')
+      .groupBy('order.vehicleCarId')
+      .getRawMany<{
+        vehicleId: string;
+        deliveries: string;
+        daysInUse: string;
+      }>();
+    const fleetDays = await deliveriesQuery()
+      .select(`COUNT(DISTINCT ${dayExpression})`, 'daysInUse')
+      .getRawOne<{ daysInUse: string }>();
+    const deliveriesByVehicle = new Map(
+      deliveries.map((entry) => [entry.vehicleId, entry]),
+    );
+    const photos = await this.photosOf(
+      visible.map((vehicle) => vehicle.carId),
+      distributorId,
+    );
+
+    const rows = visible.map((vehicle) => {
+      const delivered = deliveriesByVehicle.get(vehicle.carId);
+      const km = vehicle.km;
+      const deliveries = Number(delivered?.deliveries ?? 0);
+      const other = new Decimal(vehicle.fines)
+        .plus(vehicle.accidents)
+        .toNumber();
+      const total = new Decimal(vehicle.total).toNumber();
+      return {
+        vehicleId: vehicle.carId,
+        plate: vehicle.carPatent,
+        name: vehicle.carBrand,
+        model: vehicle.carModel,
+        photo: photos.get(vehicle.carId) ?? null,
+        daysInUse: Number(delivered?.daysInUse ?? 0),
+        km,
+        deliveries,
+        insuranceEstimated: vehicle.insuranceEstimated,
+        costs: {
+          fuel: vehicle.fuel,
+          maintenance: vehicle.maintenance,
+          insurance: vehicle.insurance,
+          other,
+          total,
+        },
+        costPerDelivery:
+          deliveries > 0
+            ? new Decimal(total).div(deliveries).toDecimalPlaces(2).toNumber()
+            : null,
+        costPerKm:
+          km > 0
+            ? new Decimal(total).div(km).toDecimalPlaces(2).toNumber()
+            : null,
+      };
+    });
+    const sum = (field: (row: (typeof rows)[number]) => number) =>
+      rows.reduce((total, row) => total.plus(field(row)), new Decimal(0));
+    const totalKm = sum((row) => row.km);
+    const totalDeliveries = sum((row) => row.deliveries);
+    const costs = {
+      fuel: sum((row) => row.costs.fuel).toNumber(),
+      maintenance: sum((row) => row.costs.maintenance).toNumber(),
+      insurance: sum((row) => row.costs.insurance).toNumber(),
+      other: sum((row) => row.costs.other).toNumber(),
+      total: sum((row) => row.costs.total).toNumber(),
+    };
+    const insuranceEstimated = rows.some((row) => row.insuranceEstimated);
+    return {
+      rows,
+      totals: {
+        vehicles: rows.length,
+        daysInUse: Number(fleetDays?.daysInUse ?? 0),
+        km: totalKm.toNumber(),
+        deliveries: totalDeliveries.toNumber(),
+        insuranceEstimated,
+        costs,
+        costPerDelivery: totalDeliveries.gt(0)
+          ? new Decimal(costs.total)
+              .div(totalDeliveries)
+              .toDecimalPlaces(2)
+              .toNumber()
+          : null,
+        costPerKm: totalKm.gt(0)
+          ? new Decimal(costs.total).div(totalKm).toDecimalPlaces(2).toNumber()
+          : null,
+      },
+    };
+  }
+
+  /** URL firmada de la foto de cada vehículo (nunca la del dueño). */
+  private async photosOf(
+    carIds: string[],
+    distributorId: string,
+  ): Promise<Map<string, string>> {
+    if (carIds.length === 0) return new Map();
+    const keys = await this.orderRepository.manager
+      .createQueryBuilder()
+      .select('c.car_id', 'carId')
+      .addSelect('c.photo_key', 'photoKey')
+      .from('car', 'c')
+      .where('c.distributor_id = :distributorId', { distributorId })
+      .andWhere('c.car_id IN (:...carIds)', { carIds })
+      .andWhere('c.photo_key IS NOT NULL')
+      .getRawMany<{ carId: string; photoKey: string }>();
+    const withPhoto: Array<{
+      carId: string;
+      photoKey: string;
+      photoSignedUrl?: string | null;
+    }> = keys;
+    await this.photos.firmar(withPhoto, (item) => item.photoKey);
+    return new Map(
+      withPhoto.flatMap((item) =>
+        item.photoSignedUrl ? [[item.carId, item.photoSignedUrl] as const] : [],
+      ),
+    );
+  }
 
   /**
    * Los rangos son `[startDate, endDate)`: el controlador los arma desde días
