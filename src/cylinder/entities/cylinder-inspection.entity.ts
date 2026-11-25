@@ -10,12 +10,9 @@ import {
 } from 'typeorm';
 import { Cylinder } from './cylinder.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
+import { CylinderInspectionResult } from '../domain/cylinder-inspection-result';
 
-export enum CylinderInspectionResult {
-  APPROVED = 'approved',
-  CONDITIONAL = 'conditional',
-  REJECTED = 'rejected',
-}
+export { CylinderInspectionResult };
 
 /**
  * Revisión de envase

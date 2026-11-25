@@ -1,6 +1,6 @@
 import { BadRequestDomainError } from '../../../common/errors/domain.error';
 import { valorLegible } from '../../../common/validation/etiquetas';
-import { CylinderState } from '../../entities/cylinder.entity';
+import { CylinderState } from '../cylinder-state';
 
 /**
  * Se intentó una transición de estado de envase no permitida por

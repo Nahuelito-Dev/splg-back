@@ -3,8 +3,8 @@ import { EntityManager } from 'typeorm';
 /**
  * PUERTO del ciclo de vida del envase físico visto desde el pedido. El caso de
  * uso de estado del pedido depende de ESTA interfaz, no del módulo cylinder:
- * "el pedido se entregó" se expresa acá, y un adapter delega en CylinderService
- * el avance de los envases (DISPATCHED → WITH_CUSTOMER).
+ * "el pedido se entregó" se expresa acá, y un adapter lo resuelve con el caso
+ * de uso de envases que los avanza (DISPATCHED → WITH_CUSTOMER).
  *
  * Se declara como clase abstracta porque es el token de inyección idiomático de
  * NestJS para puertos. Ver CylinderLifecycleAdapter (infrastructure).

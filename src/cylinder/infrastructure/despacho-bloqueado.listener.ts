@@ -11,7 +11,7 @@ import { AdminGateway } from '../../gateways/admin.gateway';
 import {
   DespachoBloqueadoEvent,
   EVENTO_DESPACHO_BLOQUEADO,
-} from './despacho-bloqueado.event';
+} from '../domain/events/despacho-bloqueado.event';
 
 const CLAVE_MAX = 200;
 

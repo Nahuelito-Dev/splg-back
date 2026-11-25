@@ -7,12 +7,14 @@ import {
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EntityManager, Repository } from 'typeorm';
 import { EnvasesVencidosException } from './cylinder-vencido.exception';
-import { EVENTO_DESPACHO_BLOQUEADO } from './events/despacho-bloqueado.event';
+import { EVENTO_DESPACHO_BLOQUEADO } from './domain/events/despacho-bloqueado.event';
 import {
   EnvaseDevueltoEvent,
   EVENTO_ENVASE_DEVUELTO,
-} from './events/envase-devuelto.event';
+} from './domain/events/envase-devuelto.event';
 import { CylinderService } from './cylinder.service';
+import { armarEnvases } from './cylinder-test-kit';
+import { CylinderInspection } from './entities/cylinder-inspection.entity';
 import { Cylinder, CylinderState } from './entities/cylinder.entity';
 import { CylinderMovement } from './entities/cylinder-movement.entity';
 import { OrderLookupService } from '../order/lookup/order-lookup.service';
@@ -105,15 +107,17 @@ describe('CylinderService', () => {
       transaction: (fn: (m: unknown) => unknown) => fn(manager),
     };
 
-    service = new CylinderService(
-      cylinderRepo as unknown as Repository<Cylinder>,
-      movementRepo as unknown as Repository<CylinderMovement>,
-      orderRepo as unknown as OrderLookupService,
-      gasCylinders as unknown as GasCylinderService,
-      eventos as unknown as EventEmitter2,
-      deliveries as unknown as DeliveryService,
-      cuentaDeEnvases as unknown as CustomerContainerService,
-    );
+    // El servicio con sus casos de uso y sus adaptadores TypeORM reales.
+    ({ service } = armarEnvases({
+      cylinders: cylinderRepo as unknown as Repository<Cylinder>,
+      movements: movementRepo as unknown as Repository<CylinderMovement>,
+      inspections: {} as unknown as Repository<CylinderInspection>,
+      orders: orderRepo as unknown as OrderLookupService,
+      gasCylinders: gasCylinders as unknown as GasCylinderService,
+      eventos: eventos as unknown as EventEmitter2,
+      deliveries: deliveries as unknown as DeliveryService,
+      cuentaDeEnvases: cuentaDeEnvases as unknown as CustomerContainerService,
+    }));
   });
 
   describe('create', () => {

@@ -1,17 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { CylinderLifecyclePort } from '../domain/ports/cylinder-lifecycle.port';
-import { CylinderService } from '../../cylinder/cylinder.service';
+import { DeliverOrderCylindersUseCase } from '../../cylinder/application/deliver-order-cylinders.use-case';
 
 /**
  * Adapter del puerto CylinderLifecyclePort: implementa el "el pedido se
- * entregó" delegando en CylinderService del módulo cylinder (importado por
- * OrderModule). Mantiene el dominio del pedido desacoplado del módulo de
- * envases.
+ * entregó" con el caso de uso de envases `DeliverOrderCylindersUseCase` (lo
+ * exporta CylinderModule, importado por OrderModule). El pedido no conoce las
+ * tablas ni las reglas de los envases, y el `manager` de su transacción viaja
+ * como la transacción en curso del caso de uso.
  */
 @Injectable()
 export class CylinderLifecycleAdapter extends CylinderLifecyclePort {
-  constructor(private readonly cylinders: CylinderService) {
+  constructor(private readonly entregar: DeliverOrderCylindersUseCase) {
     super();
   }
 
@@ -20,6 +21,6 @@ export class CylinderLifecycleAdapter extends CylinderLifecyclePort {
     distributorId?: string | null,
     manager?: EntityManager,
   ): Promise<number> {
-    return this.cylinders.onOrderDelivered(orderId, distributorId, manager);
+    return this.entregar.execute(orderId, distributorId, manager);
   }
 }

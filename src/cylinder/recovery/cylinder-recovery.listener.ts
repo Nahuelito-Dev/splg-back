@@ -4,7 +4,7 @@ import { errorMessage } from '../../common/errors/error-message';
 import {
   EnvaseDevueltoEvent,
   EVENTO_ENVASE_DEVUELTO,
-} from '../events/envase-devuelto.event';
+} from '../domain/events/envase-devuelto.event';
 import { CylinderRecoveryService } from './cylinder-recovery.service';
 
 /**

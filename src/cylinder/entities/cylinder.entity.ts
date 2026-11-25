@@ -16,21 +16,9 @@ import { columnNumericTransformer } from '../../common/transformers/column-numer
 import { GasCylinder } from '../../gascylinder/entities/gascylinder.entity';
 import { User } from '../../users/entities/user.entity';
 import { Order } from '../../order/entities/order.entity';
+import { CylinderState } from '../domain/cylinder-state';
 
-/**
- * Estado del ciclo de vida FÍSICO del envase. No confundir con `OrderStatus`
- * (estado del pedido) ni con `gas_cylinder` (el TIPO de producto, ej "Garrafa
- * 10kg"): acá cada fila es UNA garrafa real, identificada por su serial.
- */
-export enum CylinderState {
-  IN_DEPOT = 'in_depot',
-  FILLED = 'filled',
-  DISPATCHED = 'dispatched',
-  WITH_CUSTOMER = 'with_customer',
-  EMPTY_RETURNED = 'empty_returned',
-  /** Dado de baja: estado terminal, ya no vuelve a circular. */
-  RETIRED = 'retired',
-}
+export { CylinderState };
 
 /**
  * Unidad física de envase (cilindro/garrafa) con serial propio. Tenant-scoped:

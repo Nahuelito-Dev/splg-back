@@ -4,7 +4,7 @@ import {
   NotificarAdminEvent,
 } from '../../common/events/notificar-admin.event';
 import { AdminGateway } from '../../gateways/admin.gateway';
-import { DespachoBloqueadoEvent } from './despacho-bloqueado.event';
+import { DespachoBloqueadoEvent } from '../domain/events/despacho-bloqueado.event';
 import { DespachoBloqueadoListener } from './despacho-bloqueado.listener';
 
 describe('DespachoBloqueadoListener', () => {

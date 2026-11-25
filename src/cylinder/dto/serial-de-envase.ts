@@ -1,20 +1,9 @@
 import { applyDecorators } from '@nestjs/common';
 import { Transform } from 'class-transformer';
 import { IsNotEmpty, IsString, Matches, MaxLength } from 'class-validator';
+import { SERIAL_MAXIMO, normalizarSerial } from '../domain/serial-de-envase';
 
-/** Largo máximo del serial grabado en el envase. */
-export const SERIAL_MAXIMO = 100;
-
-/**
- * Forma canónica del serial: sin espacios en los bordes y en mayúsculas, así
- * `ab-1 ` y `AB-1` son el mismo envase (la base lo garantiza con
- * `UQ_cylinder_serial_normalizado`, que es `upper(btrim(serial))`). Se recortan
- * sólo los espacios (U+0020), igual que `btrim` de SQL: JS y la base tienen que
- * normalizar exactamente igual.
- */
-export function normalizarSerial(serial: string): string {
-  return serial.replace(/^ +| +$/g, '').toUpperCase();
-}
+export { SERIAL_MAXIMO, normalizarSerial };
 
 const normalizar = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? normalizarSerial(value) : value;
