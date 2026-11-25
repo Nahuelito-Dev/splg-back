@@ -1110,6 +1110,7 @@ export class UpdateOrderStatusUseCase {
           monto,
           salida: claveDeSalida(order.deliveryId, filas[0]?.intentos),
         },
+        order.distributorId,
       );
     } catch (error) {
       this.logger.warn(
@@ -1126,6 +1127,9 @@ export class UpdateOrderStatusUseCase {
       await this.notificationService.sendOrderConfirmation(
         order.customerId,
         order.orderId,
+        undefined,
+        undefined,
+        order.distributorId,
       );
     } catch (error) {
       // Errores de notificación no rompen la actualización del pedido.

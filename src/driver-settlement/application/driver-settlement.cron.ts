@@ -142,6 +142,7 @@ export class DriverSettlementCron {
         subject: correo.asunto,
         html: correo.html,
         text: correo.text,
+        registro: { type: 'DRIVER_SETTLEMENT_PENDING', distributorId },
       });
     }
     // Sin administradores con correo no hay a quién avisarle dos veces: se marca igual.

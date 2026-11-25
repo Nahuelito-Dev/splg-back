@@ -292,6 +292,7 @@ describe('RouteSheetInProgress', () => {
         { sheetId: 'hoja-1', reason: motivo, orderId: 'o1' },
       );
       expect(t.notifier.pushAlChofer).toHaveBeenCalledWith(
+        { distributorId: 'dist-1', driverUserId: 'u-chofer' },
         'tok',
         'hoja-1',
         texto,
@@ -430,6 +431,7 @@ describe('RouteSheetInProgress', () => {
         'c1',
         'o1',
         '2026-11-16',
+        DIST,
       );
       expect(t.notifier.aLaBandeja).toHaveBeenCalledWith(
         DIST,

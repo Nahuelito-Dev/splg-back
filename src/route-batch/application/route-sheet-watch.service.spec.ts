@@ -289,6 +289,7 @@ describe('RouteSheetWatchService', () => {
       );
       expect(t.notifier.alChofer).toHaveBeenCalledTimes(1);
       expect(t.notifier.pushAlChofer).toHaveBeenCalledWith(
+        { distributorId: DIST, driverUserId: 'u-chofer' },
         'tok',
         'hoja-1',
         expect.stringContaining('Pasaron 10 minutos'),

@@ -35,6 +35,7 @@ export abstract class NotificationPort {
     orderId: string,
     token?: string,
     efectivo?: DesgloseDelEfectivo | null,
+    distributorId?: string | null,
   ): Promise<{ success: boolean; messageId?: string; error?: string }>;
 
   /**
@@ -45,6 +46,7 @@ export abstract class NotificationPort {
     customerId: string,
     orderId: string,
     efectivo: EfectivoDeSalida,
+    distributorId?: string | null,
   ): Promise<'sent' | 'duplicate' | 'no_token' | 'failed'>;
 
   /**
@@ -58,6 +60,7 @@ export abstract class NotificationPort {
     customerId: string,
     orderId: string,
     driverName: string,
+    distributorId?: string | null,
   ): Promise<PushDeLlegada>;
 
   /**
@@ -68,6 +71,7 @@ export abstract class NotificationPort {
     customerId: string,
     orderId: string,
     esSena?: boolean,
+    distributorId?: string | null,
   ): Promise<void>;
 
   /**
@@ -78,5 +82,6 @@ export abstract class NotificationPort {
     customerId: string,
     orderId: string,
     aviso: { title: string; body: string; event: string },
+    distributorId?: string | null,
   ): Promise<void>;
 }

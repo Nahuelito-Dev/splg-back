@@ -167,16 +167,24 @@ export class CylinderRecoveryNotifier {
       const { token } =
         await this.customersService.findNotificationToken(userId);
       if (!token) return;
-      await this.fcm.sendToToken(token, {
-        notification: { title, body },
-        data: {
-          type: 'CYLINDER_RECOVERY',
-          kind: principal.aviso.kind,
-          caseId: principal.caso.caseId,
-          noticeId: principal.aviso.noticeId,
-          count: String(avisos.length),
+      await this.fcm.sendToToken(
+        token,
+        {
+          notification: { title, body },
+          data: {
+            type: 'CYLINDER_RECOVERY',
+            kind: principal.aviso.kind,
+            caseId: principal.caso.caseId,
+            noticeId: principal.aviso.noticeId,
+            count: String(avisos.length),
+          },
         },
-      });
+        {
+          type: 'CYLINDER_RECOVERY',
+          distributorId: principal.caso.distributorId,
+          recipientUserId: userId,
+        },
+      );
     });
   }
 

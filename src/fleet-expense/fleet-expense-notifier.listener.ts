@@ -91,7 +91,13 @@ export class FleetExpenseNotifierListener {
       );
       await Promise.all(
         destinatarios.map((to) =>
-          this.emailSender.send({ to, subject: asunto, html, text }),
+          this.emailSender.send({
+            to,
+            subject: asunto,
+            html,
+            text,
+            registro: { type: 'FLEET_EXPENSE', distributorId },
+          }),
         ),
       );
     } catch (error) {

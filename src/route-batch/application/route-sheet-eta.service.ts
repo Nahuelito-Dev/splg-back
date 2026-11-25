@@ -174,6 +174,7 @@ export class RouteSheetEtaService {
             etaMs: e.etaMs,
           },
           nowMs,
+          distributorId,
         );
         continue;
       }
@@ -227,6 +228,7 @@ export class RouteSheetEtaService {
           etaMs: e.etaMs,
         },
         true,
+        distributorId,
       );
       if (decision.reason === 'outside_slot') {
         this.notifier.alPanel(distributorId, 'route-sheet:stop-late', {
@@ -251,6 +253,7 @@ export class RouteSheetEtaService {
     customerId: string,
     franja: FranjaEstimada,
     nowMs: number,
+    distributorId: string,
   ): Promise<FranjaEstimada> {
     await this.dataSource.query(
       `UPDATE "route_batch_stop"
@@ -265,7 +268,7 @@ export class RouteSheetEtaService {
       ],
     );
     await this.notifier
-      .postergadoAlCliente(customerId, orderId, franja)
+      .postergadoAlCliente(customerId, orderId, franja, distributorId)
       .catch((e: unknown) =>
         this.logger.warn(
           `Pedido ${orderId}: no se avisó la reprogramación para más tarde: ${errorMessage(e)}`,
@@ -369,6 +372,7 @@ export class RouteSheetEtaService {
                 monto,
                 salida: claveDeSalida(pedido.deliveryId, pedido.intentos),
               },
+          distributorId,
         ),
       );
       avisados += 1;
@@ -443,11 +447,17 @@ export class RouteSheetEtaService {
         );
       if (reclamadas.length === 0) continue;
       try {
-        await this.notifier.horarioAlCliente(f.customerId, f.orderId, f.fecha, {
-          windowStartMs: etaMs - medio,
-          windowEndMs: etaMs + medio,
-          etaMs,
-        });
+        await this.notifier.horarioAlCliente(
+          f.customerId,
+          f.orderId,
+          f.fecha,
+          {
+            windowStartMs: etaMs - medio,
+            windowEndMs: etaMs + medio,
+            etaMs,
+          },
+          distributorId,
+        );
         avisados += 1;
       } catch (error) {
         this.logger.warn(

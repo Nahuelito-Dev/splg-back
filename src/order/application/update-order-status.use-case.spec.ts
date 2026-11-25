@@ -1193,6 +1193,7 @@ describe('UpdateOrderStatusUseCase', () => {
         'cust-1',
         'ord-1',
         { monto: 17600, salida: expect.stringMatching(/:0$/) as string },
+        'dist-1',
       );
     });
 

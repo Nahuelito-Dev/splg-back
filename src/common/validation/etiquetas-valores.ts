@@ -28,6 +28,9 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   'scope:staff_reply': 'Respuesta rápida de la empresa',
   'channel:staff_customer': 'Con clientes',
   'channel:staff_driver': 'Con choferes',
+  // Registro de avisos enviados.
+  'channel:push': 'Notificación en el celular',
+  'channel:email': 'Correo',
   'mentioned:me': 'Me mencionaron',
   'mentioned:unread': 'Menciones sin leer',
   // Botones de acción del chat para el cliente (4e).

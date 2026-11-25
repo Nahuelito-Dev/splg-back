@@ -87,6 +87,7 @@ export class RouteSheetNotifier {
 
   /** Push al chofer cuando la hoja en curso cambió (D-05: sólo aviso). */
   async pushAlChofer(
+    destino: { distributorId: string; driverUserId: string | null },
     token: string | null | undefined,
     sheetId: string,
     body: string,
@@ -95,12 +96,20 @@ export class RouteSheetNotifier {
   ): Promise<void> {
     if (!token) return;
     try {
-      await this.fcm.sendToToken(token, {
-        notification: { title, body },
-        data: { type, sheetId },
-        android: { priority: 'high' },
-        apns: { headers: { 'apns-priority': '10' } },
-      });
+      await this.fcm.sendToToken(
+        token,
+        {
+          notification: { title, body },
+          data: { type, sheetId },
+          android: { priority: 'high' },
+          apns: { headers: { 'apns-priority': '10' } },
+        },
+        {
+          type,
+          distributorId: destino.distributorId,
+          recipientUserId: destino.driverUserId,
+        },
+      );
     } catch (error) {
       this.logger.warn(
         `No se pudo enviar el push de la hoja ${sheetId}: ${errorMessage(error)}`,
@@ -150,6 +159,7 @@ export class RouteSheetNotifier {
     orderId: string,
     franja: { windowStartMs: number; windowEndMs: number; etaMs: number },
     push: boolean,
+    distributorId?: string | null,
   ): Promise<void> {
     const payload = {
       orderId,
@@ -165,11 +175,17 @@ export class RouteSheetNotifier {
       ),
     );
     if (!push) return;
-    await this.notifications.sendOrderNoticePush(customerUserId, orderId, {
-      title: 'Horario estimado de tu pedido',
-      body: `Te llega entre las ${horaArgentina(franja.windowStartMs)} y las ${horaArgentina(franja.windowEndMs)}.`,
-      event: 'ORDER_ETA_UPDATED',
-    });
+    await this.notifications.sendOrderNoticePush(
+      customerUserId,
+      orderId,
+      {
+        title: 'Horario estimado de tu pedido',
+        body: `Te llega entre las ${horaArgentina(franja.windowStartMs)} y las ${horaArgentina(franja.windowEndMs)}.`,
+        event: 'ORDER_ETA_UPDATED',
+      },
+      undefined,
+      distributorId,
+    );
   }
 
   /**
@@ -181,6 +197,7 @@ export class RouteSheetNotifier {
     orderId: string,
     franja: { windowStartMs: number; windowEndMs: number; etaMs: number },
     efectivo?: EfectivoDeSalida,
+    distributorId?: string | null,
   ): Promise<void> {
     this.seguro('order:eta-updated', () =>
       this.customers.notifyCustomer(customerUserId, 'order:eta-updated', {
@@ -200,6 +217,7 @@ export class RouteSheetNotifier {
         event: 'ORDER_TRIP_STARTED',
       },
       efectivo,
+      distributorId,
     );
   }
 
@@ -212,6 +230,7 @@ export class RouteSheetNotifier {
     customerUserId: string,
     orderId: string,
     intento: 1 | 2,
+    distributorId?: string | null,
   ): Promise<void> {
     this.seguro('order:delivery-failed', () =>
       this.customers.notifyCustomer(customerUserId, 'order:delivery-failed', {
@@ -233,6 +252,8 @@ export class RouteSheetNotifier {
             body: 'El chofer volvió a pasar y no pudo entregarlo. La distribuidora se va a comunicar con vos para coordinar la entrega.',
             event: 'ORDER_DELIVERY_FAILED',
           },
+      undefined,
+      distributorId,
     );
   }
 
@@ -245,6 +266,7 @@ export class RouteSheetNotifier {
     customerUserId: string,
     orderId: string,
     franja: FranjaEstimada,
+    distributorId?: string | null,
   ): Promise<void> {
     const payload = {
       orderId,
@@ -265,11 +287,17 @@ export class RouteSheetNotifier {
         payload,
       ),
     );
-    await this.notifications.sendOrderNoticePush(customerUserId, orderId, {
-      title: 'Reprogramamos tu pedido para más tarde',
-      body: `El chofer pasó y no pudo entregarlo. Vuelve a pasar hoy: te llega entre las ${horaArgentina(franja.windowStartMs)} y las ${horaArgentina(franja.windowEndMs)}.`,
-      event: 'ORDER_DELIVERY_RETRY',
-    });
+    await this.notifications.sendOrderNoticePush(
+      customerUserId,
+      orderId,
+      {
+        title: 'Reprogramamos tu pedido para más tarde',
+        body: `El chofer pasó y no pudo entregarlo. Vuelve a pasar hoy: te llega entre las ${horaArgentina(franja.windowStartMs)} y las ${horaArgentina(franja.windowEndMs)}.`,
+        event: 'ORDER_DELIVERY_RETRY',
+      },
+      undefined,
+      distributorId,
+    );
   }
 
   /**
@@ -281,6 +309,7 @@ export class RouteSheetNotifier {
     orderId: string,
     fecha: string,
     franja: FranjaEstimada,
+    distributorId?: string | null,
   ): Promise<void> {
     this.seguro('order:eta-updated', () =>
       this.customers.notifyCustomer(customerUserId, 'order:eta-updated', {
@@ -291,11 +320,17 @@ export class RouteSheetNotifier {
         etaAt: new Date(franja.etaMs).toISOString(),
       }),
     );
-    await this.notifications.sendOrderNoticePush(customerUserId, orderId, {
-      title: 'Ya tenemos el horario de tu pedido',
-      body: `El ${diaLegible(fecha)} te llega entre las ${horaArgentina(franja.windowStartMs)} y las ${horaArgentina(franja.windowEndMs)}.`,
-      event: 'ORDER_ETA_UPDATED',
-    });
+    await this.notifications.sendOrderNoticePush(
+      customerUserId,
+      orderId,
+      {
+        title: 'Ya tenemos el horario de tu pedido',
+        body: `El ${diaLegible(fecha)} te llega entre las ${horaArgentina(franja.windowStartMs)} y las ${horaArgentina(franja.windowEndMs)}.`,
+        event: 'ORDER_ETA_UPDATED',
+      },
+      undefined,
+      distributorId,
+    );
   }
 
   /** Al cliente: su pedido se reprogramó solo para otro día (socket y push). */
@@ -303,6 +338,7 @@ export class RouteSheetNotifier {
     customerUserId: string,
     orderId: string,
     fecha: string,
+    distributorId?: string | null,
   ): Promise<void> {
     this.seguro('order:rescheduled', () =>
       this.customers.notifyCustomer(customerUserId, 'order:rescheduled', {
@@ -310,11 +346,17 @@ export class RouteSheetNotifier {
         scheduledDate: fecha,
       }),
     );
-    await this.notifications.sendOrderNoticePush(customerUserId, orderId, {
-      title: 'Reprogramamos tu pedido',
-      body: `No pudimos entregártelo hoy: lo reprogramamos para el ${diaLegible(fecha)}. Te avisamos el horario cuando se arme el recorrido de ese día.`,
-      event: 'ORDER_RESCHEDULED',
-    });
+    await this.notifications.sendOrderNoticePush(
+      customerUserId,
+      orderId,
+      {
+        title: 'Reprogramamos tu pedido',
+        body: `No pudimos entregártelo hoy: lo reprogramamos para el ${diaLegible(fecha)}. Te avisamos el horario cuando se arme el recorrido de ese día.`,
+        event: 'ORDER_RESCHEDULED',
+      },
+      undefined,
+      distributorId,
+    );
   }
 
   private seguro(canal: string, fn: () => void): void {

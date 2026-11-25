@@ -52,9 +52,15 @@ describe('RouteSheetNotifier', () => {
 
   it('push al chofer sólo con token; un error no rompe', async () => {
     const { svc, fcm } = armar();
-    await svc.pushAlChofer(null, 'h1', 'x');
+    const destino = { distributorId: 'd1', driverUserId: 'u1' };
+    await svc.pushAlChofer(destino, null, 'h1', 'x');
     expect(fcm.sendToToken).not.toHaveBeenCalled();
-    await svc.pushAlChofer('tok', 'h1', 'Se agregó una parada a tu hoja.');
+    await svc.pushAlChofer(
+      destino,
+      'tok',
+      'h1',
+      'Se agregó una parada a tu hoja.',
+    );
     expect(fcm.sendToToken).toHaveBeenCalledWith(
       'tok',
       expect.objectContaining({
@@ -64,9 +70,16 @@ describe('RouteSheetNotifier', () => {
         },
         data: { type: 'ROUTE_SHEET_CHANGED', sheetId: 'h1' },
       }),
+      {
+        type: 'ROUTE_SHEET_CHANGED',
+        distributorId: 'd1',
+        recipientUserId: 'u1',
+      },
     );
     fcm.sendToToken.mockRejectedValueOnce(new Error('fcm'));
-    await expect(svc.pushAlChofer('tok', 'h1', 'x')).resolves.toBeUndefined();
+    await expect(
+      svc.pushAlChofer(destino, 'tok', 'h1', 'x'),
+    ).resolves.toBeUndefined();
   });
 
   it('al panel por la sala de la distribuidora', () => {
@@ -116,17 +129,24 @@ describe('RouteSheetNotifier', () => {
       },
     );
     expect(notifications.sendOrderNoticePush).not.toHaveBeenCalled();
-    await svc.franjaAlCliente('c1', 'o1', franja, true);
-    expect(notifications.sendOrderNoticePush).toHaveBeenCalledWith('c1', 'o1', {
-      title: 'Horario estimado de tu pedido',
-      body: 'Te llega entre las 10:15 y las 11:15.',
-      event: 'ORDER_ETA_UPDATED',
-    });
+    await svc.franjaAlCliente('c1', 'o1', franja, true, 'd1');
+    expect(notifications.sendOrderNoticePush).toHaveBeenCalledWith(
+      'c1',
+      'o1',
+      {
+        title: 'Horario estimado de tu pedido',
+        body: 'Te llega entre las 10:15 y las 11:15.',
+        event: 'ORDER_ETA_UPDATED',
+      },
+      undefined,
+      'd1',
+    );
   });
 
   it('push al chofer con título y tipo propios', async () => {
     const { svc, fcm } = armar();
     await svc.pushAlChofer(
+      { distributorId: 'd1', driverUserId: 'u1' },
       'tok',
       'h1',
       'Tenés tu hoja',
@@ -142,16 +162,27 @@ describe('RouteSheetNotifier', () => {
         },
         data: { type: 'ROUTE_SHEET_ASSIGNED', sheetId: 'h1' },
       }),
+      {
+        type: 'ROUTE_SHEET_ASSIGNED',
+        distributorId: 'd1',
+        recipientUserId: 'u1',
+      },
     );
   });
 
   it('salida del viaje: socket con la franja y push «en camino» con la hora argentina', async () => {
     const { svc, customers, notifications } = armar();
-    await svc.salidaAlCliente('c1', 'o1', {
-      windowStartMs: Date.parse('2026-11-14T13:15:00Z'),
-      windowEndMs: Date.parse('2026-11-14T14:15:00Z'),
-      etaMs: Date.parse('2026-11-14T13:45:00Z'),
-    });
+    await svc.salidaAlCliente(
+      'c1',
+      'o1',
+      {
+        windowStartMs: Date.parse('2026-11-14T13:15:00Z'),
+        windowEndMs: Date.parse('2026-11-14T14:15:00Z'),
+        etaMs: Date.parse('2026-11-14T13:45:00Z'),
+      },
+      undefined,
+      'd1',
+    );
     expect(customers.notifyCustomer).toHaveBeenCalledWith(
       'c1',
       'order:eta-updated',
@@ -166,6 +197,7 @@ describe('RouteSheetNotifier', () => {
         event: 'ORDER_TRIP_STARTED',
       },
       undefined,
+      'd1',
     );
   });
 
@@ -180,6 +212,7 @@ describe('RouteSheetNotifier', () => {
         etaMs: Date.parse('2026-11-14T13:45:00Z'),
       },
       { monto: 12000, salida: 'd1:0' },
+      'd1',
     );
     expect(notifications.sendOrderNoticePush).toHaveBeenCalledTimes(1);
     expect(notifications.sendOrderNoticePush).toHaveBeenCalledWith(
@@ -187,6 +220,7 @@ describe('RouteSheetNotifier', () => {
       'o1',
       expect.objectContaining({ event: 'ORDER_TRIP_STARTED' }),
       { monto: 12000, salida: 'd1:0' },
+      'd1',
     );
   });
 
@@ -197,7 +231,7 @@ describe('RouteSheetNotifier', () => {
     'no entregado (intento %s): socket y push %s',
     async (intento, evento, texto) => {
       const { svc, customers, notifications } = armar();
-      await svc.noEntregadoAlCliente('c1', 'o1', intento);
+      await svc.noEntregadoAlCliente('c1', 'o1', intento, 'd1');
       expect(customers.notifyCustomer).toHaveBeenCalledWith(
         'c1',
         'order:delivery-failed',
@@ -210,6 +244,8 @@ describe('RouteSheetNotifier', () => {
           event: evento,
           body: expect.stringContaining(texto) as string,
         }),
+        undefined,
+        'd1',
       );
     },
   );
@@ -218,7 +254,7 @@ describe('RouteSheetNotifier', () => {
     expect(diaLegible('2026-11-16')).toBe('lunes 16/11');
     expect(diaLegible('2026-11-15')).toBe('domingo 15/11');
     const { svc, customers, notifications } = armar();
-    await svc.reprogramadoAlCliente('c1', 'o1', '2026-11-16');
+    await svc.reprogramadoAlCliente('c1', 'o1', '2026-11-16', 'd1');
     expect(customers.notifyCustomer).toHaveBeenCalledWith(
       'c1',
       'order:rescheduled',
@@ -227,11 +263,17 @@ describe('RouteSheetNotifier', () => {
         scheduledDate: '2026-11-16',
       },
     );
-    expect(notifications.sendOrderNoticePush).toHaveBeenCalledWith('c1', 'o1', {
-      title: 'Reprogramamos tu pedido',
-      body: 'No pudimos entregártelo hoy: lo reprogramamos para el lunes 16/11. Te avisamos el horario cuando se arme el recorrido de ese día.',
-      event: 'ORDER_RESCHEDULED',
-    });
+    expect(notifications.sendOrderNoticePush).toHaveBeenCalledWith(
+      'c1',
+      'o1',
+      {
+        title: 'Reprogramamos tu pedido',
+        body: 'No pudimos entregártelo hoy: lo reprogramamos para el lunes 16/11. Te avisamos el horario cuando se arme el recorrido de ese día.',
+        event: 'ORDER_RESCHEDULED',
+      },
+      undefined,
+      'd1',
+    );
   });
 
   const FRANJA = {
@@ -242,7 +284,7 @@ describe('RouteSheetNotifier', () => {
 
   it('postergado (primer intento): socket con la franja nueva y push «más tarde» con la hora argentina', async () => {
     const { svc, customers, notifications } = armar();
-    await svc.postergadoAlCliente('c1', 'o1', FRANJA);
+    await svc.postergadoAlCliente('c1', 'o1', FRANJA, 'd1');
     const payload = {
       orderId: 'o1',
       windowStart: '2026-11-14T16:00:00.000Z',
@@ -259,25 +301,37 @@ describe('RouteSheetNotifier', () => {
       'order:eta-updated',
       payload,
     );
-    expect(notifications.sendOrderNoticePush).toHaveBeenCalledWith('c1', 'o1', {
-      title: 'Reprogramamos tu pedido para más tarde',
-      body: 'El chofer pasó y no pudo entregarlo. Vuelve a pasar hoy: te llega entre las 13:00 y las 14:00.',
-      event: 'ORDER_DELIVERY_RETRY',
-    });
+    expect(notifications.sendOrderNoticePush).toHaveBeenCalledWith(
+      'c1',
+      'o1',
+      {
+        title: 'Reprogramamos tu pedido para más tarde',
+        body: 'El chofer pasó y no pudo entregarlo. Vuelve a pasar hoy: te llega entre las 13:00 y las 14:00.',
+        event: 'ORDER_DELIVERY_RETRY',
+      },
+      undefined,
+      'd1',
+    );
   });
 
   it('horario de un pedido sin franja fija al confirmarse la hoja: con el día y la franja', async () => {
     const { svc, customers, notifications } = armar();
-    await svc.horarioAlCliente('c1', 'o1', '2026-11-16', FRANJA);
+    await svc.horarioAlCliente('c1', 'o1', '2026-11-16', FRANJA, 'd1');
     expect(customers.notifyCustomer).toHaveBeenCalledWith(
       'c1',
       'order:eta-updated',
       expect.objectContaining({ orderId: 'o1', scheduledDate: '2026-11-16' }),
     );
-    expect(notifications.sendOrderNoticePush).toHaveBeenCalledWith('c1', 'o1', {
-      title: 'Ya tenemos el horario de tu pedido',
-      body: 'El lunes 16/11 te llega entre las 13:00 y las 14:00.',
-      event: 'ORDER_ETA_UPDATED',
-    });
+    expect(notifications.sendOrderNoticePush).toHaveBeenCalledWith(
+      'c1',
+      'o1',
+      {
+        title: 'Ya tenemos el horario de tu pedido',
+        body: 'El lunes 16/11 te llega entre las 13:00 y las 14:00.',
+        event: 'ORDER_ETA_UPDATED',
+      },
+      undefined,
+      'd1',
+    );
   });
 });

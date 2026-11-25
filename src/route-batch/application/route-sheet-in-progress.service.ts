@@ -173,7 +173,12 @@ export class RouteSheetInProgress {
         const order = await this.orders.reprogramarEntrega(orderId, plan.fecha);
         if (avisarAlCliente) {
           await this.notifier
-            .reprogramadoAlCliente(order.customerId, orderId, plan.fecha)
+            .reprogramadoAlCliente(
+              order.customerId,
+              orderId,
+              plan.fecha,
+              sheet.distributorId,
+            )
             .catch(() => undefined);
         }
       }
@@ -487,6 +492,7 @@ export class RouteSheetInProgress {
       reordered: 'Se reordenaron las paradas que te faltan.',
     };
     void this.notifier.pushAlChofer(
+      { distributorId: chofer.distributorId, driverUserId: chofer.userId },
       chofer.notificationToken,
       id,
       textos[motivo],

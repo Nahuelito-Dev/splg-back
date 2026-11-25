@@ -52,14 +52,20 @@ describe('RepurchaseNotifier', () => {
         expiresAt: '2099-11-01T15:00:00.000Z',
       },
     );
-    const [token, mensaje] = fcm.sendToToken.mock.calls[0] as [
+    const [token, mensaje, contexto] = fcm.sendToToken.mock.calls[0] as [
       string,
       {
         notification: { title: string; body: string };
         data: Record<string, string>;
       },
+      unknown,
     ];
     expect(token).toBe('tok');
+    expect(contexto).toEqual({
+      type: 'REPURCHASE_INVITATION',
+      distributorId: 'd1',
+      recipientUserId: 'u1',
+    });
     expect(mensaje.notification.title).toBe('¿Reponés tu garrafa?');
     expect(mensaje.notification.body).toContain('2 garrafas');
     expect(mensaje.data).toEqual({

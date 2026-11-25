@@ -100,6 +100,10 @@ export class AdminNotificationsListener {
           subject: correo.asunto,
           html: correo.html,
           text: correo.text,
+          registro: {
+            type: 'ADMIN_NOTIFICATION',
+            distributorId: aviso.distributorId,
+          },
         }),
       ),
     );

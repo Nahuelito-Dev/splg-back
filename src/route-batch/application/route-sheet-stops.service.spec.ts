@@ -523,6 +523,7 @@ describe('RouteSheetStopsService', () => {
         'c1',
         'o2',
         1,
+        DIST,
       );
       expect(t.notifier.alPanel).toHaveBeenCalledWith(
         DIST,

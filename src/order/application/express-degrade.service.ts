@@ -155,15 +155,20 @@ export class ExpressDegradeService {
         order.distributorId,
       );
       void this.notifications
-        .sendOrderNoticePush(order.customerId, order.orderId, {
-          title: 'Tu pedido sale por reparto común',
-          body: !pase.refundRequested
-            ? 'No encontramos una moto disponible. No se te cobra el recargo express.'
-            : pase.refundFailed
-              ? 'No encontramos una moto disponible. La devolución del recargo express está en trámite.'
-              : 'No encontramos una moto disponible. Te devolvemos el recargo express.',
-          event: 'EXPRESS_DEGRADED',
-        })
+        .sendOrderNoticePush(
+          order.customerId,
+          order.orderId,
+          {
+            title: 'Tu pedido sale por reparto común',
+            body: !pase.refundRequested
+              ? 'No encontramos una moto disponible. No se te cobra el recargo express.'
+              : pase.refundFailed
+                ? 'No encontramos una moto disponible. La devolución del recargo express está en trámite.'
+                : 'No encontramos una moto disponible. Te devolvemos el recargo express.',
+            event: 'EXPRESS_DEGRADED',
+          },
+          order.distributorId,
+        )
         .catch(() => undefined);
     } catch (error) {
       this.logger.warn(

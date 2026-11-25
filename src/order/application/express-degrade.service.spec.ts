@@ -182,6 +182,7 @@ describe('ExpressDegradeService (CU-149 pasos 7 y 8)', () => {
       'cus-1',
       'ord-1',
       expect.objectContaining({ event: 'EXPRESS_DEGRADED' }),
+      'dist-1',
     );
   });
 

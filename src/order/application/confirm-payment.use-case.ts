@@ -448,7 +448,12 @@ export class ConfirmPaymentUseCase {
     }
 
     if (senaPagada) {
-      this.notificarPagoAprobado(order.customerId, order.orderId, true);
+      this.notificarPagoAprobado(
+        order.customerId,
+        order.orderId,
+        true,
+        order.distributorId,
+      );
       return;
     }
 
@@ -491,7 +496,12 @@ export class ConfirmPaymentUseCase {
 
     // Después del despacho y sin esperarlo: el push no demora ni al despacho
     // ni al webhook (`notificarPagoAprobado` nunca lanza).
-    this.notificarPagoAprobado(order.customerId, order.orderId, false);
+    this.notificarPagoAprobado(
+      order.customerId,
+      order.orderId,
+      false,
+      order.distributorId,
+    );
   }
 
   /**
@@ -537,6 +547,7 @@ export class ConfirmPaymentUseCase {
     customerId: string,
     orderId: string,
     esSena: boolean,
+    distributorId: string,
   ): void {
     try {
       this.dispatch.notifyCustomer(customerId, 'order:payment-approved', {
@@ -552,7 +563,7 @@ export class ConfirmPaymentUseCase {
     }
     try {
       void this.notificationService
-        .sendPaymentApprovedPush(customerId, orderId, esSena)
+        .sendPaymentApprovedPush(customerId, orderId, esSena, distributorId)
         .catch((error: unknown) =>
           this.logger.warn(
             `No se pudo enviar el push de pago aprobado del pedido ${orderId}: ${errorMessage(error)}`,

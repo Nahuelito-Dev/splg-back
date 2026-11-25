@@ -1709,6 +1709,7 @@ export class OrderService {
       order.customerId,
       order.orderId,
       driverName,
+      order.distributorId,
     );
   }
 

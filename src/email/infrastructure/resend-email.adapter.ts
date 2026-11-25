@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
+import {
+  NotificationChannel,
+  NotificationStatus,
+} from '../../notification-log/domain/aviso';
+import { NotificationLogRecorder } from '../../notification-log/notification-log.recorder';
 import { MARCA_DE_LOS_MAILS } from '../marca';
 import { EmailSenderPort, SendEmailInput } from '../ports/email-sender.port';
 import {
@@ -34,7 +39,10 @@ export class ResendEmailAdapter extends EmailSenderPort {
   private readonly redireccion: string | null;
   private readonly logger = new Logger(ResendEmailAdapter.name);
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly registro: NotificationLogRecorder,
+  ) {
     super();
     const resendApiKey = this.config.get<string>('RESEND_API_KEY');
     this.resend = resendApiKey ? new Resend(resendApiKey) : null;
@@ -52,8 +60,29 @@ export class ResendEmailAdapter extends EmailSenderPort {
   }
 
   async send(input: SendEmailInput): Promise<void> {
+    await this.registro.conRegistro(
+      {
+        channel: NotificationChannel.EMAIL,
+        destino: input.to,
+        titulo: input.subject,
+        contexto: input.registro,
+      },
+      () => this.enviar(input),
+      (enviado) =>
+        enviado
+          ? null
+          : {
+              status: NotificationStatus.SKIPPED,
+              error:
+                'El envío de correo no está configurado (sin RESEND_API_KEY)',
+            },
+    );
+  }
+
+  /** `false` si no hay cliente de correo configurado y no se mandó nada. */
+  private async enviar(input: SendEmailInput): Promise<boolean> {
     if (!this.resend) {
-      return;
+      return false;
     }
 
     const { to, subject, html, text } = this.redireccion
@@ -70,5 +99,6 @@ export class ResendEmailAdapter extends EmailSenderPort {
     if (result.error) {
       throw new Error(result.error.message);
     }
+    return true;
   }
 }

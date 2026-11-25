@@ -1,4 +1,5 @@
 import { messaging } from 'firebase-admin';
+import { AvisoContexto } from '../../notification-log/domain/aviso';
 
 /**
  * PUERTO de push notifications (Firebase Cloud Messaging). `NotificationsService`
@@ -11,9 +12,15 @@ import { messaging } from 'firebase-admin';
  * admin única del `FirebaseModule`.
  */
 export abstract class FcmPort {
-  /** Manda un push a un device token puntual. Devuelve el messageId del SDK. */
+  /**
+   * Manda un push a un device token puntual. Devuelve el messageId del SDK.
+   * Cada envío queda en el registro de avisos: `contexto` completa lo que el
+   * mensaje no dice (tipo, pedido, destinatario, distribuidora). Nada se
+   * deduce de `message.data`: lo que no se pasa queda sin dato.
+   */
   abstract sendToToken(
     token: string,
     message: Omit<messaging.Message, 'token'>,
+    contexto?: AvisoContexto,
   ): Promise<string>;
 }

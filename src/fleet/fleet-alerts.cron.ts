@@ -199,6 +199,7 @@ export class FleetAlertsCron {
               subject: correo.asunto,
               html: correo.html,
               text: correo.text,
+              registro: { type: 'FLEET_ALERT', distributorId },
             }),
           ),
         );

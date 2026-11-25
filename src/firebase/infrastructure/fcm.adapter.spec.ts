@@ -1,8 +1,22 @@
 import { ConfigService } from '@nestjs/config';
 import { app } from 'firebase-admin';
+import { NotificationLogRecorder } from '../../notification-log/notification-log.recorder';
 import { FcmAdapter } from './fcm.adapter';
 
 describe('FcmAdapter', () => {
+  const registro = {
+    conRegistro: jest.fn(
+      (
+        _aviso: unknown,
+        enviar: () => Promise<string>,
+        evaluar?: (id: string) => unknown,
+      ) => {
+        evaluador = evaluar;
+        return enviar();
+      },
+    ),
+  };
+  let evaluador: ((id: string) => unknown) | undefined;
   const adapter = (send: jest.Mock, timeoutMs?: string) =>
     new FcmAdapter(
       { messaging: () => ({ send }) } as unknown as app.App,
@@ -10,7 +24,57 @@ describe('FcmAdapter', () => {
         get: (clave: string) =>
           clave === 'FCM_TIMEOUT_MS' ? timeoutMs : undefined,
       } as unknown as ConfigService,
+      registro as unknown as NotificationLogRecorder,
     );
+
+  beforeEach(() => registro.conRegistro.mockClear());
+
+  it('registra el push con el contexto explícito de quien envía', async () => {
+    const send = jest.fn().mockResolvedValue('msg-1');
+    const contexto = {
+      type: 'ORDER_ARRIVED',
+      orderId: 'o1',
+      distributorId: 'd1',
+      recipientUserId: 'u1',
+    };
+    await adapter(send).sendToToken(
+      'tok-123456',
+      { notification: { title: 'Llegó', body: 'b' } },
+      contexto,
+    );
+    expect(registro.conRegistro).toHaveBeenCalledWith(
+      {
+        channel: 'push',
+        destino: 'tok-123456',
+        titulo: 'Llegó',
+        contexto,
+      },
+      expect.any(Function),
+      expect.any(Function),
+    );
+  });
+
+  it('no deduce el tipo ni el pedido de message.data: sin contexto no hay dato', async () => {
+    const send = jest.fn().mockResolvedValue('msg-1');
+    await adapter(send).sendToToken('tok', {
+      data: { type: 'TEST', event: 'X', orderId: 'o1' },
+    });
+    expect(registro.conRegistro).toHaveBeenCalledWith(
+      expect.objectContaining({ contexto: undefined }),
+      expect.any(Function),
+      expect.any(Function),
+    );
+  });
+
+  it('un push sin messageId (FCM no confirmó a tiempo) se registra como failed', async () => {
+    const send = jest.fn().mockResolvedValue('msg-1');
+    await adapter(send).sendToToken('tok', {});
+    expect(evaluador?.('msg-1')).toBeNull();
+    expect(evaluador?.('')).toEqual({
+      status: 'failed',
+      error: expect.stringContaining('no confirmó') as string,
+    });
+  });
 
   afterEach(() => jest.useRealTimers());
 

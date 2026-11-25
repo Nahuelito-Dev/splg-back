@@ -439,6 +439,7 @@ describe('DispatchOrchestratorService', () => {
         'moto-1',
         pedido.orderId,
         22600,
+        'dist-1',
       );
       expect(dispatch.notifyDriverNewOrder).toHaveBeenCalledWith(
         'moto-1',

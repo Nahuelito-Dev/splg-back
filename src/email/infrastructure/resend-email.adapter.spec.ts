@@ -5,20 +5,69 @@ jest.mock('resend', () => ({
   Resend: jest.fn().mockImplementation(() => ({ emails: { send: enviar } })),
 }));
 
+import { NotificationLogRecorder } from '../../notification-log/notification-log.recorder';
 import {
   REMITENTE_POR_OMISION,
   ResendEmailAdapter,
 } from './resend-email.adapter';
 
+const registro = {
+  conRegistro: jest.fn(
+    async (
+      _aviso: unknown,
+      enviar: () => Promise<boolean>,
+      evaluar?: (salio: boolean) => unknown,
+    ) => {
+      evaluador = evaluar;
+      await enviar();
+    },
+  ),
+};
+let evaluador: ((salio: boolean) => unknown) | undefined;
+
 function adaptador(valores: Record<string, string | undefined>) {
   const config = {
     get: (clave: string) => valores[clave],
   } as unknown as ConfigService;
-  return new ResendEmailAdapter(config);
+  return new ResendEmailAdapter(
+    config,
+    registro as unknown as NotificationLogRecorder,
+  );
 }
 
 describe('ResendEmailAdapter', () => {
-  beforeEach(() => enviar.mockClear());
+  beforeEach(() => {
+    enviar.mockClear();
+    registro.conRegistro.mockClear();
+  });
+
+  it('registra el aviso con el destinatario original, el asunto y el contexto', async () => {
+    await adaptador({ RESEND_API_KEY: 'k' }).send({
+      to: 'a@b.com',
+      subject: 'Asunto',
+      html: 'h',
+      registro: { type: 'CASH_READY', orderId: 'o1' },
+    });
+    expect(registro.conRegistro).toHaveBeenCalledWith(
+      {
+        channel: 'email',
+        destino: 'a@b.com',
+        titulo: 'Asunto',
+        contexto: { type: 'CASH_READY', orderId: 'o1' },
+      },
+      expect.any(Function),
+      expect.any(Function),
+    );
+  });
+
+  it('sin RESEND_API_KEY el aviso se registra como skipped', async () => {
+    await adaptador({}).send({ to: 'a@b.com', subject: 's', html: 'h' });
+    expect(evaluador?.(true)).toBeNull();
+    expect(evaluador?.(false)).toEqual({
+      status: 'skipped',
+      error: expect.stringContaining('RESEND_API_KEY') as string,
+    });
+  });
 
   it('usa EMAIL_FROM como remitente', async () => {
     await adaptador({

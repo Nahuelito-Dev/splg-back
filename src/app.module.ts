@@ -90,6 +90,7 @@ import { ImportModule } from './import/import.module';
 import { ClaimsModule } from './claims/claims.module';
 import { AdminNotificationsModule } from './admin-notifications/admin-notifications.module';
 import { ProcessRunModule } from './process-run/process-run.module';
+import { NotificationLogModule } from './notification-log/notification-log.module';
 import { TimeSlotModule } from './time-slot/time-slot.module';
 import { PdfModule } from './pdf/pdf.module';
 import { ReportsModule } from './reports/reports.module';
@@ -267,6 +268,7 @@ import { GraphqlApiModule } from './graphql/graphql-api.module';
     ClaimsModule,
     AdminNotificationsModule,
     ProcessRunModule,
+    NotificationLogModule,
     TimeSlotModule,
     ReportsModule,
     PdfModule,

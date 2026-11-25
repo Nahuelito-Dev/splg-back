@@ -145,6 +145,7 @@ describe('RouteSheetAssignmentService', () => {
       },
     );
     expect(t.notifier.pushAlChofer).toHaveBeenCalledWith(
+      { distributorId: DIST, driverUserId: 'u-chofer' },
       'tok',
       'hoja-1',
       expect.stringContaining('2 entrega(s)'),

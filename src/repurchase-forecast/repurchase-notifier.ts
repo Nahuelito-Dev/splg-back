@@ -58,14 +58,22 @@ export class RepurchaseNotifier {
         invitacion.userId,
       );
       if (!token) return;
-      await this.fcm.sendToToken(token, {
-        notification: { title: '¿Reponés tu garrafa?', body: detalle },
-        data: {
-          event: 'REPURCHASE_INVITATION',
-          invitationId: invitacion.invitationId,
-          distributorId: invitacion.distributorId,
+      await this.fcm.sendToToken(
+        token,
+        {
+          notification: { title: '¿Reponés tu garrafa?', body: detalle },
+          data: {
+            event: 'REPURCHASE_INVITATION',
+            invitationId: invitacion.invitationId,
+            distributorId: invitacion.distributorId,
+          },
         },
-      });
+        {
+          type: 'REPURCHASE_INVITATION',
+          distributorId: invitacion.distributorId,
+          recipientUserId: invitacion.userId,
+        },
+      );
     });
   }
 

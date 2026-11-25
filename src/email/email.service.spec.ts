@@ -202,6 +202,7 @@ describe('EmailService', () => {
         subject: 'Asunto de la plantilla',
         html: '<p>html</p>',
         text: 'html',
+        registro: { type: 'WELCOME' },
       });
     });
 

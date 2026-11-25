@@ -35,7 +35,13 @@ export class StockAdminNotifier {
     );
     await Promise.all(
       destinatarios.map((to) =>
-        this.emailSender.send({ to, subject: asunto, html, text }),
+        this.emailSender.send({
+          to,
+          subject: asunto,
+          html,
+          text,
+          registro: { type: 'STOCK_ALERT', distributorId },
+        }),
       ),
     );
     return true;

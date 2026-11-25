@@ -94,11 +94,17 @@ export class FailedVisitNotifier {
       });
       const texto =
         'Pasamos y no pudimos entregarte el pedido. La distribuidora se va a comunicar con vos para coordinar la entrega.';
-      await this.notifications.sendOrderNoticePush(p.customerId, p.orderId, {
-        title: 'No pudimos entregarte el pedido',
-        body: texto,
-        event: 'ORDER_DELIVERY_FAILED',
-      });
+      await this.notifications.sendOrderNoticePush(
+        p.customerId,
+        p.orderId,
+        {
+          title: 'No pudimos entregarte el pedido',
+          body: texto,
+          event: 'ORDER_DELIVERY_FAILED',
+        },
+        undefined,
+        p.distributorId,
+      );
       await this.correoAlCliente(p, {
         asunto: 'No pudimos entregarte el pedido',
         titulo: 'No te encontramos',
@@ -123,11 +129,17 @@ export class FailedVisitNotifier {
     const texto = acordada
       ? `Pasamos y no pudimos entregarte el pedido. Como acordamos, volvemos ${cuando}.`
       : `Pasamos y no pudimos entregarte el pedido. Volvemos ${cuando}. Si no te sirve, elegí otro día y horario en la app.`;
-    await this.notifications.sendOrderNoticePush(p.customerId, p.orderId, {
-      title: 'No te encontramos',
-      body: texto,
-      event: 'ORDER_RESCHEDULED',
-    });
+    await this.notifications.sendOrderNoticePush(
+      p.customerId,
+      p.orderId,
+      {
+        title: 'No te encontramos',
+        body: texto,
+        event: 'ORDER_RESCHEDULED',
+      },
+      undefined,
+      p.distributorId,
+    );
     await this.correoAlCliente(p, {
       asunto: `No te encontramos: volvemos ${cuando}`,
       titulo: 'No te encontramos',
@@ -159,11 +171,17 @@ export class FailedVisitNotifier {
     this.alCliente(p, 'order:rescheduled', this.payload(p, franja));
     this.alPanel(p, 'order:revisit-updated', {});
     const texto = `La distribuidora coordinó la entrega de tu pedido: pasamos ${cuando}.`;
-    await this.notifications.sendOrderNoticePush(p.customerId, p.orderId, {
-      title: 'Nueva fecha de entrega',
-      body: texto,
-      event: 'ORDER_RESCHEDULED',
-    });
+    await this.notifications.sendOrderNoticePush(
+      p.customerId,
+      p.orderId,
+      {
+        title: 'Nueva fecha de entrega',
+        body: texto,
+        event: 'ORDER_RESCHEDULED',
+      },
+      undefined,
+      p.distributorId,
+    );
     await this.correoAlCliente(p, {
       asunto: `Tu pedido se entrega ${cuando}`,
       titulo: 'Nueva fecha de entrega',
@@ -273,6 +291,12 @@ export class FailedVisitNotifier {
         subject: armado.asunto,
         html: armado.html,
         text: armado.text,
+        registro: {
+          type: 'REVISIT_NOTICE',
+          orderId: p.orderId,
+          distributorId: p.distributorId,
+          recipientUserId: p.customerId,
+        },
       });
     } catch (error) {
       this.logger.warn(

@@ -152,6 +152,7 @@ export class RouteSheetAssignmentService {
     }
     if (primeraVez) {
       void this.notifier.pushAlChofer(
+        { distributorId: sheet.distributorId, driverUserId: chofer.userId },
         chofer.notificationToken,
         id,
         `Tenés tu hoja de ruta de hoy: ${asignados.length} entrega(s). Cuando tengas la carga, iniciá el viaje.`,

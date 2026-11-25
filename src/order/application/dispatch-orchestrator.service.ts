@@ -265,6 +265,7 @@ export class DispatchOrchestratorService {
       candidate,
       order.orderId,
       efectivoDelPedido(fresco),
+      fresco.distributorId,
     );
 
     this.logger.log(
@@ -346,6 +347,7 @@ export class DispatchOrchestratorService {
       candidate,
       fresco.orderId,
       efectivoDelPedido(fresco),
+      fresco.distributorId,
     );
 
     this.logger.log(

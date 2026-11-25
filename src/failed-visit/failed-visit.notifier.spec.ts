@@ -111,6 +111,8 @@ describe('FailedVisitNotifier', () => {
         body: 'Pasamos y no pudimos entregarte el pedido. Volvemos el jueves 26/11 entre las 09:00 y las 13:00. Si no te sirve, elegí otro día y horario en la app.',
         event: 'ORDER_RESCHEDULED',
       },
+      undefined,
+      'dist',
     );
     expect(t.correo.send).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -174,6 +176,8 @@ describe('FailedVisitNotifier', () => {
       'cli',
       ORDEN,
       expect.objectContaining({ event: 'ORDER_DELIVERY_FAILED' }),
+      undefined,
+      'dist',
     );
     expect(t.events.emit).toHaveBeenCalledWith(
       EVENTO_NOTIFICAR_ADMIN,
@@ -244,6 +248,8 @@ describe('FailedVisitNotifier', () => {
         body: 'La distribuidora coordinó la entrega de tu pedido: pasamos el jueves 26/11.',
         event: 'ORDER_RESCHEDULED',
       },
+      undefined,
+      'dist',
     );
     expect(t.correo.send).toHaveBeenCalled();
 

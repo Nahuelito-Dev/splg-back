@@ -57,11 +57,16 @@ export class ReintegroListener {
         r.distributorId,
       );
       void this.notifications
-        .sendOrderNoticePush(pedido.customerId, r.orderId, {
-          title: 'Te devolvimos el pago',
-          body: `Te devolvimos $${r.amount} por tu pedido #${r.orderId.substring(0, 8)}.`,
-          event: 'PAYMENT_REFUNDED',
-        })
+        .sendOrderNoticePush(
+          pedido.customerId,
+          r.orderId,
+          {
+            title: 'Te devolvimos el pago',
+            body: `Te devolvimos $${r.amount} por tu pedido #${r.orderId.substring(0, 8)}.`,
+            event: 'PAYMENT_REFUNDED',
+          },
+          r.distributorId,
+        )
         .catch(() => undefined);
     } catch (error) {
       this.logger.warn(

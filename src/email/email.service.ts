@@ -270,6 +270,9 @@ export class EmailService {
         subject: emailData.subject ?? correo.asunto,
         html: correo.html,
         text: correo.text,
+        registro: {
+          type: emailData.template.toUpperCase().replace(/[^A-Z0-9]+/g, '_'),
+        },
       });
     } catch (error) {
       // Best-effort: el envío de email nunca debe tumbar el flujo que lo
