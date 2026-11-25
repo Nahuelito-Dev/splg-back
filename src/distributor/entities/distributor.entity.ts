@@ -61,6 +61,36 @@ export class Distributor {
   @Column({ type: 'varchar', nullable: true })
   phone!: string | null;
 
+  /** Sin uso desde que se retiró la transferencia; se conserva por borrado lógico. */
+  @Column({
+    name: 'bank_cbu',
+    type: 'varchar',
+    length: 22,
+    nullable: true,
+    select: false,
+  })
+  bankCbu!: string | null;
+
+  /** Sin uso desde que se retiró la transferencia; se conserva por borrado lógico. */
+  @Column({
+    name: 'bank_alias',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+    select: false,
+  })
+  bankAlias!: string | null;
+
+  /** Sin uso desde que se retiró la transferencia; se conserva por borrado lógico. */
+  @Column({
+    name: 'bank_holder',
+    type: 'varchar',
+    length: 120,
+    nullable: true,
+    select: false,
+  })
+  bankHolder!: string | null;
+
   @Column({
     name: 'logo_url',
     type: 'varchar',

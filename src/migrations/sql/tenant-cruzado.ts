@@ -134,8 +134,9 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     ['tire', 'cash_movement_id', 'cash_movement'],
     ['vehicle_accident', 'payment_cash_movement_id', 'cash_movement'],
     ['vehicle_accident', 'reimbursement_cash_movement_id', 'cash_movement'],
-    // Caja de cobro de las ventas (Mercado Pago)
+    // Cajas de cobro de las ventas (Mercado Pago; la de transferencias quedó sin uso)
     ['cash_collection_settings', 'mercadopago_cash_box_id', 'cash_box'],
+    ['cash_collection_settings', 'transfer_cash_box_id', 'cash_box'],
     // Diferencias de la conciliación con Mercado Pago
     ['mp_reconciliation_item', 'reconciliation_id', 'mp_reconciliation'],
     // Hoja de ruta (lote de modalidad `planned`)

@@ -29,6 +29,15 @@ import { CashBox } from './cash-box.entity';
     onDelete: 'NO ACTION',
   },
 )
+@ForeignKey(
+  () => CashBox,
+  ['transfer_cash_box_id', 'distributor_id'],
+  ['cash_box_id', 'distributor_id'],
+  {
+    name: 'FK_cash_collection_settings_transfer_cash_box_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
 @Entity('cash_collection_settings')
 export class CashCollectionSettings {
   @PrimaryColumn({ name: 'distributor_id', type: 'uuid' })
@@ -44,6 +53,18 @@ export class CashCollectionSettings {
   /** Billetera (`wallet`) a la que entran los pagos de Mercado Pago. */
   @Column({ name: 'mercadopago_cash_box_id', type: 'uuid', nullable: true })
   mercadoPagoCashBoxId!: string | null;
+
+  /**
+   * Sin uso desde que se retiró la transferencia; se conserva por borrado
+   * lógico. No sale en ninguna respuesta ni se escribe desde la API.
+   */
+  @Column({
+    name: 'transfer_cash_box_id',
+    type: 'uuid',
+    nullable: true,
+    select: false,
+  })
+  transferCashBoxId!: string | null;
 
   /**
    * El administrador que dejó la configuración vigente: es el autor de los
