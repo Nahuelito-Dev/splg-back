@@ -936,7 +936,7 @@ export class OrderController {
       deliveryId,
       distributorId,
     );
-    return this.conFoto(OrderMapper.toDto(order));
+    return this.conFoto(OrderMapper.toDto(order, { paraElPersonal: true }));
   }
 
   @Patch(':id/location')

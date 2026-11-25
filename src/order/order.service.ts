@@ -31,6 +31,7 @@ import {
   ventaCobradaWhere,
 } from '../common/utils/venta-cobrada';
 import {
+  AssignmentMethod,
   Order,
   OrderDeliveryMode,
   OrderStatus,
@@ -966,6 +967,8 @@ export class OrderService {
        * Tampoco se le manda un aviso por pedido: le llega la hoja.
        */
       vehiculoDeLaHoja?: VehiculoEnUsoSnapshot;
+      /** Cómo se asigna: por omisión `manual_override` (el admin). */
+      metodo?: AssignmentMethod;
     } = {},
   ) {
     const delivery = await this.deliveries.findById(deliveryId);
@@ -1131,6 +1134,8 @@ export class OrderService {
       // chofer no puede confirmar la entrega con el código del cliente. Si se
       // reasigna, el código nuevo deja sin efecto el anterior.
       locked.deliveryCode = generateDeliveryCode();
+      locked.assignmentMethod =
+        opciones.metodo ?? AssignmentMethod.MANUAL_OVERRIDE;
 
       order = await queryRunner.manager.save(locked);
       // Punto 5: la asignación a mano resuelve el pedido ella sola; cualquier

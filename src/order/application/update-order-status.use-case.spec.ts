@@ -15,6 +15,7 @@ import { AuditoriaDeDatos } from '../../audit/data/auditoria-de-datos';
 import { InvalidOrderTransitionError } from '../domain/errors/invalid-order-transition.error';
 import { ReservationNotActivableError } from '../domain/errors/reservation-not-activable.error';
 import {
+  AssignmentMethod,
   Order,
   OrderDeliveryMode,
   OrderStatus,
@@ -866,6 +867,8 @@ describe('UpdateOrderStatusUseCase', () => {
       // Prueba de entrega con QR: al aceptar se genera el código secreto que
       // el chofer mostrará como QR (ver ConfirmDeliveryUseCase).
       expect(result.deliveryCode).toEqual(expect.stringMatching(/^\d{6}$/));
+      // M1: el chofer aceptó la oferta del despacho.
+      expect(result.assignmentMethod).toBe(AssignmentMethod.AUTOMATIC);
       expect(orders.save).toHaveBeenCalledWith(result);
       // Cierra la oferta de despacho del chofer que aceptó (por user_id).
       expect(orchestrator.onDriverAccepted).toHaveBeenCalledWith(
@@ -949,6 +952,7 @@ describe('UpdateOrderStatusUseCase', () => {
             deliveryId: 'drv-1',
             acceptedAt: acceptedAtOriginal,
             deliveryCode: 'CODIGO-VIEJO',
+            assignmentMethod: AssignmentMethod.MANUAL_OVERRIDE,
           }),
         );
         deliveries.buscarPorIdOUsuario.mockResolvedValue({
@@ -969,6 +973,8 @@ describe('UpdateOrderStatusUseCase', () => {
         expect(result.status).toBe(OrderStatus.ACCEPTED);
         expect(result.acceptedAt).toBe(acceptedAtOriginal);
         expect(result.deliveryCode).toBe('CODIGO-VIEJO');
+        // Una asignación manual previa no pasa a automática por el «aceptar» del aviso.
+        expect(result.assignmentMethod).toBe(AssignmentMethod.MANUAL_OVERRIDE);
         // No vuelve a cerrar ninguna oferta: nunca hubo una real (asignación
         // manual, no despacho automático).
         expect(orchestrator.onDriverAccepted).not.toHaveBeenCalled();

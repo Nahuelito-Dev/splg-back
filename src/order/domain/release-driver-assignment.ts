@@ -33,6 +33,7 @@ export function releaseDriverAssignment(order: Order): void {
   order.deliveryId = null;
   order.delivery = null;
   order.acceptedAt = null;
+  order.assignmentMethod = null;
   order.onTheWayAt = null;
   order.vehicleCarId = null;
   order.vehiclePatent = null;

@@ -1,3 +1,4 @@
+import { AssignmentMethod } from '../entities/order.entity';
 import { DispatchOfferStatus as S } from '../entities/dispatch-offer.entity';
 import {
   calcularMetricasDeDespacho,
@@ -31,6 +32,7 @@ describe('percentil y mediana', () => {
 describe('calcularMetricasDeDespacho', () => {
   it('sin datos devuelve ceros y nulos, no NaN', () => {
     const m = calcularMetricasDeDespacho({
+      metodosDeAsignacion: [],
       ofertas: [],
       pedidos: [],
       sinChofer: 0,
@@ -44,6 +46,7 @@ describe('calcularMetricasDeDespacho', () => {
 
   it('calcula porcentajes sobre las resueltas e ignora retiradas y abiertas', () => {
     const m = calcularMetricasDeDespacho({
+      metodosDeAsignacion: [],
       ofertas: [
         oferta({ orderId: 'a', status: S.REJECTED, respondedAt: en(10) }),
         oferta({
@@ -104,6 +107,7 @@ describe('calcularMetricasDeDespacho', () => {
       }),
     );
     const { topChoferes } = calcularMetricasDeDespacho({
+      metodosDeAsignacion: [],
       ofertas,
       pedidos: [],
       sinChofer: 0,
@@ -120,5 +124,51 @@ describe('calcularMetricasDeDespacho', () => {
       tasaAceptacion: 50,
       medianaRespuestaSegundos: 5,
     });
+  });
+});
+
+describe('calcularMetricasDeDespacho · método de asignación', () => {
+  const vacia = { ofertas: [], pedidos: [], sinChofer: 0 };
+
+  it('sin pedidos asignados: los cuatro métodos en cero y sin porcentaje', () => {
+    const m = calcularMetricasDeDespacho({ ...vacia, metodosDeAsignacion: [] });
+    expect(m.pedidosAsignados).toBe(0);
+    expect(m.asignadosSinMetodo).toBe(0);
+    expect(m.asignacionPorMetodo.map((x) => x.method)).toEqual([
+      'automatic',
+      'manual_override',
+      'route_sheet',
+      'batch',
+    ]);
+    expect(m.asignacionPorMetodo.every((x) => x.porcentaje === null)).toBe(
+      true,
+    );
+  });
+
+  it('el porcentaje es sobre los que tienen método; los viejos van aparte', () => {
+    const m = calcularMetricasDeDespacho({
+      ...vacia,
+      metodosDeAsignacion: [
+        AssignmentMethod.AUTOMATIC,
+        AssignmentMethod.AUTOMATIC,
+        AssignmentMethod.AUTOMATIC,
+        AssignmentMethod.MANUAL_OVERRIDE,
+        null,
+        null,
+      ],
+    });
+    expect(m.pedidosAsignados).toBe(6);
+    expect(m.asignadosSinMetodo).toBe(2);
+    const por = Object.fromEntries(
+      m.asignacionPorMetodo.map((x) => [x.method, x]),
+    );
+    expect(por.automatic).toEqual({
+      method: 'automatic',
+      cantidad: 3,
+      porcentaje: 75,
+    });
+    expect(por.manual_override.porcentaje).toBe(25);
+    expect(por.route_sheet).toMatchObject({ cantidad: 0, porcentaje: 0 });
+    expect(por.batch.cantidad).toBe(0);
   });
 });

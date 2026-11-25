@@ -51,6 +51,7 @@ describe('DispatchOrchestratorService', () => {
   let notifications: { sendOfferPushToDriver: jest.Mock };
   let truckGate: {
     choferesQuePuedenRecibir: jest.Mock;
+    choferesConStockPara: jest.Mock;
     motivoParaNoRecibir: jest.Mock;
     motivoParaElAdmin: jest.Mock;
   };
@@ -160,6 +161,10 @@ describe('DispatchOrchestratorService', () => {
       choferesQuePuedenRecibir: jest.fn((_dist: string, ids: string[]) =>
         Promise.resolve(new Set(ids)),
       ),
+      // Por defecto nadie se descarta por stock.
+      choferesConStockPara: jest.fn((_dist: string, ids: string[]) =>
+        Promise.resolve(new Set(ids)),
+      ),
       motivoParaNoRecibir: jest.fn().mockResolvedValue(null),
       motivoParaElAdmin: jest.fn().mockResolvedValue(null),
     };
@@ -215,6 +220,83 @@ describe('DispatchOrchestratorService', () => {
       dispatch.findNearbyDrivers.mockResolvedValueOnce(['a', 'b']);
 
       expect(await orchestrator.offerToNextDriver(conTenant())).toBe('a');
+    });
+  });
+
+  describe('offerToNextDriver · stock del vehículo (M1b)', () => {
+    const RENGLONES = [
+      { gasCylinderId: 'g10', quantity: 2 },
+      { gasCylinderId: 'g15', quantity: 1 },
+    ];
+    const conItems = () =>
+      makeOrder({
+        distributorId: 'dist-1',
+        items: RENGLONES as unknown as Order['items'],
+      });
+
+    it('no le ofrece al chofer sin las garrafas y sí al que las lleva', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce([
+        'sin-stock',
+        'con-stock',
+      ]);
+      orders.findByIdFull.mockResolvedValue(conItems());
+      truckGate.choferesConStockPara.mockResolvedValue(new Set(['con-stock']));
+
+      expect(await orchestrator.offerToNextDriver(conItems())).toBe(
+        'con-stock',
+      );
+      expect(truckGate.choferesConStockPara).toHaveBeenCalledWith(
+        'dist-1',
+        ['sin-stock', 'con-stock'],
+        RENGLONES,
+      );
+    });
+
+    it('si nadie alcanza por stock avisa con el motivo no_stock y no ofrece', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValue(['a', 'b']);
+      orders.findByIdFull.mockResolvedValue(conItems());
+      truckGate.choferesConStockPara.mockResolvedValue(new Set());
+
+      expect(await orchestrator.offerToNextDriver(conItems())).toBeNull();
+      expect(offers.create).not.toHaveBeenCalled();
+      expect(dispatch.notifyAdmins).toHaveBeenCalledWith(
+        'order:no-drivers',
+        expect.objectContaining({ reason: 'no_stock' }),
+        'dist-1',
+      );
+    });
+
+    it('sin choferes en el radar el motivo sigue siendo no_drivers_in_range, no no_stock', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValue([]);
+      orders.findByIdFull.mockResolvedValue(conItems());
+
+      await orchestrator.offerToNextDriver(conItems());
+
+      expect(dispatch.notifyAdmins).toHaveBeenCalledWith(
+        'order:no-drivers',
+        expect.objectContaining({ reason: 'no_drivers_in_range' }),
+        'dist-1',
+      );
+    });
+
+    it('un pedido sin renglones no consulta el stock', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['a']);
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ distributorId: 'dist-1', items: [] }),
+      );
+
+      expect(
+        await orchestrator.offerToNextDriver(
+          makeOrder({ distributorId: 'dist-1' }),
+        ),
+      ).toBe('a');
+      expect(truckGate.choferesConStockPara).not.toHaveBeenCalled();
+    });
+
+    it('el pool de lotes y de motos no filtra por stock (no hay pedido)', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValue(['a']);
+      await orchestrator.choferesElegiblesCerca(-26.8, -65.2, 'dist-1');
+      expect(truckGate.choferesConStockPara).not.toHaveBeenCalled();
     });
   });
 

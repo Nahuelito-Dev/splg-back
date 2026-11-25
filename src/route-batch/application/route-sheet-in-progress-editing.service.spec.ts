@@ -122,6 +122,7 @@ describe('RouteSheetInProgressEditingService', () => {
         DIST,
         {
           soloSiLibre: true,
+          metodo: 'route_sheet',
         },
       );
       expect(t.writer.activarParada).toHaveBeenCalledWith(

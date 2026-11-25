@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { OrderService } from './order.service';
 import {
+  AssignmentMethod,
   Order,
   OrderDeliveryMode,
   OrderStatus,
@@ -283,6 +284,41 @@ describe('OrderService · asignación manual', () => {
     expect(result.status).toBe(OrderStatus.ACCEPTED);
     expect(result.deliveryCode).toMatch(/\S{4,}/);
     expect(queryRunner.commitTransaction).toHaveBeenCalled();
+  });
+
+  describe('método de asignación (M1)', () => {
+    it('la asignación del admin queda como manual_override', async () => {
+      const r = await service.assignDelivery(PEDIDO, CHOFER);
+      expect(r.assignmentMethod).toBe(AssignmentMethod.MANUAL_OVERRIDE);
+    });
+
+    it('el lote de recorrido queda como batch', async () => {
+      const r = await service.assignDelivery(PEDIDO, CHOFER, 'dist', {
+        soloSiLibre: true,
+        metodo: AssignmentMethod.BATCH,
+      });
+      expect(r.assignmentMethod).toBe(AssignmentMethod.BATCH);
+    });
+
+    it('la hoja de ruta queda como route_sheet', async () => {
+      const r = await service.assignDelivery(PEDIDO, CHOFER, 'dist', {
+        soloSiLibre: true,
+        metodo: AssignmentMethod.ROUTE_SHEET,
+      });
+      expect(r.assignmentMethod).toBe(AssignmentMethod.ROUTE_SHEET);
+    });
+
+    it('repetir la asignación al mismo chofer no pisa el método que ya tenía', async () => {
+      queryBuilder.getOne.mockResolvedValueOnce(
+        makeLockedOrder({
+          status: OrderStatus.ACCEPTED,
+          deliveryId: CHOFER,
+          assignmentMethod: AssignmentMethod.AUTOMATIC,
+        }),
+      );
+      const r = await service.assignDelivery(PEDIDO, CHOFER);
+      expect(r.assignmentMethod).toBe(AssignmentMethod.AUTOMATIC);
+    });
   });
 
   it('guarda el snapshot del vehículo en uso (decisión de nahue, "vehículo en uso")', async () => {

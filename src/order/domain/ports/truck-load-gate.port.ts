@@ -18,6 +18,19 @@ export abstract class TruckLoadGatePort {
   ): Promise<Set<string>>;
 
   /**
+   * De esos choferes (`user_id`), los que NO se descartan por stock para un
+   * pedido con esos renglones. Sólo se descarta si la distribuidora exige carga
+   * abierta (`requireOpenTruckLoad`) y el vehículo en uso del chofer tiene datos
+   * de stock que no cubren las garrafas llenas de algún renglón. Sin la
+   * exigencia, sin vehículo o sin datos de stock del vehículo, nadie se descarta.
+   */
+  abstract choferesConStockPara(
+    distributorId: string,
+    userIds: string[],
+    renglones: ReadonlyArray<{ gasCylinderId: string; quantity: number }>,
+  ): Promise<Set<string>>;
+
+  /**
    * Por qué el chofer (`user_id`) no puede recibir pedidos, con el texto para
    * mostrarle en la app ("Abrí tu carga para recibir pedidos"); `null` si puede.
    */

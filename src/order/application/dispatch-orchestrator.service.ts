@@ -37,13 +37,15 @@ import { diaArgentino } from '../../common/utils/dias-argentina';
 export type MotivoSinChoferes =
   | 'no_drivers_in_range'
   | 'all_drivers_exhausted'
-  | 'no_delivery_point';
+  | 'no_delivery_point'
+  | 'no_stock';
 
 const MOTIVO_SIN_CHOFERES: Readonly<Record<MotivoSinChoferes, string>> = {
   no_drivers_in_range: 'no hay choferes disponibles cerca para ofrecérselo.',
   all_drivers_exhausted:
     'los choferes cercanos ya lo rechazaron o no respondieron.',
   no_delivery_point: 'no tiene un punto de entrega con ubicación.',
+  no_stock: 'ningún chofer cercano lleva en su vehículo las garrafas que pide.',
 };
 
 /**
@@ -53,6 +55,12 @@ const MOTIVO_SIN_CHOFERES: Readonly<Record<MotivoSinChoferes, string>> = {
  * Vive y muere con cada llamada; nunca se comparte entre intentos, porque el
  * estado de la flota puede cambiar entre una oferta y la siguiente.
  */
+/** Lo que el filtro por stock necesita saber del pedido y dónde anota a quién descartó. */
+interface PedidoParaStock {
+  renglones: ReadonlyArray<{ gasCylinderId: string; quantity: number }>;
+  descartados: Set<string>;
+}
+
 interface CacheDeInhabilitacion {
   evaluados: Set<string>;
   inhabilitados: Set<string>;
@@ -206,6 +214,7 @@ export class DispatchOrchestratorService {
       order.distributorId,
       radiusStepsKm,
       finishingRadiusMeters,
+      fresco.items,
     );
     const candidate =
       nuevos.candidate ??
@@ -218,6 +227,7 @@ export class DispatchOrchestratorService {
               order.distributorId,
               radiusStepsKm,
               finishingRadiusMeters,
+              fresco.items,
             )
           ).candidate
         : null);
@@ -230,7 +240,9 @@ export class DispatchOrchestratorService {
         order,
         nuevos.elegiblesEnRango > 0
           ? 'all_drivers_exhausted'
-          : 'no_drivers_in_range',
+          : nuevos.descartadosPorStock > 0
+            ? 'no_stock'
+            : 'no_drivers_in_range',
       );
       return null;
     }
@@ -650,7 +662,14 @@ export class DispatchOrchestratorService {
     distributorId: string | null | undefined,
     radiusStepsKm: readonly number[],
     finishingRadiusMeters: number,
-  ): Promise<{ candidate: string | null; elegiblesEnRango: number }> {
+    renglones: ReadonlyArray<{ gasCylinderId: string; quantity: number }> = [],
+  ): Promise<{
+    candidate: string | null;
+    elegiblesEnRango: number;
+    descartadosPorStock: number;
+  }> {
+    const descartados = new Set<string>();
+    const pedido: PedidoParaStock = { renglones, descartados };
     const cacheDeFlota: CacheDeInhabilitacion = {
       evaluados: new Set(),
       inhabilitados: new Set(),
@@ -664,12 +683,23 @@ export class DispatchOrchestratorService {
         distributorId,
         cacheDeFlota,
         finishingRadiusMeters,
+        pedido,
       );
       eligible.forEach((id) => enRango.add(id));
       const next = eligible.find((id) => !exclude.has(id));
-      if (next) return { candidate: next, elegiblesEnRango: enRango.size };
+      if (next) {
+        return {
+          candidate: next,
+          elegiblesEnRango: enRango.size,
+          descartadosPorStock: descartados.size,
+        };
+      }
     }
-    return { candidate: null, elegiblesEnRango: enRango.size };
+    return {
+      candidate: null,
+      elegiblesEnRango: enRango.size,
+      descartadosPorStock: descartados.size,
+    };
   }
 
   /**
@@ -695,6 +725,7 @@ export class DispatchOrchestratorService {
     distributorId: string | null | undefined,
     cache: CacheDeInhabilitacion,
     finishingRadiusMeters = 0,
+    pedido?: PedidoParaStock,
   ): Promise<string[]> {
     if (driverIds.length === 0) return driverIds;
     const habilitados = await this.deliveries.choferesElegibles(
@@ -724,7 +755,10 @@ export class DispatchOrchestratorService {
       cache.inhabilitados.size === 0
         ? elegibles
         : elegibles.filter((id) => !cache.inhabilitados.has(id));
-    return this.conCargaSiSeExige(sinBloqueo, distributorId);
+    const conCarga = await this.conCargaSiSeExige(sinBloqueo, distributorId);
+    return pedido
+      ? this.conStockSiSeExige(conCarga, distributorId, pedido)
+      : conCarga;
   }
 
   /**
@@ -783,6 +817,28 @@ export class DispatchOrchestratorService {
       );
     }
     return resultado;
+  }
+
+  /**
+   * Con la carga abierta exigida, el chofer cuyo vehículo no lleva las garrafas
+   * llenas del pedido (por tipo y cantidad) no recibe la oferta. Anota en
+   * `pedido.descartados` a quién sacó, para el motivo `no_stock`.
+   */
+  private async conStockSiSeExige(
+    driverIds: string[],
+    distributorId: string | null | undefined,
+    pedido: PedidoParaStock,
+  ): Promise<string[]> {
+    if (!distributorId || driverIds.length === 0) return driverIds;
+    if (pedido.renglones.length === 0) return driverIds;
+    const alcanzan = await this.truckLoadGate.choferesConStockPara(
+      distributorId,
+      driverIds,
+      pedido.renglones,
+    );
+    for (const id of driverIds)
+      if (!alcanzan.has(id)) pedido.descartados.add(id);
+    return driverIds.filter((id) => alcanzan.has(id));
   }
 
   /**

@@ -25,7 +25,7 @@ export class DispatchMetricsController {
   @ApiOperation({
     summary: 'Cómo viene el despacho',
     description:
-      'Pedidos despachados, ofertas por pedido, porcentaje de ofertas aceptadas, rechazadas y vencidas (sobre las ya resueltas), tiempo de respuesta del chofer y tiempo hasta asignar (mediana y p90, en segundos), pedidos que se quedaron sin chofer y los 5 choferes con mejor tasa de aceptación. El tiempo de respuesta sólo cuenta ofertas con respuesta registrada: las anteriores a esta función no la tienen. Por omisión, los últimos 30 días; el período puede ser de hasta 366 días. El super admin tiene que mandar `X-Distributor`.',
+      'Pedidos despachados, ofertas por pedido, porcentaje de ofertas aceptadas, rechazadas y vencidas (sobre las ya resueltas), tiempo de respuesta del chofer y tiempo hasta asignar (mediana y p90, en segundos), pedidos que se quedaron sin chofer, los 5 choferes con mejor tasa de aceptación y, de los pedidos asignados en el período, cuántos se asignaron por despacho automático, asignación manual, hoja de ruta o lote (`asignacionPorMetodo`; los pedidos anteriores al registro del método van en `asignadosSinMetodo`). El tiempo de respuesta sólo cuenta ofertas con respuesta registrada: las anteriores a esta función no la tienen. Por omisión, los últimos 30 días; el período puede ser de hasta 366 días. El super admin tiene que mandar `X-Distributor`.',
   })
   @ApiQuery({ name: 'from', required: false, example: '2026-11-01' })
   @ApiQuery({ name: 'to', required: false, example: '2026-11-17' })

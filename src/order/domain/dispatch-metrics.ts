@@ -1,4 +1,5 @@
 import { DispatchOfferStatus } from '../entities/dispatch-offer.entity';
+import { AssignmentMethod } from '../entities/order.entity';
 
 /** Una oferta del período, tal como la lee la consulta. */
 export interface OfertaMedida {
@@ -19,6 +20,8 @@ export interface PedidoMedido {
 }
 
 export interface EntradaDeMetricas {
+  /** Método de asignación de cada pedido asignado en el período (`null`: sin dato). */
+  metodosDeAsignacion: Array<AssignmentMethod | null>;
   ofertas: OfertaMedida[];
   pedidos: PedidoMedido[];
   /** Pedidos que el sistema canceló porque ningún chofer los tomó. */
@@ -40,7 +43,19 @@ export interface ChoferEnElTop {
   medianaRespuestaSegundos: number | null;
 }
 
+export interface AsignacionPorMetodo {
+  method: AssignmentMethod;
+  cantidad: number;
+  /** Sobre los pedidos asignados que tienen método, 0 a 100; null si no hay ninguno. */
+  porcentaje: number | null;
+}
+
 export interface MetricasDeDespacho {
+  /** Pedidos asignados en el período (aceptados por un chofer o asignados a mano). */
+  pedidosAsignados: number;
+  /** De ellos, los anteriores al registro del método: no se inventa. */
+  asignadosSinMetodo: number;
+  asignacionPorMetodo: AsignacionPorMetodo[];
   pedidosDespachados: number;
   ofertasPorPedido: number | null;
   /** Sobre las ofertas ya resueltas (aceptada, rechazada o vencida), 0 a 100. */
@@ -149,7 +164,24 @@ export function calcularMetricasDeDespacho(
     .filter((p) => p.aceptadoEn !== null)
     .map((p) => segundosEntre(p.esperaDesde, p.aceptadoEn as Date));
 
+  const conMetodo = entrada.metodosDeAsignacion.filter(
+    (m): m is AssignmentMethod => m !== null,
+  );
+  const asignacionPorMetodo = Object.values(AssignmentMethod).map(
+    (method): AsignacionPorMetodo => {
+      const cantidad = conMetodo.filter((m) => m === method).length;
+      return {
+        method,
+        cantidad,
+        porcentaje: porcentaje(cantidad, conMetodo.length),
+      };
+    },
+  );
+
   return {
+    pedidosAsignados: entrada.metodosDeAsignacion.length,
+    asignadosSinMetodo: entrada.metodosDeAsignacion.length - conMetodo.length,
+    asignacionPorMetodo,
     pedidosDespachados: pedidos.size,
     ofertasPorPedido:
       pedidos.size === 0 ? null : redondear(ofertas.length / pedidos.size),

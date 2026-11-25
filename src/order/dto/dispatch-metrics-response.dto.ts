@@ -28,12 +28,51 @@ export class ChoferEnElTopDto {
   medianaRespuestaSegundos!: number | null;
 }
 
+export class AsignacionPorMetodoDto {
+  @ApiProperty({
+    enum: ['automatic', 'manual_override', 'route_sheet', 'batch'],
+    description:
+      '`automatic` (despacho automático), `manual_override` (asignación manual), `route_sheet` (hoja de ruta), `batch` (lote de recorrido)',
+  })
+  method!: 'automatic' | 'manual_override' | 'route_sheet' | 'batch';
+
+  @ApiProperty({ example: 12 })
+  cantidad!: number;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Sobre los pedidos asignados que tienen método, 0 a 100; null si ninguno lo tiene',
+  })
+  porcentaje!: number | null;
+}
+
 export class DispatchMetricsResponseDto {
   @ApiProperty({ format: 'date-time' })
   from!: string;
 
   @ApiProperty({ format: 'date-time' })
   to!: string;
+
+  @ApiProperty({
+    description:
+      'Pedidos del período que hoy tienen chofer, por cualquier camino. Cuenta la asignación vigente: un pedido liberado no entra y uno reasignado cuenta con su último método (no es un historial)',
+  })
+  pedidosAsignados!: number;
+
+  @ApiProperty({
+    description:
+      'De los asignados, los anteriores al registro del método (no se les inventa uno)',
+  })
+  asignadosSinMetodo!: number;
+
+  @ApiProperty({
+    type: AsignacionPorMetodoDto,
+    isArray: true,
+    description: 'Siempre los cuatro métodos, aunque tengan 0',
+  })
+  asignacionPorMetodo!: AsignacionPorMetodoDto[];
 
   @ApiProperty({ description: 'Pedidos con al menos una oferta en el período' })
   pedidosDespachados!: number;

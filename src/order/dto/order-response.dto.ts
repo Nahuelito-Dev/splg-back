@@ -735,4 +735,24 @@ export class OrderResponseDto {
   @Expose({ name: 'revisit' })
   @Type(() => RevisitDeOrderDto)
   revisit!: RevisitDeOrderDto | null;
+
+  /**
+   * Cómo se asignó el pedido a su chofer. Sólo lo ve el personal (admin y super
+   * admin); `null` sin chofer, en pedidos anteriores a este dato y para el resto.
+   */
+  @ApiProperty({
+    name: 'assignmentMethod',
+    enum: ['automatic', 'manual_override', 'route_sheet', 'batch'],
+    nullable: true,
+    required: false,
+    description:
+      '`automatic` (despacho automático), `manual_override` (asignación manual), `route_sheet` (hoja de ruta) o `batch` (lote de recorrido)',
+  })
+  @Expose({ name: 'assignmentMethod' })
+  assignmentMethod?:
+    | 'automatic'
+    | 'manual_override'
+    | 'route_sheet'
+    | 'batch'
+    | null;
 }

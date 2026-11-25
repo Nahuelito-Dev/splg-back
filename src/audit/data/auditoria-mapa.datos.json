@@ -9067,11 +9067,19 @@
     },
     {
       "table": "order",
+      "column": "assignment_method",
+      "property": "assignmentMethod",
+      "secret": false,
+      "kind": "text",
+      "position": 43
+    },
+    {
+      "table": "order",
       "column": "last_failed_visit_at",
       "property": "lastFailedVisitAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 43
+      "position": 44
     },
     {
       "table": "order",
@@ -9079,7 +9087,7 @@
       "property": "deliveryMode",
       "secret": false,
       "kind": "text",
-      "position": 44
+      "position": 45
     },
     {
       "table": "order",
@@ -9087,7 +9095,7 @@
       "property": "expressSurchargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 45
+      "position": 46
     },
     {
       "table": "order",
@@ -9095,7 +9103,7 @@
       "property": "containerChargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 46
+      "position": 47
     },
     {
       "table": "order",
@@ -9103,7 +9111,7 @@
       "property": "expressDegradedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 47
+      "position": 48
     },
     {
       "table": "order",
@@ -9111,7 +9119,7 @@
       "property": "coverageZoneId",
       "secret": false,
       "kind": "text",
-      "position": 48
+      "position": 49
     },
     {
       "table": "order",
@@ -9119,7 +9127,7 @@
       "property": "zoneName",
       "secret": false,
       "kind": "text",
-      "position": 49
+      "position": 50
     },
     {
       "table": "order",
@@ -9127,7 +9135,7 @@
       "property": "zoneSurchargeType",
       "secret": false,
       "kind": "text",
-      "position": 50
+      "position": 51
     },
     {
       "table": "order",
@@ -9135,7 +9143,7 @@
       "property": "zoneSurchargeValue",
       "secret": false,
       "kind": "text",
-      "position": 51
+      "position": 52
     },
     {
       "table": "order",
@@ -9143,7 +9151,7 @@
       "property": "zoneSurchargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 52
+      "position": 53
     },
     {
       "table": "order",
@@ -9151,7 +9159,7 @@
       "property": "paymentSurchargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 53
+      "position": 54
     },
     {
       "table": "order",
@@ -9159,7 +9167,7 @@
       "property": "paymentSurchargePercentage",
       "secret": false,
       "kind": "text",
-      "position": 54
+      "position": 55
     },
     {
       "table": "order",
@@ -9167,7 +9175,7 @@
       "property": "subtotalItems",
       "secret": false,
       "kind": "text",
-      "position": 55
+      "position": 56
     },
     {
       "table": "order",
@@ -9175,7 +9183,7 @@
       "property": "vehicleCarId",
       "secret": false,
       "kind": "text",
-      "position": 56
+      "position": 57
     },
     {
       "table": "order",
@@ -9183,7 +9191,7 @@
       "property": "vehiclePatent",
       "secret": false,
       "kind": "text",
-      "position": 57
+      "position": 58
     },
     {
       "table": "order",
@@ -9191,7 +9199,7 @@
       "property": "vehicleBrand",
       "secret": false,
       "kind": "text",
-      "position": 58
+      "position": 59
     },
     {
       "table": "order",
@@ -9199,7 +9207,7 @@
       "property": "vehicleModel",
       "secret": false,
       "kind": "text",
-      "position": 59
+      "position": 60
     },
     {
       "table": "order_address_change",

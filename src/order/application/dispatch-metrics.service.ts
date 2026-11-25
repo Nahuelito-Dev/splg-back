@@ -5,6 +5,7 @@ import {
   OfertaMedida,
   PedidoMedido,
 } from '../domain/dispatch-metrics';
+import { AssignmentMethod } from '../entities/order.entity';
 import { MOTIVO_VENCIMIENTO_SIN_CHOFER } from '../domain/vencimiento-sin-chofer';
 import { DispatchMetricsResponseDto } from '../dto/dispatch-metrics-response.dto';
 
@@ -93,7 +94,18 @@ export class DispatchMetricsService {
       [distributorId, MOTIVO_VENCIMIENTO_SIN_CHOFER, desde, hasta],
     );
 
+    // Todo pedido asignado en el período, haya tenido oferta o no (asignación manual,
+    // hoja de ruta, lote): por eso no sale de las ofertas.
+    const asignados: Array<{ method: AssignmentMethod | null }> =
+      await this.dataSource.query(
+        `SELECT o."assignment_method" AS "method" FROM "order" o
+          WHERE o."distributor_id" = $1 AND o."delivery_id" IS NOT NULL
+            AND o."acceptedAt" >= $2 AND o."acceptedAt" <= $3`,
+        [distributorId, desde, hasta],
+      );
+
     const metricas = calcularMetricasDeDespacho({
+      metodosDeAsignacion: asignados.map((a) => a.method),
       ofertas: ofertasFilas.map((f) => ({
         ...f,
         driverName: f.driverName ?? 'Chofer',

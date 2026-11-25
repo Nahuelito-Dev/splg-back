@@ -126,6 +126,104 @@ describe('TruckLoadGateService', () => {
       );
     });
 
+    describe('choferesConStockPara (M1b)', () => {
+      const PIDE = [
+        { gasCylinderId: 'g10', quantity: 2 },
+        { gasCylinderId: 'g15', quantity: 1 },
+      ];
+      /** Responde por la consulta: vehículo del chofer, o saldos por vehículo. */
+      const base = (
+        vehiculos: Array<{ user_id: string; car_id: string }>,
+        saldos: Array<{
+          car_id: string;
+          gas_cylinder_id: string | null;
+          full: number;
+        }>,
+      ) =>
+        query.mockImplementation((sql: string) =>
+          Promise.resolve(
+            sql.includes('vehicle_assignment') ? vehiculos : saldos,
+          ),
+        );
+
+      it('sin la exigencia de carga no descarta a nadie ni consulta', async () => {
+        expect(
+          await gate.choferesConStockPara('dist', ['u1', 'u2'], PIDE),
+        ).toEqual(new Set(['u1', 'u2']));
+        expect(query).not.toHaveBeenCalled();
+      });
+
+      it('con la exigencia descarta al que no cubre algún renglón y deja al que sí', async () => {
+        exigir();
+        base(
+          [
+            { user_id: 'ok', car_id: 'c1' },
+            { user_id: 'corto', car_id: 'c2' },
+            { user_id: 'sin-un-tipo', car_id: 'c3' },
+          ],
+          [
+            { car_id: 'c1', gas_cylinder_id: 'g10', full: 2 },
+            { car_id: 'c1', gas_cylinder_id: 'g15', full: 5 },
+            { car_id: 'c2', gas_cylinder_id: 'g10', full: 1 },
+            { car_id: 'c2', gas_cylinder_id: 'g15', full: 1 },
+            { car_id: 'c3', gas_cylinder_id: 'g10', full: 9 },
+          ],
+        );
+        expect(
+          await gate.choferesConStockPara(
+            'dist',
+            ['ok', 'corto', 'sin-un-tipo'],
+            PIDE,
+          ),
+        ).toEqual(new Set(['ok']));
+      });
+
+      it('un vehículo con ubicación de stock vacía no tiene las garrafas: se descarta', async () => {
+        exigir();
+        base(
+          [{ user_id: 'vacio', car_id: 'c1' }],
+          [{ car_id: 'c1', gas_cylinder_id: null, full: 0 }],
+        );
+        expect(
+          await gate.choferesConStockPara('dist', ['vacio'], PIDE),
+        ).toEqual(new Set());
+      });
+
+      it('sin vehículo en uso o sin datos de stock del vehículo no se descarta', async () => {
+        exigir();
+        base([{ user_id: 'sin-datos', car_id: 'c9' }], []);
+        expect(
+          await gate.choferesConStockPara(
+            'dist',
+            ['sin-datos', 'sin-auto'],
+            PIDE,
+          ),
+        ).toEqual(new Set(['sin-datos', 'sin-auto']));
+      });
+
+      it('las garrafas vacías o falladas no cuentan: sólo las llenas (la consulta las filtra)', async () => {
+        exigir();
+        base([{ user_id: 'u1', car_id: 'c1' }], []);
+        await gate.choferesConStockPara('dist', ['u1'], PIDE);
+        const sqlSaldos = query.mock.calls
+          .map((c: unknown[]) => c[0] as string)
+          .find((q) => q.includes('stock_balance'));
+        expect(sqlSaldos).toContain(`"condition" = 'full'`);
+        expect(sqlSaldos).toContain('"distributor_id" = $1');
+      });
+
+      it('pedido sin renglones o sin choferes: no consulta', async () => {
+        exigir();
+        expect(await gate.choferesConStockPara('dist', ['u1'], [])).toEqual(
+          new Set(['u1']),
+        );
+        expect(await gate.choferesConStockPara('dist', [], PIDE)).toEqual(
+          new Set(),
+        );
+        expect(query).not.toHaveBeenCalled();
+      });
+    });
+
     it('no consulta con la lista vacía', async () => {
       expect(await gate.choferesQuePuedenRecibir('dist', [])).toEqual(
         new Set(),

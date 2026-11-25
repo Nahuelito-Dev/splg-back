@@ -36,9 +36,9 @@ describe('DispatchMetricsService', () => {
   });
 
   it('está aislado por empresa: toda consulta lleva la distribuidora', async () => {
-    const { svc, query } = servicio([[], [], [{ total: '0' }]]);
+    const { svc, query } = servicio([[], [], [{ total: '0' }], []]);
     await svc.obtener('dist-A', undefined, undefined);
-    expect(query).toHaveBeenCalledTimes(3);
+    expect(query).toHaveBeenCalledTimes(4);
     for (const [sql, params] of query.mock.calls as [string, unknown[]][]) {
       expect(sql).toContain('"distributor_id" = $1');
       expect(params[0]).toBe('dist-A');
@@ -68,6 +68,11 @@ describe('DispatchMetricsService', () => {
       ],
       [{ esperaDesde: t(-30), aceptadoEn: t(12) }],
       [{ total: '3' }],
+      [
+        { method: 'automatic' },
+        { method: 'manual_override' },
+        { method: null },
+      ],
     ]);
     const r = await svc.obtener('dist-A', undefined, undefined);
     expect(r.pedidosDespachados).toBe(1);
@@ -77,6 +82,13 @@ describe('DispatchMetricsService', () => {
     expect(r.respuestaDelChofer).toEqual({ mediana: 12, p90: 12 });
     expect(r.hastaAsignar.mediana).toBe(42);
     expect(r.pedidosSinChofer).toBe(3);
+    expect(r.pedidosAsignados).toBe(3);
+    expect(r.asignadosSinMetodo).toBe(1);
+    expect(r.asignacionPorMetodo[0]).toEqual({
+      method: 'automatic',
+      cantidad: 1,
+      porcentaje: 50,
+    });
     expect(r.topChoferes[0]).toMatchObject({
       nombre: 'Ana',
       tasaAceptacion: 100,

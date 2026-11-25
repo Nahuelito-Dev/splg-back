@@ -31,7 +31,11 @@ import {
 } from '../order/entities/route-batch.entity';
 import { RouteBatchOffer } from '../order/entities/route-batch-offer.entity';
 import { RouteBatchStop } from '../order/entities/route-batch-stop.entity';
-import { Order, OrderStatus } from '../order/entities/order.entity';
+import {
+  AssignmentMethod,
+  Order,
+  OrderStatus,
+} from '../order/entities/order.entity';
 import { OrderService } from '../order/order.service';
 import { RedisService } from '../redis/redis.service';
 import {
@@ -882,7 +886,7 @@ export class RouteBatchService {
         delivery.deliveryId,
         delivery.distributorId,
         // Un pedido que otro chofer o un admin ya tomó no se reasigna: sale del lote.
-        { soloSiLibre: true },
+        { soloSiLibre: true, metodo: AssignmentMethod.BATCH },
       );
       return true;
     } catch (error) {

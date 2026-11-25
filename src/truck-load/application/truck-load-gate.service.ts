@@ -4,6 +4,10 @@ import { DataSource, EntityManager } from 'typeorm';
 import { TruckLoadGatePort } from '../../order/domain/ports/truck-load-gate.port';
 import { ESTADOS_ABIERTOS, TruckLoadStatus } from '../domain/truck-load.enums';
 import { MotivoSinPedidos, motivoSinPedidos } from '../domain/truck-load-rules';
+import {
+  alcanzaElStock,
+  RenglonPedido,
+} from '../domain/stock-del-camion-alcanza';
 import { StockControlSettingsService } from './stock-control-settings.service';
 
 export const MENSAJE_SIN_CARGA =
@@ -49,6 +53,61 @@ export class TruckLoadGateService extends TruckLoadGatePort {
         .filter((f) => this.motivoDe(exige, f) === null)
         .map((f) => f.user_id),
     );
+  }
+
+  async choferesConStockPara(
+    distributorId: string,
+    userIds: string[],
+    renglones: readonly RenglonPedido[],
+  ): Promise<Set<string>> {
+    const todos = new Set(userIds);
+    if (userIds.length === 0 || renglones.length === 0) return todos;
+    const { requireOpenTruckLoad } = await this.settings.obtener(distributorId);
+    if (!requireOpenTruckLoad) return todos;
+
+    const vehiculos: Array<{ user_id: string; car_id: string }> =
+      await this.dataSource.query(
+        `SELECT d."user_id", va."car_id"
+           FROM "delivery" d
+           JOIN "vehicle_assignment" va ON va."delivery_id" = d."delivery_id"
+            AND va."released_at" IS NULL
+          WHERE d."distributor_id" = $1 AND d."user_id" = ANY($2::uuid[])`,
+        [distributorId, userIds],
+      );
+    if (vehiculos.length === 0) return todos;
+
+    // Una fila por vehículo que tiene ubicación de stock (aunque esté vacía:
+    // `gas_cylinder_id` null); un vehículo sin ubicación no tiene datos.
+    const saldos: Array<{
+      car_id: string;
+      gas_cylinder_id: string | null;
+      full: number;
+    }> = await this.dataSource.query(
+      `SELECT l."car_id", b."gas_cylinder_id",
+              COALESCE(SUM(b."quantity") FILTER (WHERE b."condition" = 'full'), 0)::int AS "full"
+         FROM "stock_location" l
+         LEFT JOIN "stock_balance" b ON b."location_id" = l."location_id" AND b."quantity" > 0
+        WHERE l."distributor_id" = $1 AND l."car_id" = ANY($2::uuid[])
+        GROUP BY l."car_id", b."gas_cylinder_id"`,
+      [distributorId, [...new Set(vehiculos.map((v) => v.car_id))]],
+    );
+    const llenasPorVehiculo = new Map<string, Map<string, number>>();
+    for (const s of saldos) {
+      const tipos =
+        llenasPorVehiculo.get(s.car_id) ?? new Map<string, number>();
+      if (s.gas_cylinder_id) {
+        tipos.set(
+          s.gas_cylinder_id,
+          (tipos.get(s.gas_cylinder_id) ?? 0) + s.full,
+        );
+      }
+      llenasPorVehiculo.set(s.car_id, tipos);
+    }
+    for (const v of vehiculos) {
+      const llenas = llenasPorVehiculo.get(v.car_id);
+      if (llenas && !alcanzaElStock(llenas, renglones)) todos.delete(v.user_id);
+    }
+    return todos;
   }
 
   async motivoParaNoRecibir(

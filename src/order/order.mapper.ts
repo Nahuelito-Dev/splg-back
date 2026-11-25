@@ -186,6 +186,9 @@ export class OrderMapper {
     dto.driver = null;
     dto.deliveryConfirmation = confirmacionDe(order, paraElPersonal);
     dto.revisit = nuevaVisitaDe(order);
+    dto.assignmentMethod = paraElPersonal
+      ? (order.assignmentMethod ?? null)
+      : null;
     dto.cancelledBy = null;
 
     // Status Mapping

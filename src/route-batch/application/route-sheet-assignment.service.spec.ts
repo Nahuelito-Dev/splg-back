@@ -125,6 +125,7 @@ describe('RouteSheetAssignmentService', () => {
       DIST,
       {
         soloSiLibre: true,
+        metodo: 'route_sheet',
         hojaDeRuta: 'hoja-1',
         vehiculoDeLaHoja: {
           carId: 'auto-1',

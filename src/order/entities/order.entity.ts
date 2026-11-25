@@ -41,6 +41,18 @@ export enum OrderStatus {
   CANCELLED = 'cancelled',
 }
 
+/** Cómo se le asignó el pedido a su chofer (`null`: pedidos anteriores a este dato). */
+export enum AssignmentMethod {
+  /** El despacho automático se lo ofreció y el chofer aceptó. */
+  AUTOMATIC = 'automatic',
+  /** Un administrador lo asignó a mano. */
+  MANUAL_OVERRIDE = 'manual_override',
+  /** Se lo asignó la hoja de ruta de su chofer. */
+  ROUTE_SHEET = 'route_sheet',
+  /** Se lo asignó un lote de recorrido (M4). */
+  BATCH = 'batch',
+}
+
 export enum OrderDeliveryMode {
   STANDARD = 'standard',
   EXPRESS = 'express',
@@ -76,6 +88,10 @@ export enum PaymentStatus {
 )
 @Check('CHK_order_intentos_codigo', `"delivery_code_attempts" >= 0`)
 @Check('CHK_order_visitas_fallidas', `"failed_visit_count" >= 0`)
+@Check(
+  'CHK_order_metodo_de_asignacion',
+  `"assignment_method" IS NULL OR "assignment_method" IN ('automatic', 'manual_override', 'route_sheet', 'batch')`,
+)
 @Check(
   'CHK_order_nueva_visita_estado',
   `"revisit_status" IS NULL OR "revisit_status" IN ('proposed', 'confirmed', 'awaiting_admin')`,
@@ -554,6 +570,19 @@ export class Order {
     nullable: true,
   })
   revisitStatus!: string | null;
+
+  /**
+   * Cómo se asignó el pedido a su chofer. `null` mientras no tiene chofer y en
+   * los pedidos anteriores a este dato (no se inventa). Se pisa en cada
+   * asignación y vuelve a `null` si el pedido se libera.
+   */
+  @Column({
+    name: 'assignment_method',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+  })
+  assignmentMethod!: AssignmentMethod | null;
 
   /**
    * Cuándo fue la última visita fallida. Las ofertas de despacho anteriores no
