@@ -31,7 +31,12 @@ import {
   situacionDelChofer,
   type SituacionDeChofer,
 } from '../domain/chofer-por-terminar';
+import { errorMessage } from '../../common/errors/error-message';
 import { diaArgentino } from '../../common/utils/dias-argentina';
+import { RouteMatrixPort } from '../../routes/route-matrix.port';
+import { OfferEstimateSource } from '../entities/dispatch-offer.entity';
+import type { OfferEstimate } from '../domain/ports/dispatch-offer.repository.port';
+import { ordenarPorLlegada } from '../domain/orden-por-llegada';
 
 /** Por qué un pedido pendiente se quedó sin candidatos (payload de `order:no-drivers`). */
 export type MotivoSinChoferes =
@@ -133,6 +138,8 @@ export class DispatchOrchestratorService {
     private readonly expressDegrade: ExpressDegradeService,
     // Bandeja de avisos de los admins (no sabe cómo se entrega).
     private readonly events: EventEmitter2,
+    // M1c: minutos por calle de cada chofer al cliente (cae a línea recta si OSRM no responde).
+    private readonly matrix: RouteMatrixPort,
   ) {}
 
   /**
@@ -195,8 +202,12 @@ export class DispatchOrchestratorService {
     }
 
     // Se leen en cada oferta: un cambio de configuración rige para la próxima.
-    const { radiusStepsKm, offerTtlSeconds, finishingRadiusMeters } =
-      await this.settings.obtener(order.distributorId);
+    const {
+      radiusStepsKm,
+      offerTtlSeconds,
+      finishingRadiusMeters,
+      osrmCandidateCount,
+    } = await this.settings.obtener(order.distributorId);
 
     const { blocked, reofferable } = await this.offers.findDriverOfferState(
       order.orderId,
@@ -215,22 +226,25 @@ export class DispatchOrchestratorService {
       radiusStepsKm,
       finishingRadiusMeters,
       fresco.items,
+      osrmCandidateCount,
     );
-    const candidate =
-      nuevos.candidate ??
-      (reofferable.length > 0
-        ? (
-            await this.findNearestAvailable(
-              destino.lat,
-              destino.lng,
-              new Set(blocked),
-              order.distributorId,
-              radiusStepsKm,
-              finishingRadiusMeters,
-              fresco.items,
-            )
-          ).candidate
-        : null);
+    const reintento =
+      nuevos.candidate === null && reofferable.length > 0
+        ? await this.findNearestAvailable(
+            destino.lat,
+            destino.lng,
+            new Set(blocked),
+            order.distributorId,
+            radiusStepsKm,
+            finishingRadiusMeters,
+            fresco.items,
+            osrmCandidateCount,
+          )
+        : null;
+    const candidate = nuevos.candidate ?? reintento?.candidate ?? null;
+    const estimate = nuevos.candidate
+      ? nuevos.estimate
+      : (reintento?.estimate ?? null);
 
     if (!candidate) {
       this.logger.debug(
@@ -253,6 +267,7 @@ export class DispatchOrchestratorService {
       candidate,
       expiresAt,
       order.distributorId,
+      estimate,
     );
     // Un chofer nuevo reabre el pedido: el próximo agotamiento vuelve a avisar.
     // Una re-oferta a quien ya venció es el mismo agotamiento y no lo reinicia
@@ -281,7 +296,10 @@ export class DispatchOrchestratorService {
     );
 
     this.logger.log(
-      `Pedido ${order.orderId} ofrecido a chofer ${candidate} (vence ${expiresAt.toISOString()})`,
+      `Pedido ${order.orderId} ofrecido a chofer ${candidate} (vence ${expiresAt.toISOString()}` +
+        (estimate
+          ? `; llega en ${estimate.minutes} min, estimado con ${estimate.source})`
+          : ')'),
     );
     return candidate;
   }
@@ -663,8 +681,10 @@ export class DispatchOrchestratorService {
     radiusStepsKm: readonly number[],
     finishingRadiusMeters: number,
     renglones: ReadonlyArray<{ gasCylinderId: string; quantity: number }> = [],
+    osrmCandidateCount = 8,
   ): Promise<{
     candidate: string | null;
+    estimate: OfferEstimate | null;
     elegiblesEnRango: number;
     descartadosPorStock: number;
   }> {
@@ -686,10 +706,17 @@ export class DispatchOrchestratorService {
         pedido,
       );
       eligible.forEach((id) => enRango.add(id));
-      const next = eligible.find((id) => !exclude.has(id));
-      if (next) {
+      const disponibles = eligible.filter((id) => !exclude.has(id));
+      if (disponibles.length > 0) {
+        const { orden, estimaciones } = await this.ordenarPorLlegada(
+          disponibles,
+          { lat, lng },
+          osrmCandidateCount,
+        );
+        const next = orden[0];
         return {
           candidate: next,
+          estimate: estimaciones.get(next) ?? null,
           elegiblesEnRango: enRango.size,
           descartadosPorStock: descartados.size,
         };
@@ -697,9 +724,77 @@ export class DispatchOrchestratorService {
     }
     return {
       candidate: null,
+      estimate: null,
       elegiblesEnRango: enRango.size,
       descartadosPorStock: descartados.size,
     };
+  }
+
+  /**
+   * Reordena los candidatos de un paso de radio por lo que tardan en llegar por
+   * calle: mide a los primeros `cantidad` que tienen posición reciente (un solo
+   * pedido de N orígenes al destino) y los pone por minutos; el resto queda
+   * después, en el orden del radar. Nunca frena la oferta: si el puerto falla,
+   * o no hay posiciones recientes, el orden es el del radar y no hay estimación.
+   */
+  private async ordenarPorLlegada(
+    enOrdenDeRadar: string[],
+    destino: { lat: number; lng: number },
+    cantidad: number,
+  ): Promise<{ orden: string[]; estimaciones: Map<string, OfferEstimate> }> {
+    const estimaciones = new Map<string, OfferEstimate>();
+    try {
+      const conPosicion: Array<{ id: string; lat: number; lng: number }> = [];
+      for (
+        let desde = 0;
+        desde < enOrdenDeRadar.length && conPosicion.length < cantidad;
+        desde += cantidad
+      ) {
+        const lote = enOrdenDeRadar.slice(desde, desde + cantidad);
+        const posiciones = await Promise.all(
+          lote.map((id) => this.dispatch.lastKnownPosition(id)),
+        );
+        lote.forEach((id, i) => {
+          const p = posiciones[i];
+          if (
+            p &&
+            posicionReciente(p.at, Date.now()) &&
+            conPosicion.length < cantidad
+          ) {
+            conPosicion.push({ id, lat: p.lat, lng: p.lng });
+          }
+        });
+      }
+      if (conPosicion.length === 0) {
+        return { orden: enOrdenDeRadar, estimaciones };
+      }
+      const tiempos = await this.matrix.durationsTo(conPosicion, destino);
+      const minutos = new Map<string, number>();
+      conPosicion.forEach((c, i) => {
+        const m = tiempos.minutes[i];
+        if (!Number.isFinite(m)) return;
+        minutos.set(c.id, m);
+        estimaciones.set(c.id, {
+          minutes: Math.round(m * 10) / 10,
+          source:
+            (tiempos.sources?.[i] ?? tiempos.source) === 'osrm'
+              ? OfferEstimateSource.OSRM
+              : OfferEstimateSource.HAVERSINE,
+        });
+      });
+      this.logger.debug(
+        `Orden por llegada de ${conPosicion.length} choferes con ${tiempos.source}`,
+      );
+      return {
+        orden: ordenarPorLlegada(enOrdenDeRadar, minutos),
+        estimaciones,
+      };
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo ordenar por llegada, sigue el orden del radar: ${errorMessage(error)}`,
+      );
+      return { orden: enOrdenDeRadar, estimaciones: new Map() };
+    }
   }
 
   /**

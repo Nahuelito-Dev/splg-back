@@ -1,5 +1,14 @@
 import { EntityManager } from 'typeorm';
-import { DispatchOffer } from '../../entities/dispatch-offer.entity';
+import {
+  DispatchOffer,
+  OfferEstimateSource,
+} from '../../entities/dispatch-offer.entity';
+
+/** Tiempo estimado al cliente que se guarda en la oferta, y con qué se calculó. */
+export interface OfferEstimate {
+  minutes: number;
+  source: OfferEstimateSource;
+}
 
 /** Ver `DispatchOfferRepositoryPort.findDriverOfferState`. */
 export interface DriverOfferState {
@@ -25,6 +34,7 @@ export abstract class DispatchOfferRepositoryPort {
     driverId: string,
     expiresAt: Date,
     distributorId?: string | null,
+    estimate?: OfferEstimate | null,
   ): Promise<DispatchOffer>;
 
   /**

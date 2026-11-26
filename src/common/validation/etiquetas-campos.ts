@@ -167,6 +167,7 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   anticipationKm: 'Anticipación (km)',
   apartment: 'Departamento',
   arrivalRadiusMeters: 'Radio para marcar Llegué (metros)',
+  osrmCandidateCount: 'Choferes a medir por calle en cada radio',
   appeal: 'Apelación',
   appliesToCategories: 'Categorías a las que aplica',
   attachmentId: 'Archivo adjunto',

@@ -111,6 +111,28 @@ export class DispatchMetricsResponseDto {
   })
   pedidosSinChofer!: number;
 
+  @ApiProperty({
+    description:
+      'Ofertas del período que guardaron el tiempo estimado al cliente (base de las dos cifras siguientes)',
+  })
+  ofertasConEstimacion!: number;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'De las ofertas con estimación, el porcentaje (0 a 100) que se ordenó por calle con OSRM y no con la línea recta; null si no hay ninguna',
+  })
+  porcentajeOrdenadasPorOsrm!: number | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Promedio de minutos que se estimó que el chofer tardaba en llegar al cliente al ofrecerle el pedido; null si no hay datos',
+  })
+  minutosEstimadosPromedio!: number | null;
+
   @ApiProperty({ type: ChoferEnElTopDto, isArray: true })
   topChoferes!: ChoferEnElTopDto[];
 }

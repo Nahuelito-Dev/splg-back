@@ -129,4 +129,17 @@ describe('DispatchConfigDto (CU-171)', () => {
       ]);
     },
   );
+
+  it.each([1, 8, 20])('acepta de 1 a 20 choferes a medir (%s)', async (n) => {
+    expect(await camposInvalidos({ osrmCandidateCount: n })).toEqual([]);
+  });
+
+  it.each([0, 21, 2.5, '8'])(
+    'rechaza choferes a medir fuera de 1..20 o no entero (%s)',
+    async (n) => {
+      expect(await camposInvalidos({ osrmCandidateCount: n })).toEqual([
+        'osrmCandidateCount',
+      ]);
+    },
+  );
 });

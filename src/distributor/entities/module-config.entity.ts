@@ -214,6 +214,7 @@ const CHECK_DESPACHO = [
       ['finishingRadiusMeters', 0, 5000],
       ['noDriverExpiryMinutes', 1, 1440],
       ['arrivalRadiusMeters', 0, 5000],
+      ['osrmCandidateCount', 1, 20],
     ] as const
   ).map(
     ([k, min, max]) =>

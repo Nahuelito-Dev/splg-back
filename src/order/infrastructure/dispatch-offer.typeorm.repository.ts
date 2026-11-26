@@ -9,6 +9,7 @@ import {
   DispatchOfferRepositoryPort,
   DriverOfferState,
   HojaQueAsigna,
+  OfferEstimate,
 } from '../domain/ports/dispatch-offer.repository.port';
 import {
   DispatchOffer,
@@ -30,12 +31,15 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     driverId: string,
     expiresAt: Date,
     distributorId?: string | null,
+    estimate?: OfferEstimate | null,
   ): Promise<DispatchOffer> {
     const offer = this.repo.create({
       orderId,
       driverId,
       distributorId: distributorId ?? undefined,
       expiresAt,
+      estimatedMinutes: estimate ? estimate.minutes : null,
+      estimateSource: estimate ? estimate.source : null,
       status: ESTADO_ABIERTO,
     });
     return this.repo.save(offer);

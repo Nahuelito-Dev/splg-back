@@ -86,6 +86,9 @@ import { OrderAddressChange } from './entities/order-address-change.entity';
 import { CustomerContainerModule } from '../customer-container/customer-container.module';
 import { DeclareEmptiesUseCase } from './application/declare-empties.use-case';
 import { VencimientoSinChoferService } from './application/vencimiento-sin-chofer.service';
+import { OsrmTableMatrixAdapter } from '../routes/osrm-table.adapter';
+import { RouteMatrixPort } from '../routes/route-matrix.port';
+import { ROUTES_FETCH } from '../routes/routes.service';
 @Module({
   imports: [
     RoutePlanningHoldModule, // el despacho no ofrece lo retenido por una hoja de ruta (F34)
@@ -134,6 +137,14 @@ import { VencimientoSinChoferService } from './application/vencimiento-sin-chofe
     // Confirma el pedido cuando payments publica un pago notificado.
     PagoNotificadoListener,
     OrderService,
+    // Minutos por calle de los choferes al cliente (M1c). RoutesModule importa este
+    // módulo, así que acá se arma el adaptador en vez de importarlo de vuelta.
+    OsrmTableMatrixAdapter,
+    { provide: RouteMatrixPort, useExisting: OsrmTableMatrixAdapter },
+    {
+      provide: ROUTES_FETCH,
+      useValue: (url: string, init?: RequestInit) => fetch(url, init),
+    },
     OrderFraudHoldService,
     OrderAttachmentOwnerResolver,
     DispatchService,

@@ -172,3 +172,54 @@ describe('calcularMetricasDeDespacho · método de asignación', () => {
     expect(por.batch.cantidad).toBe(0);
   });
 });
+
+describe('calcularMetricasDeDespacho · estimación al cliente (M1c)', () => {
+  const base = { metodosDeAsignacion: [], pedidos: [], sinChofer: 0 };
+
+  it('sin estimaciones no inventa cifras', () => {
+    const m = calcularMetricasDeDespacho({
+      ...base,
+      ofertas: [oferta({ status: S.OFFERED })],
+    });
+    expect(m.ofertasConEstimacion).toBe(0);
+    expect(m.porcentajeOrdenadasPorOsrm).toBeNull();
+    expect(m.minutosEstimadosPromedio).toBeNull();
+  });
+
+  it('% por OSRM y promedio sólo sobre las ofertas con estimación', () => {
+    const m = calcularMetricasDeDespacho({
+      ...base,
+      ofertas: [
+        oferta({
+          status: S.ACCEPTED,
+          estimatedMinutes: 4,
+          estimateSource: 'osrm',
+        }),
+        oferta({
+          status: S.EXPIRED,
+          estimatedMinutes: 10,
+          estimateSource: 'osrm',
+        }),
+        oferta({
+          status: S.REJECTED,
+          estimatedMinutes: 7,
+          estimateSource: 'haversine',
+        }),
+        oferta({
+          status: S.EXPIRED,
+          estimatedMinutes: 7,
+          estimateSource: 'haversine',
+        }),
+        oferta({ status: S.EXPIRED }),
+        oferta({
+          status: S.SUPERSEDED,
+          estimatedMinutes: 99,
+          estimateSource: 'osrm',
+        }),
+      ],
+    });
+    expect(m.ofertasConEstimacion).toBe(4);
+    expect(m.porcentajeOrdenadasPorOsrm).toBe(50);
+    expect(m.minutosEstimadosPromedio).toBe(7);
+  });
+});

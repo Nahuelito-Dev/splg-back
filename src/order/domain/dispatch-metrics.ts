@@ -9,6 +9,10 @@ export interface OfertaMedida {
   status: DispatchOfferStatus | `${DispatchOfferStatus}`;
   offeredAt: Date;
   respondedAt: Date | null;
+  /** Minutos estimados al cliente al ofrecer (ausente o null: sin estimación). */
+  estimatedMinutes?: number | null;
+  /** Con qué se estimó: por calle (`osrm`) o en línea recta (`haversine`). */
+  estimateSource?: 'osrm' | 'haversine' | null;
 }
 
 /** Un pedido con oferta en el período, con el desenlace de su espera. */
@@ -65,6 +69,12 @@ export interface MetricasDeDespacho {
   respuestaDelChofer: TiempoEnSegundos;
   hastaAsignar: TiempoEnSegundos;
   pedidosSinChofer: number;
+  /** Ofertas (no retiradas) que guardaron un tiempo estimado: la base de las dos cifras siguientes. */
+  ofertasConEstimacion: number;
+  /** De ellas, las que se ordenaron con OSRM y no con la línea recta, 0 a 100. */
+  porcentajeOrdenadasPorOsrm: number | null;
+  /** Promedio de los minutos estimados al cliente al ofrecer. */
+  minutosEstimadosPromedio: number | null;
   topChoferes: ChoferEnElTop[];
 }
 
@@ -160,6 +170,13 @@ export function calcularMetricasDeDespacho(
     )
     .slice(0, TAMANO_DEL_TOP);
 
+  const conEstimacion = ofertas.filter(
+    (o) =>
+      typeof o.estimatedMinutes === 'number' &&
+      Number.isFinite(o.estimatedMinutes) &&
+      !!o.estimateSource,
+  );
+
   const esperas = entrada.pedidos
     .filter((p) => p.aceptadoEn !== null)
     .map((p) => segundosEntre(p.esperaDesde, p.aceptadoEn as Date));
@@ -208,6 +225,20 @@ export function calcularMetricasDeDespacho(
     ),
     hastaAsignar: tiempo(esperas),
     pedidosSinChofer: entrada.sinChofer,
+    ofertasConEstimacion: conEstimacion.length,
+    porcentajeOrdenadasPorOsrm: porcentaje(
+      conEstimacion.filter((o) => o.estimateSource === 'osrm').length,
+      conEstimacion.length,
+    ),
+    minutosEstimadosPromedio:
+      conEstimacion.length === 0
+        ? null
+        : redondear(
+            conEstimacion.reduce(
+              (t, o) => t + (o.estimatedMinutes as number),
+              0,
+            ) / conEstimacion.length,
+          ),
     topChoferes,
   };
 }

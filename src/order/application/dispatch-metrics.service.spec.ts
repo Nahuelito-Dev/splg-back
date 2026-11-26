@@ -56,6 +56,8 @@ describe('DispatchMetricsService', () => {
           status: 'accepted',
           offeredAt: t(0),
           respondedAt: t(12),
+          estimatedMinutes: '6.5',
+          estimateSource: 'osrm',
         },
         {
           orderId: 'o1',
@@ -64,6 +66,8 @@ describe('DispatchMetricsService', () => {
           status: 'expired',
           offeredAt: t(0),
           respondedAt: null,
+          estimatedMinutes: null,
+          estimateSource: null,
         },
       ],
       [{ esperaDesde: t(-30), aceptadoEn: t(12) }],
@@ -77,6 +81,9 @@ describe('DispatchMetricsService', () => {
     const r = await svc.obtener('dist-A', undefined, undefined);
     expect(r.pedidosDespachados).toBe(1);
     expect(r.ofertasPorPedido).toBe(2);
+    expect(r.ofertasConEstimacion).toBe(1);
+    expect(r.porcentajeOrdenadasPorOsrm).toBe(100);
+    expect(r.minutosEstimadosPromedio).toBe(6.5);
     expect(r.porcentajeAceptadas).toBe(50);
     expect(r.porcentajeVencidas).toBe(50);
     expect(r.respuestaDelChofer).toEqual({ mediana: 12, p90: 12 });

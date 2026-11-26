@@ -20,6 +20,11 @@ export interface DispatchSettings {
   noDriverExpiryMinutes: number;
   /** Radio máximo para que el chofer pueda marcar que llegó. 0 = apagado. */
   arrivalRadiusMeters: number;
+  /**
+   * Cuántos choferes elegibles de cada paso de radio se miden por calle (OSRM)
+   * para ofrecer al que llega antes. 1 = sólo se mide al primero del radar.
+   */
+  osrmCandidateCount: number;
 }
 
 export const DEFAULT_RADIUS_STEPS_KM: readonly number[] = [5, 10, 15, 20];
@@ -27,6 +32,7 @@ export const DEFAULT_OFFER_TTL_SECONDS = 30;
 export const DEFAULT_FINISHING_RADIUS_METERS = 300;
 export const DEFAULT_NO_DRIVER_EXPIRY_MINUTES = 120;
 export const DEFAULT_ARRIVAL_RADIUS_METERS = 150;
+export const DEFAULT_OSRM_CANDIDATE_COUNT = 8;
 
 export const DISPATCH_RADIUS_MIN_STEPS = 1;
 export const DISPATCH_RADIUS_MAX_STEPS = 8;
@@ -40,6 +46,8 @@ export const DISPATCH_NO_DRIVER_EXPIRY_MIN_MINUTES = 1;
 export const DISPATCH_NO_DRIVER_EXPIRY_MAX_MINUTES = 1440;
 export const DISPATCH_ARRIVAL_RADIUS_MIN_METERS = 0;
 export const DISPATCH_ARRIVAL_RADIUS_MAX_METERS = 5000;
+export const DISPATCH_OSRM_CANDIDATES_MIN = 1;
+export const DISPATCH_OSRM_CANDIDATES_MAX = 20;
 
 export function dispatchSettingsPorDefecto(): DispatchSettings {
   return {
@@ -48,6 +56,7 @@ export function dispatchSettingsPorDefecto(): DispatchSettings {
     finishingRadiusMeters: DEFAULT_FINISHING_RADIUS_METERS,
     noDriverExpiryMinutes: DEFAULT_NO_DRIVER_EXPIRY_MINUTES,
     arrivalRadiusMeters: DEFAULT_ARRIVAL_RADIUS_METERS,
+    osrmCandidateCount: DEFAULT_OSRM_CANDIDATE_COUNT,
   };
 }
 
@@ -101,6 +110,12 @@ export function dispatchSettingsDesde(
     Number.isInteger(llegada) &&
     llegada >= DISPATCH_ARRIVAL_RADIUS_MIN_METERS &&
     llegada <= DISPATCH_ARRIVAL_RADIUS_MAX_METERS;
+  const candidatos = params.osrmCandidateCount;
+  const candidatosValido =
+    esNumero(candidatos) &&
+    Number.isInteger(candidatos) &&
+    candidatos >= DISPATCH_OSRM_CANDIDATES_MIN &&
+    candidatos <= DISPATCH_OSRM_CANDIDATES_MAX;
 
   return {
     radiusStepsKm: pasosValidos
@@ -116,6 +131,9 @@ export function dispatchSettingsDesde(
     arrivalRadiusMeters: llegadaValida
       ? llegada
       : porDefecto.arrivalRadiusMeters,
+    osrmCandidateCount: candidatosValido
+      ? candidatos
+      : porDefecto.osrmCandidateCount,
   };
 }
 
@@ -127,6 +145,7 @@ export function sonLosDeOmision(settings: DispatchSettings): boolean {
     settings.finishingRadiusMeters === base.finishingRadiusMeters &&
     settings.noDriverExpiryMinutes === base.noDriverExpiryMinutes &&
     settings.arrivalRadiusMeters === base.arrivalRadiusMeters &&
+    settings.osrmCandidateCount === base.osrmCandidateCount &&
     settings.radiusStepsKm.length === base.radiusStepsKm.length &&
     settings.radiusStepsKm.every((km, i) => km === base.radiusStepsKm[i])
   );

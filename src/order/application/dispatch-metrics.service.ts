@@ -65,9 +65,12 @@ export class DispatchMetricsService {
       status: OfertaMedida['status'];
       offeredAt: Date;
       respondedAt: Date | null;
+      estimatedMinutes: string | null;
+      estimateSource: 'osrm' | 'haversine' | null;
     }> = await this.dataSource.query(
       `SELECT f."order_id" AS "orderId", f."driver_id" AS "driverId",
-              u."full_name" AS "driverName", f."status", f."offeredAt", f."respondedAt"
+              u."full_name" AS "driverName", f."status", f."offeredAt", f."respondedAt",
+              f."estimated_minutes" AS "estimatedMinutes", f."estimate_source" AS "estimateSource"
          FROM "order_dispatch_offer" f
          JOIN "user" u ON u."user_id" = f."driver_id"
         WHERE f."distributor_id" = $1 AND f."offeredAt" >= $2 AND f."offeredAt" <= $3`,
@@ -111,6 +114,8 @@ export class DispatchMetricsService {
         driverName: f.driverName ?? 'Chofer',
         offeredAt: new Date(f.offeredAt),
         respondedAt: f.respondedAt ? new Date(f.respondedAt) : null,
+        estimatedMinutes:
+          f.estimatedMinutes === null ? null : Number(f.estimatedMinutes),
       })),
       pedidos: pedidosFilas.map(
         (p): PedidoMedido => ({

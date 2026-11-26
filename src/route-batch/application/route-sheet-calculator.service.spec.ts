@@ -1,5 +1,8 @@
 import { RouteMatrixPort } from '../../routes/route-matrix.port';
-import { haversineMatrix } from '../../routes/route-matrix';
+import {
+  haversineDurationsTo,
+  haversineMatrix,
+} from '../../routes/route-matrix';
 import { RouteSheetCalculator } from './route-sheet-calculator.service';
 import { DEPOSITO, PARAMS, calculadora, pedido } from './route-sheet.fixtures';
 
@@ -72,6 +75,7 @@ describe('RouteSheetCalculator.escenario', () => {
     ]);
     const port: RouteMatrixPort = {
       matrix: () => Promise.resolve({ ...base, source: 'osrm' }),
+      durationsTo: (o, d) => Promise.resolve(haversineDurationsTo(o, d)),
     };
     const e = await new RouteSheetCalculator(port).escenario(
       [pedido('o1')],
