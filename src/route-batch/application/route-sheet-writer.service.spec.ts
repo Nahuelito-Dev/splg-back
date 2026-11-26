@@ -7,6 +7,7 @@ import {
 import { instanteDelDia } from '../domain/route-sheet-rules';
 import { RouteSheetDataService } from './route-sheet-data.service';
 import { RouteSheetWriter } from './route-sheet-writer.service';
+import { ServiceTimeService } from './service-time.service';
 import {
   DEPOSITO,
   DIA,
@@ -41,13 +42,18 @@ function armar(paradas: RouteBatchStop[] = [], deposito = DEPOSITO) {
     query: jest.fn().mockResolvedValue([{ ultima: 2 }]),
     save: jest.fn((x: unknown) => Promise.resolve(x)),
   };
+  const serviceTime = {
+    medianaAprendida: jest.fn().mockResolvedValue(null),
+  };
   const writer = new RouteSheetWriter(
     data as unknown as RouteSheetDataService,
     calculadora(),
     processConfig as unknown as ProcessConfigService,
+    serviceTime as unknown as ServiceTimeService,
   );
   return {
     writer,
+    serviceTime,
     data,
     manager,
     processConfig,
@@ -59,6 +65,36 @@ describe('RouteSheetWriter', () => {
   it('parametros: los tres que usa el cálculo, del proceso route_planning', async () => {
     const { writer } = armar();
     expect(await writer.parametros(DIST)).toEqual(PARAMS);
+  });
+
+  describe('parametros: minutos de servicio', () => {
+    const conModo = (modo: number, mediana: number | null) => {
+      const t = armar();
+      t.processConfig.obtener.mockResolvedValue({
+        ...PARAMS,
+        enabled: 1,
+        serviceMinutesMode: modo,
+      });
+      t.serviceTime.medianaAprendida.mockResolvedValue(mediana);
+      return t;
+    };
+
+    it('fixed (por omisión): el fijo, sin siquiera mirar lo aprendido', async () => {
+      const { writer, serviceTime } = conModo(0, 7.4);
+      expect((await writer.parametros(DIST)).serviceMinutes).toBe(10);
+      expect(serviceTime.medianaAprendida).not.toHaveBeenCalled();
+    });
+
+    it('learned con muestra: la mediana aprendida, entera', async () => {
+      const { writer, serviceTime } = conModo(1, 7.4);
+      expect((await writer.parametros(DIST)).serviceMinutes).toBe(7);
+      expect(serviceTime.medianaAprendida).toHaveBeenCalledWith(DIST);
+    });
+
+    it('learned sin muestra suficiente: el fijo', async () => {
+      const { writer } = conModo(1, null);
+      expect((await writer.parametros(DIST)).serviceMinutes).toBe(10);
+    });
   });
 
   it('paradasActivas: las activas en orden y con la fila bloqueada', async () => {

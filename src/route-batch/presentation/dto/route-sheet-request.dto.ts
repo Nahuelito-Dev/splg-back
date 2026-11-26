@@ -410,3 +410,24 @@ export class PatchRoutePlanningSettingsDto {
   @Max(127)
   workingDays?: number;
 }
+
+/** Cómo se calculan los minutos de cada parada (M4). */
+export const MODOS_DE_SERVICIO = ['fixed', 'learned'] as const;
+
+/**
+ * Parámetros de la hoja de ruta, versión 3: los de la v2 más el modo de los
+ * minutos de servicio.
+ */
+export class PatchRoutePlanningSettingsV3Dto extends PatchRoutePlanningSettingsDto {
+  @ApiPropertyOptional({
+    enum: MODOS_DE_SERVICIO,
+    example: 'fixed',
+    description:
+      '`fixed` (por omisión): la propuesta usa `serviceMinutes`. `learned`: usa la mediana de lo que tardaron los choferes en los últimos 30 días, si hay entregas suficientes; si no, el fijo. Cambia las horas prometidas a los clientes',
+  })
+  @IsOptional()
+  @IsIn(MODOS_DE_SERVICIO, {
+    message: 'El modo tiene que ser «fixed» (fijo) o «learned» (aprendido)',
+  })
+  serviceMinutesMode?: (typeof MODOS_DE_SERVICIO)[number];
+}

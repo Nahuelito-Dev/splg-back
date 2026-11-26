@@ -1543,6 +1543,22 @@
       "orderColumn": null
     },
     {
+      "table": "route_service_time_stat",
+      "entity": "RouteServiceTimeStat",
+      "pk": [
+        "stat_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "staff_role",
       "entity": "StaffRole",
       "pk": [
@@ -11136,6 +11152,62 @@
       "secret": false,
       "kind": "timestamp",
       "position": 4
+    },
+    {
+      "table": "route_service_time_stat",
+      "column": "stat_id",
+      "property": "statId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "route_service_time_stat",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "route_service_time_stat",
+      "column": "samples",
+      "property": "samples",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "route_service_time_stat",
+      "column": "median_min",
+      "property": "medianMin",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "route_service_time_stat",
+      "column": "p90_min",
+      "property": "p90Min",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "route_service_time_stat",
+      "column": "window_days",
+      "property": "windowDays",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "route_service_time_stat",
+      "column": "computed_at",
+      "property": "computedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 6
     },
     {
       "table": "staff_role",

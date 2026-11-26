@@ -121,6 +121,7 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   reviewMinutes: 'Minutos de revisión antes de confirmar',
   maxStopsPerSheet: 'Máximo de paradas por hoja',
   serviceMinutes: 'Minutos de servicio por parada',
+  serviceMinutesMode: 'Modo de los minutos de servicio',
   trafficFactor: 'Factor de tránsito',
   etaWindowMinutes: 'Ventana del horario estimado (minutos)',
   etaRecalcMinSeconds: 'Segundos mínimos entre recálculos del horario estimado',

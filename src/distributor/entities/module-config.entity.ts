@@ -145,6 +145,7 @@ const RANGOS_DE_LA_HOJA: ReadonlyArray<[string, number, number]> = [
   ['reviewMinutes', 0, 720],
   ['maxStopsPerSheet', 2, 40],
   ['serviceMinutes', 1, 60],
+  ['serviceMinutesMode', 0, 1],
   ['trafficFactor', 1, 3],
   ['etaWindowMinutes', 10, 120],
   ['etaRecalcMinSeconds', 30, 900],

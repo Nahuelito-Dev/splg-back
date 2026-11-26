@@ -58,6 +58,9 @@ import { OrderEtaController } from './presentation/order-eta.controller';
 import { RoutePlanningHolidaysController } from './presentation/route-planning-holidays.controller';
 import { RoutePlanningCalendarService } from './application/route-planning-calendar.service';
 import { RoutePlanningHoliday } from '../order/entities/route-planning-holiday.entity';
+import { RouteServiceTimeStat } from '../order/entities/route-service-time-stat.entity';
+import { ServiceTimeService } from './application/service-time.service';
+import { RoutePlanningV3Controller } from './presentation/route-planning-v3.controller';
 
 /**
  * Agrupación inteligente de pedidos por recorrido (CU-107, módulo M4). Arma
@@ -72,6 +75,7 @@ import { RoutePlanningHoliday } from '../order/entities/route-planning-holiday.e
       RouteBatchOffer,
       RoutePlan, // la clave compuesta (distribuidora, día) del lote la referencia
       RoutePlanningHoliday, // feriados de la hoja de ruta
+      RouteServiceTimeStat, // tiempo de atención aprendido (M4)
     ]),
     OrderModule, // asignar los pedidos del lote y devolverlos al despacho individual
     DeliveryModule, // el chofer y su pertenencia
@@ -93,6 +97,7 @@ import { RoutePlanningHoliday } from '../order/entities/route-planning-holiday.e
     RoutePlansController,
     RouteSheetsController,
     RoutePlanningSettingsController,
+    RoutePlanningV3Controller,
     DriverRouteSheetsController,
     OrderEtaController,
     RoutePlanningHolidaysController,
@@ -106,6 +111,7 @@ import { RoutePlanningHoliday } from '../order/entities/route-planning-holiday.e
     RouteSheetDataService,
     RouteSheetCalculator,
     RouteSheetWriter,
+    ServiceTimeService,
     RouteSheetLocks,
     RoutePlanService,
     RoutePlanProposalService,

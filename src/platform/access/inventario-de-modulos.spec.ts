@@ -155,6 +155,8 @@ const ATADAS: Record<string, string> = {
   'POST /v2/route-plans/:date/propose': 'route_planning',
   'GET /v2/route-planning/settings': 'route_planning',
   'PATCH /v2/route-planning/settings': 'route_planning',
+  'GET /v3/route-planning/service-time': 'route_planning',
+  'PATCH /v3/route-planning/settings': 'route_planning',
   'GET /v2/route-planning/holidays': 'route_planning',
   'POST /v2/route-planning/holidays': 'route_planning',
   'DELETE /v2/route-planning/holidays/:id': 'route_planning',

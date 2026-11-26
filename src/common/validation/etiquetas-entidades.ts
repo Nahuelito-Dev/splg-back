@@ -77,6 +77,7 @@ export const ETIQUETAS_ENTIDADES: Readonly<Record<string, string>> = {
   RouteBatch: 'Lote de ruta',
   RouteBatchStop: 'Parada de lote de ruta',
   RoutePlanningHoliday: 'Feriado de la hoja de ruta',
+  RouteServiceTimeStat: 'Tiempo de atención aprendido',
   TimeSlot: 'Franja horaria',
   User: 'Usuario',
   UserAddress: 'Dirección',

@@ -14,6 +14,8 @@ import { codigoSqlDelError } from '../../common/errors/db-exceptions';
 import { computeSchedule } from '../domain/eta';
 import { buildLoadProfile } from '../domain/load-profile';
 import { salidaPorOmision } from '../domain/route-sheet-rules';
+import { minutosDeServicio } from '../domain/tiempo-de-atencion';
+import { ServiceTimeService, modoDeServicio } from './service-time.service';
 import {
   Escenario,
   ParametrosDeRuteo,
@@ -50,15 +52,25 @@ export class RouteSheetWriter {
     private readonly data: RouteSheetDataService,
     private readonly calc: RouteSheetCalculator,
     private readonly processConfig: ProcessConfigService,
+    private readonly serviceTime: ServiceTimeService,
   ) {}
 
+  /**
+   * Los parámetros del cálculo. Con `serviceMinutesMode = learned` y muestra
+   * suficiente, los minutos por parada son la mediana aprendida; si no, el fijo.
+   */
   async parametros(distributorId: string): Promise<ParametrosDeRuteo> {
     const v = await this.processConfig.obtener(
       distributorId,
       ConfigurableProcess.ROUTE_PLANNING,
     );
+    const modo = modoDeServicio(v.serviceMinutesMode);
+    const aprendido =
+      modo === 'learned'
+        ? await this.serviceTime.medianaAprendida(distributorId)
+        : null;
     return {
-      serviceMinutes: v.serviceMinutes,
+      serviceMinutes: minutosDeServicio(v.serviceMinutes, modo, aprendido),
       trafficFactor: v.trafficFactor,
       maxStopsPerSheet: v.maxStopsPerSheet,
     };

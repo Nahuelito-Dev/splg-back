@@ -564,6 +564,15 @@ export const ESQUEMAS: Record<ProcesoAutomatico, EsquemaDeProceso> = {
         'Minutos que se demora en cada parada',
       ),
       campo(
+        'serviceMinutesMode',
+        'integer',
+        0,
+        1,
+        0,
+        null,
+        'Cómo se calculan los minutos de cada parada: 0 usa el valor fijo de «Minutos por parada»; 1 usa el tiempo aprendido de las entregas de los últimos 30 días (si todavía no hay entregas suficientes, el fijo)',
+      ),
+      campo(
         'trafficFactor',
         'number',
         1,
