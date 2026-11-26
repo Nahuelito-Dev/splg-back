@@ -64,12 +64,20 @@ export interface SuggestedItem {
   `"estimate_source" IN ('history', 'declared')`,
 )
 @Check(
+  'CHK_repurchase_invitation_aviso',
+  `("notify_at" IS NULL OR "notify_at" < "expires_at") AND ("notified_at" IS NULL OR "notify_at" IS NOT NULL)`,
+)
+@Check('CHK_repurchase_invitation_offset', `"offset_days" BETWEEN -15 AND 15`)
+@Check(
   'CHK_repurchase_invitation_pago',
   `"payment_method" IN ('cash', 'transfer', 'mercadopago')`,
 )
 @Index('UQ_repurchase_invitation_abierta', ['distributorId', 'userId'], {
   unique: true,
   where: `"status" = 'pending'`,
+})
+@Index('IDX_repurchase_invitation_por_avisar', ['notifyAt'], {
+  where: `"status" = 'pending' AND "notified_at" IS NULL`,
 })
 @Index('IDX_repurchase_invitation_estado', [
   'distributorId',
@@ -147,6 +155,18 @@ export class RepurchaseInvitation {
     default: RepurchaseEstimateSource.HISTORY,
   })
   estimateSource!: RepurchaseEstimateSource;
+
+  /** Días que el ajuste del cliente (M3a) corrió `projectedDepletionAt`; 0 si no se aplicó. */
+  @Column({ name: 'offset_days', type: 'integer', default: 0 })
+  offsetDays!: number;
+
+  /** Desde cuándo se le puede avisar (comienzo de su franja o la hora de la corrida). */
+  @Column({ name: 'notify_at', type: 'timestamptz', nullable: true })
+  notifyAt!: Date | null;
+
+  /** Cuándo se le avisó; nulo si todavía no. Se completa una sola vez. */
+  @Column({ name: 'notified_at', type: 'timestamptz', nullable: true })
+  notifiedAt!: Date | null;
 
   @Column({ name: 'suggested_items', type: 'jsonb', nullable: false })
   suggestedItems!: SuggestedItem[];

@@ -27,8 +27,9 @@ import { EmpresasParaProceso } from '../process-run/empresas-para-proceso';
  *   (`enabled`; viene apagada) y corre la anticipación en la que toca
  *   (`runHour`, de 8 a 21; por omisión las 9). Una vez por día.
  * - Cada cinco minutos vence las invitaciones cuya vigencia terminó (sólo en las
- *   que la tienen encendida) y cierra las de las distribuidoras que ya no están
- *   activas.
+ *   que la tienen encendida), cierra las de las distribuidoras que ya no están
+ *   activas y avisa a los clientes cuya invitación llegó a la hora de su franja
+ *   (la corrida diaria la crea con `notifyAt`; el aviso sale acá).
  *
  * Con varias instancias corre una sola (cerrojo distribuido) y el cerrojo se
  * libera pase lo que pase. La corrida es idempotente: si se repite, no invita
@@ -60,10 +61,11 @@ export class RepurchaseCron {
 
   @Cron('0 */5 * * * *')
   @ConRegistro(ProcessName.REPURCHASE_EXPIRY)
-  async vencer(): Promise<{ closed: number } | undefined> {
+  async vencer(): Promise<{ closed: number; notified: number } | undefined> {
     return this.conCerrojo(RepurchaseCron.CERROJO_VENCIMIENTOS, async () => {
       const ahora = new Date();
       let cerradas = 0;
+      let avisadas = 0;
       for (const d of await this.distributors.findAll()) {
         try {
           if (d.status !== DistributorStatus.ACTIVE) {
@@ -76,6 +78,10 @@ export class RepurchaseCron {
             (await this.estimator.parametros(d.distributorId)).enabled
           ) {
             cerradas += await this.forecast.vencer(ahora, d.distributorId);
+            avisadas += await this.forecast.enviarAvisos(
+              ahora,
+              d.distributorId,
+            );
           }
         } catch (error) {
           registrarErrorAtrapado(error);
@@ -87,7 +93,10 @@ export class RepurchaseCron {
       if (cerradas > 0) {
         this.logger.log(`Recompra: ${cerradas} invitación(es) cerrada(s)`);
       }
-      return { closed: cerradas };
+      if (avisadas > 0) {
+        this.logger.log(`Recompra: ${avisadas} aviso(s) en su franja`);
+      }
+      return { closed: cerradas, notified: avisadas };
     });
   }
 

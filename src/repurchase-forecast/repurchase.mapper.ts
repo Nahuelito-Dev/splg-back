@@ -215,6 +215,9 @@ export class RepurchaseMapper {
             expiresAt: abierta.expiresAt,
           }
         : null,
+      offsetDays: cliente.offsetDays,
+      notifyAt: abierta?.notifyAt ?? null,
+      notifiedAt: abierta?.notifiedAt ?? null,
     };
   }
 

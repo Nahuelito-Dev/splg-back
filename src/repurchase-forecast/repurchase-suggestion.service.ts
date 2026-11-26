@@ -11,6 +11,8 @@ export interface Sugerencia {
   items: SuggestedItem[];
   addressId: string;
   timeSlotId: string | null;
+  /** Comienzo (`HH:MM`) de su franja habitual, si la tiene y sigue activa. */
+  timeSlotStart: string | null;
   paymentMethod: PaymentMethod;
 }
 
@@ -65,6 +67,7 @@ export class RepurchaseSuggestionService {
         items,
         addressId: direccion.addressId,
         timeSlotId: franja?.isActive ? franja.timeSlotId : null,
+        timeSlotStart: franja?.isActive ? franja.startTime : null,
         paymentMethod: habitos.paymentMethod,
       },
     };

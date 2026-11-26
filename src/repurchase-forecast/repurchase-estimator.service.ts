@@ -7,6 +7,8 @@ import {
   CompraEntregadaRef,
   OrderLookupService,
 } from '../order/lookup/order-lookup.service';
+import { aplicarOffset } from './domain/ajuste-por-cliente';
+import { RepurchaseOffsetService } from './repurchase-offset.service';
 import {
   EstimacionDeRecompra,
   MotivoSinEstimacion,
@@ -42,7 +44,10 @@ export interface RecompraEstimada {
   fullName: string | null;
   email: string | null;
   phoneNumber: string | null;
+  /** La estimación, ya con el ajuste del cliente si le correspondía. */
   estimate: EstimacionDeRecompra;
+  /** Días que el ajuste del cliente (M3a) corrió la fecha; 0 si no se aplicó. */
+  offsetDays: number;
   habits: HabitosDeCompra;
   declaredKgPerMonth: number | null;
   /** Días de anticipación que rigen para él: los suyos o los de la distribuidora. */
@@ -72,6 +77,7 @@ export class RepurchaseEstimatorService {
     private readonly processConfig: ProcessConfigService,
     private readonly pedidos: OrderLookupService,
     private readonly customers: CustomersService,
+    private readonly offsets: RepurchaseOffsetService,
   ) {}
 
   /** Los parámetros vigentes del proceso para la distribuidora. */
@@ -152,6 +158,11 @@ export class RepurchaseEstimatorService {
       userId ? [userId] : [...porCliente.keys()],
     );
 
+    const ajustes = await this.offsets.deClientes(
+      distributorId,
+      fichas.map((f) => f.userId),
+    );
+
     return fichas.map((ficha) => {
       const suyas = porCliente.get(ficha.userId) ?? [];
       const estimacion = estimarRecompra(
@@ -167,6 +178,11 @@ export class RepurchaseEstimatorService {
           reason: estimacion.reason,
         };
       }
+      const { estimacion: ajustada, aplicado } = aplicarOffset(
+        estimacion,
+        ajustes.get(ficha.userId) ?? 0,
+        params.minOrders,
+      );
       return {
         userId: ficha.userId,
         reason: null,
@@ -176,7 +192,8 @@ export class RepurchaseEstimatorService {
           fullName: ficha.fullName,
           email: ficha.email,
           phoneNumber: ficha.phoneNumber,
-          estimate: estimacion,
+          estimate: ajustada,
+          offsetDays: aplicado,
           habits: habitosDe(suyas),
           declaredKgPerMonth: ficha.avgMonthlyConsumptionKg,
           noticeDays: ficha.noticeDays ?? params.anticipationDays,

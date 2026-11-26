@@ -1463,6 +1463,23 @@
       "orderColumn": null
     },
     {
+      "table": "repurchase_offset",
+      "entity": "RepurchaseOffset",
+      "pk": [
+        "user_id",
+        "distributor_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "role",
       "entity": "Role",
       "pk": [
@@ -10595,11 +10612,35 @@
     },
     {
       "table": "repurchase_invitation",
+      "column": "offset_days",
+      "property": "offsetDays",
+      "secret": false,
+      "kind": "text",
+      "position": 10
+    },
+    {
+      "table": "repurchase_invitation",
+      "column": "notify_at",
+      "property": "notifyAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 11
+    },
+    {
+      "table": "repurchase_invitation",
+      "column": "notified_at",
+      "property": "notifiedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 12
+    },
+    {
+      "table": "repurchase_invitation",
       "column": "suggested_items",
       "property": "suggestedItems",
       "secret": false,
       "kind": "json",
-      "position": 10
+      "position": 13
     },
     {
       "table": "repurchase_invitation",
@@ -10607,7 +10648,7 @@
       "property": "status",
       "secret": false,
       "kind": "text",
-      "position": 11
+      "position": 14
     },
     {
       "table": "repurchase_invitation",
@@ -10615,7 +10656,7 @@
       "property": "expiresAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 12
+      "position": 15
     },
     {
       "table": "repurchase_invitation",
@@ -10623,7 +10664,7 @@
       "property": "respondedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 13
+      "position": 16
     },
     {
       "table": "repurchase_invitation",
@@ -10631,7 +10672,47 @@
       "property": "orderId",
       "secret": false,
       "kind": "text",
-      "position": 14
+      "position": 17
+    },
+    {
+      "table": "repurchase_offset",
+      "column": "user_id",
+      "property": "userId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "repurchase_offset",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "repurchase_offset",
+      "column": "offset_days",
+      "property": "offsetDays",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "repurchase_offset",
+      "column": "sample_size",
+      "property": "sampleSize",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "repurchase_offset",
+      "column": "computed_at",
+      "property": "computedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 4
     },
     {
       "table": "role",

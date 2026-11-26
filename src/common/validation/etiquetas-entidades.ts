@@ -72,6 +72,7 @@ export const ETIQUETAS_ENTIDADES: Readonly<Record<string, string>> = {
   Payment: 'Pago',
   Rating: 'Calificación',
   RepurchaseInvitation: 'Invitación de recompra',
+  RepurchaseOffset: 'Ajuste de recompra del cliente',
   Role: 'Rol',
   Sesion: 'Sesión',
   RouteBatch: 'Lote de ruta',

@@ -249,6 +249,28 @@ export class RepurchaseForecastRowDto {
   noticeDays!: number;
   @ApiProperty({ type: RepurchaseOpenInvitationRefDto, nullable: true })
   openInvitation!: RepurchaseOpenInvitationRefDto | null;
+  @ApiProperty({
+    description:
+      'Días que el ajuste de este cliente corrió `estimatedAt` respecto del promedio (positivo: la garrafa le dura más). 0 si no se aplicó: sólo rige con consumo declarado o poca historia, y está acotado a ±15 días',
+    example: 3,
+  })
+  offsetDays!: number;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'Cuándo se le avisa de su invitación abierta (comienzo de su franja habitual o la hora de la corrida); null si no tiene invitación abierta',
+  })
+  notifyAt!: Date | null;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'Cuándo se le avisó; null si todavía no (o si no tiene invitación abierta)',
+  })
+  notifiedAt!: Date | null;
 }
 
 export class RepurchaseForecastPageDto {

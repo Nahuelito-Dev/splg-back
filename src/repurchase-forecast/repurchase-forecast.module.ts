@@ -8,6 +8,9 @@ import { OrderModule } from '../order/order.module';
 import { TimeSlotModule } from '../time-slot/time-slot.module';
 import { UserAddressModule } from '../user-address/user-address.module';
 import { RepurchaseInvitation } from './entities/repurchase-invitation.entity';
+import { RepurchaseOffset } from './entities/repurchase-offset.entity';
+import { RepurchaseOffsetListener } from './repurchase-offset.listener';
+import { RepurchaseOffsetService } from './repurchase-offset.service';
 import { RepurchaseAcceptService } from './repurchase-accept.service';
 import { RepurchaseAdminController } from './repurchase-admin.controller';
 import { RepurchaseCron } from './repurchase.cron';
@@ -31,7 +34,7 @@ import { RepurchaseSuggestionService } from './repurchase-suggestion.service';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([RepurchaseInvitation]),
+    TypeOrmModule.forFeature([RepurchaseInvitation, RepurchaseOffset]),
     CustomersModule, // fichas del cliente: consumo declarado y preferencia de aviso
     OrderModule, // el pedido de una invitación aceptada nace por OrderService.create
     OrderLookupModule, // compras entregadas y pedidos vigentes de cada cliente
@@ -42,6 +45,8 @@ import { RepurchaseSuggestionService } from './repurchase-suggestion.service';
   ],
   controllers: [RepurchaseAdminController, RepurchaseCustomerController],
   providers: [
+    RepurchaseOffsetService,
+    RepurchaseOffsetListener,
     RepurchaseEstimatorService,
     RepurchaseSuggestionService,
     RepurchaseInvitationService,

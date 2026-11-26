@@ -58,6 +58,7 @@ const cliente = (
     lastDeliveredAt: new Date(AHORA.getTime() - 5 * DIA),
     lastKg: 10,
   },
+  offsetDays: 0,
   habits: {
     items: [{ gasCylinderId: 'g10', quantity: 1 }],
     addressId: 'a1',
@@ -79,6 +80,8 @@ describe('RepurchaseForecastService', () => {
     cancelar: jest.Mock;
     vencerVencidas: jest.Mock;
     ultimasPorCliente: jest.Mock;
+    reclamarAviso: jest.Mock;
+    paraAvisar: jest.Mock;
   };
   let sugerencias: { armar: jest.Mock };
   let pedidos: {
@@ -94,6 +97,7 @@ describe('RepurchaseForecastService', () => {
       items: [{ gasCylinderId: 'g10', quantity: 1 }],
       addressId: 'a1',
       timeSlotId: null,
+      timeSlotStart: null,
       paymentMethod: PaymentMethod.CASH,
     },
   };
@@ -113,6 +117,8 @@ describe('RepurchaseForecastService', () => {
       cancelar: jest.fn().mockResolvedValue(true),
       vencerVencidas: jest.fn().mockResolvedValue([]),
       ultimasPorCliente: jest.fn().mockResolvedValue(new Map()),
+      reclamarAviso: jest.fn().mockResolvedValue(true),
+      paraAvisar: jest.fn().mockResolvedValue([]),
     };
     sugerencias = { armar: jest.fn().mockResolvedValue(sugerida) };
     pedidos = {
@@ -152,6 +158,8 @@ describe('RepurchaseForecastService', () => {
         estimateSource: RepurchaseEstimateSource.HISTORY,
         suggestedItems: [{ gasCylinderId: 'g10', quantity: 1 }],
         expiresAt: new Date(AHORA.getTime() + 24 * 3_600_000),
+        offsetDays: 0,
+        notifyAt: AHORA,
       });
       expect(notifier.invitar).toHaveBeenCalledTimes(1);
     });
@@ -415,6 +423,102 @@ describe('RepurchaseForecastService', () => {
         { invitationId: 'y' },
       ]);
       expect(await service.vencer(AHORA)).toBe(2);
+    });
+  });
+
+  describe('aviso en la franja (M3b)', () => {
+    const franja = (inicio: string) => ({
+      ok: true,
+      sugerencia: {
+        ...sugerida.sugerencia,
+        timeSlotId: 's1',
+        timeSlotStart: inicio,
+      },
+    });
+
+    it('con franja más tarde hoy, la invitación nace con notifyAt en su comienzo y no se avisa todavía', async () => {
+      estimator.estimar.mockResolvedValue([cliente('u1', 2)]);
+      sugerencias.armar.mockResolvedValue(franja('18:00:00'));
+      invitaciones.reclamarAviso.mockResolvedValue(false);
+
+      await service.ejecutar('d1', AHORA);
+
+      expect(invitaciones.abrir).toHaveBeenCalledWith(
+        expect.objectContaining({
+          notifyAt: new Date('2026-10-31T21:00:00Z'),
+        }),
+      );
+      // El reclamo lo rechaza la base (la hora no llegó): nadie avisa.
+      expect(notifier.invitar).not.toHaveBeenCalled();
+    });
+
+    it('sin franja, notifyAt es la hora de la corrida y se avisa en el acto', async () => {
+      estimator.estimar.mockResolvedValue([cliente('u1', 2)]);
+      await service.ejecutar('d1', AHORA);
+      expect(invitaciones.abrir).toHaveBeenCalledWith(
+        expect.objectContaining({ notifyAt: AHORA }),
+      );
+      expect(invitaciones.reclamarAviso).toHaveBeenCalledWith('inv', AHORA);
+      expect(notifier.invitar).toHaveBeenCalledTimes(1);
+    });
+
+    it('si la franja dejaría la invitación casi sin vigencia, avisa a la hora de la corrida', async () => {
+      estimator.estimar.mockResolvedValue([cliente('u1', 2)]);
+      estimator.parametros.mockResolvedValue({
+        ...PARAMS,
+        invitationTtlHours: 10,
+      });
+      sugerencias.armar.mockResolvedValue(franja('18:00'));
+      await service.ejecutar('d1', AHORA);
+      const [datos] = invitaciones.abrir.mock.calls[0] as [
+        { notifyAt: Date; expiresAt: Date },
+      ];
+      expect(datos.notifyAt).toEqual(AHORA);
+      expect(datos.notifyAt.getTime()).toBeLessThan(datos.expiresAt.getTime());
+    });
+
+    it('guarda el ajuste del cliente en la invitación', async () => {
+      estimator.estimar.mockResolvedValue([
+        cliente('u1', 2, { offsetDays: 3 }),
+      ]);
+      await service.ejecutar('d1', AHORA);
+      expect(invitaciones.abrir).toHaveBeenCalledWith(
+        expect.objectContaining({ offsetDays: 3 }),
+      );
+    });
+
+    it('la simulación no escribe ni avisa', async () => {
+      estimator.estimar.mockResolvedValue([cliente('u1', 2)]);
+      await service.ejecutar('d1', AHORA, { dryRun: true });
+      expect(invitaciones.abrir).not.toHaveBeenCalled();
+      expect(invitaciones.reclamarAviso).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('enviarAvisos', () => {
+    const inv = (id: string) => ({ invitationId: id, userId: `u-${id}` });
+
+    it('avisa de las que llegaron a su hora y cuenta cuántas', async () => {
+      invitaciones.paraAvisar.mockResolvedValue([inv('a'), inv('b')]);
+      expect(await service.enviarAvisos(AHORA, 'd1')).toBe(2);
+      expect(invitaciones.paraAvisar).toHaveBeenCalledWith(AHORA, 'd1');
+      expect(invitaciones.reclamarAviso).toHaveBeenCalledWith('a', AHORA);
+      expect(notifier.invitar).toHaveBeenCalledTimes(2);
+    });
+
+    it('nunca dos avisos: si otra instancia ya reclamó la invitación, no manda nada', async () => {
+      invitaciones.paraAvisar.mockResolvedValue([inv('a'), inv('b')]);
+      invitaciones.reclamarAviso.mockImplementation((id: string) =>
+        Promise.resolve(id === 'b'),
+      );
+      expect(await service.enviarAvisos(AHORA)).toBe(1);
+      expect(notifier.invitar).toHaveBeenCalledTimes(1);
+      expect(notifier.invitar).toHaveBeenCalledWith(inv('b'));
+    });
+
+    it('sin nada pendiente no avisa', async () => {
+      expect(await service.enviarAvisos(AHORA)).toBe(0);
+      expect(notifier.invitar).not.toHaveBeenCalled();
     });
   });
 });
