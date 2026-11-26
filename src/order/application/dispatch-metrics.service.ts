@@ -5,6 +5,7 @@ import {
   OfertaMedida,
   PedidoMedido,
 } from '../domain/dispatch-metrics';
+import { AssignmentMethod } from '../entities/order.entity';
 import { MOTIVO_VENCIMIENTO_SIN_CHOFER } from '../domain/vencimiento-sin-chofer';
 import { DispatchMetricsResponseDto } from '../dto/dispatch-metrics-response.dto';
 
@@ -64,9 +65,12 @@ export class DispatchMetricsService {
       status: OfertaMedida['status'];
       offeredAt: Date;
       respondedAt: Date | null;
+      estimatedMinutes: string | null;
+      estimateSource: 'osrm' | 'haversine' | null;
     }> = await this.dataSource.query(
       `SELECT f."order_id" AS "orderId", f."driver_id" AS "driverId",
-              u."full_name" AS "driverName", f."status", f."offeredAt", f."respondedAt"
+              u."full_name" AS "driverName", f."status", f."offeredAt", f."respondedAt",
+              f."estimated_minutes" AS "estimatedMinutes", f."estimate_source" AS "estimateSource"
          FROM "order_dispatch_offer" f
          JOIN "user" u ON u."user_id" = f."driver_id"
         WHERE f."distributor_id" = $1 AND f."offeredAt" >= $2 AND f."offeredAt" <= $3`,
@@ -93,12 +97,25 @@ export class DispatchMetricsService {
       [distributorId, MOTIVO_VENCIMIENTO_SIN_CHOFER, desde, hasta],
     );
 
+    // Todo pedido asignado en el período, haya tenido oferta o no (asignación manual,
+    // hoja de ruta, lote): por eso no sale de las ofertas.
+    const asignados: Array<{ method: AssignmentMethod | null }> =
+      await this.dataSource.query(
+        `SELECT o."assignment_method" AS "method" FROM "order" o
+          WHERE o."distributor_id" = $1 AND o."delivery_id" IS NOT NULL
+            AND o."acceptedAt" >= $2 AND o."acceptedAt" <= $3`,
+        [distributorId, desde, hasta],
+      );
+
     const metricas = calcularMetricasDeDespacho({
+      metodosDeAsignacion: asignados.map((a) => a.method),
       ofertas: ofertasFilas.map((f) => ({
         ...f,
         driverName: f.driverName ?? 'Chofer',
         offeredAt: new Date(f.offeredAt),
         respondedAt: f.respondedAt ? new Date(f.respondedAt) : null,
+        estimatedMinutes:
+          f.estimatedMinutes === null ? null : Number(f.estimatedMinutes),
       })),
       pedidos: pedidosFilas.map(
         (p): PedidoMedido => ({

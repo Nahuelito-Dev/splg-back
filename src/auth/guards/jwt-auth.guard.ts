@@ -16,6 +16,7 @@ import { SIN_DISTRIBUIDORA_KEY } from '../../common/decorators/sin-distribuidora
 import { resolverAlcance } from '../../common/alcance/resolver-alcance';
 import { SupportSessionResolver } from '../../support/application/support-session.resolver';
 import type { Request } from 'express';
+import { requestDelContexto } from '../../common/contexto/request-del-contexto';
 
 /** Encabezado con el que el super admin hace una consulta de soporte. */
 export const ENCABEZADO_DE_SOPORTE = 'x-support-session';
@@ -35,7 +36,7 @@ export class AuthGuard implements CanActivate {
   ) {}
 
   public async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<Request>();
+    const request = requestDelContexto(context);
 
     const isPublic = this.reflector.get<boolean | undefined>(
       'isPublic',

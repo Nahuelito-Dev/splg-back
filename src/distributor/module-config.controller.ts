@@ -68,7 +68,7 @@ export class ModuleConfigController {
   @ApiOperation({
     summary: 'Cambiar los parámetros del despacho',
     description:
-      'Reemplaza la configuración. De 1 a 8 pasos de radio, cada uno entre 1 y 100 km y estrictamente mayor que el anterior; ventana entre 10 y 300 s; radio de choferes por terminar entre 0 y 5000 m, entero (0 lo apaga: sólo se ofrece a choferes sin pedido en curso); minutos sin chofer antes de cancelar el pedido entre 1 y 1440, entero (por omisión 120). Rige para las ofertas que se creen desde ese momento (las ya enviadas conservan su vencimiento); en otras instancias del servidor, como máximo un minuto después. El plazo sin chofer se aplica en el próximo barrido del despacho a todos los pedidos que esperan, con el valor vigente.',
+      'Reemplaza la configuración. De 1 a 8 pasos de radio, cada uno entre 1 y 100 km y estrictamente mayor que el anterior; ventana entre 10 y 300 s; radio de choferes por terminar entre 0 y 5000 m, entero (0 lo apaga: sólo se ofrece a choferes sin pedido en curso); minutos sin chofer antes de cancelar el pedido entre 1 y 1440, entero (por omisión 120); choferes a medir por calle en cada radio entre 1 y 20, entero (por omisión 8). Rige para las ofertas que se creen desde ese momento (las ya enviadas conservan su vencimiento); en otras instancias del servidor, como máximo un minuto después. El plazo sin chofer se aplica en el próximo barrido del despacho a todos los pedidos que esperan, con el valor vigente.',
   })
   @ApiOkResponse({ type: DispatchConfigResponseDto })
   @ApiBadRequestResponse({ description: FALTA_DISTRIBUIDORA })

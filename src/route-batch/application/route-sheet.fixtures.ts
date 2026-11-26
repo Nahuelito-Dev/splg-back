@@ -13,7 +13,10 @@ import {
   RoutePlan,
   RoutePlanStatus,
 } from '../../order/entities/route-plan.entity';
-import { haversineMatrix } from '../../routes/route-matrix';
+import {
+  haversineDurationsTo,
+  haversineMatrix,
+} from '../../routes/route-matrix';
 import { RouteMatrixPort } from '../../routes/route-matrix.port';
 import { RouteBatchKind, RouteBatchStatus } from '../domain/route-batch.enums';
 import { instanteDelDia } from '../domain/route-sheet-rules';
@@ -141,6 +144,7 @@ export function plan(over: Partial<RoutePlan> = {}): RoutePlan {
 export function calculadora(): RouteSheetCalculator {
   const port: RouteMatrixPort = {
     matrix: (p) => Promise.resolve(haversineMatrix(p)),
+    durationsTo: (o, d) => Promise.resolve(haversineDurationsTo(o, d)),
   };
   return new RouteSheetCalculator(port);
 }

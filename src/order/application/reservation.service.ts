@@ -30,10 +30,7 @@ import { errorMessage } from '../../common/errors/error-message';
 import { ConciliacionMercadoPagoService } from './conciliacion-mercadopago.service';
 import { PaymentsService } from '../../payments/application/payments.service';
 import { CashDocumentPaymentService } from '../../cash/application/cash-document-payment.service';
-import {
-  ResultadoDelAsiento,
-  SalesCashService,
-} from '../../cash/application/sales-cash.service';
+import { SalesCashService } from '../../cash/application/sales-cash.service';
 import { CashMethod } from '../../cash/domain/cash.enums';
 import { ScheduledTasksSettingsService } from '../../distributor/scheduled-tasks-settings.service';
 import type { TareaConIntervalo } from '../../distributor/scheduled-tasks-settings';
@@ -220,12 +217,14 @@ export class ReservationService {
   }
 
   /**
-   * Admin confirma la seña recibida en efectivo o por transferencia. Habilita la
-   * activación automática. La seña entra a una caja en la misma transacción:
-   * por transferencia, a la caja de transferencias configurada (sin caja, queda
-   * sin asentar y se avisa); en efectivo, a la caja de efectivo que elige
-   * (`cashBoxId`, obligatoria si la distribuidora tiene alguna activa). Repetir la
-   * confirmación no asienta otra vez.
+   * Admin confirma la seña recibida. Habilita la activación automática.
+   * - Efectivo: la seña entra a la caja de efectivo que elige (`cashBoxId`,
+   *   obligatoria si la distribuidora tiene alguna activa) en la misma
+   *   transacción. Repetir la confirmación no asienta otra vez.
+   * - Reserva a cuenta corriente o vieja por transferencia (la transferencia ya
+   *   no se ofrece, pero una seña anterior se puede confirmar): sólo marca la
+   *   seña como paga. No se asienta como efectivo ni entra a ninguna caja, y
+   *   indicar `cashBoxId` es 400.
    */
   async confirmDeposit(
     orderId: string,
@@ -233,7 +232,6 @@ export class ReservationService {
     adminUserId?: string | null,
     cashBoxId?: string | null,
   ): Promise<Order> {
-    let asiento: ResultadoDelAsiento | undefined;
     const order = await this.orderRepository.manager.transaction(
       async (manager) => {
         const order = await manager.findOne(Order, {
@@ -250,8 +248,7 @@ export class ReservationService {
           );
         }
         // CU-072/CU-074: la seña por MercadoPago la marca cobrada el aviso de la
-        // pasarela (webhook); a mano sólo se confirma la que se recibe en efectivo
-        // o por transferencia.
+        // pasarela (webhook); a mano sólo se confirma la que se recibe en efectivo.
         if (order.paymentMethod === PaymentMethod.MERCADOPAGO) {
           throw new BadRequestException(
             'La seña por MercadoPago se confirma sola cuando la pasarela avisa el pago: no se confirma a mano',
@@ -259,6 +256,11 @@ export class ReservationService {
         }
         if (order.depositPaid) return order;
         const efectivo = order.paymentMethod === PaymentMethod.CASH;
+        if (!efectivo && cashBoxId) {
+          throw new BadRequestException(
+            'Esta seña no se cobró en efectivo: no entra a una caja de efectivo, no indiques caja',
+          );
+        }
         const cajaDeEfectivo = efectivo
           ? await this.pagoEnCaja.cajaDelPago(
               manager,
@@ -271,15 +273,7 @@ export class ReservationService {
         const guardada = await manager.save(order);
         const sena = Number(order.depositAmount);
         if (adminUserId && sena > 0) {
-          if (!efectivo) {
-            asiento = await this.ventasEnCaja.asentarSena(manager, {
-              distributorId: order.distributorId,
-              orderId: order.orderId,
-              amount: sena,
-              metodo: CashMethod.TRANSFER,
-              userId: adminUserId,
-            });
-          } else if (cajaDeEfectivo) {
+          if (cajaDeEfectivo) {
             const resultado = await this.ventasEnCaja.asentarSena(manager, {
               distributorId: order.distributorId,
               orderId: order.orderId,
@@ -299,9 +293,6 @@ export class ReservationService {
         return guardada;
       },
     );
-    if (asiento) {
-      this.ventasEnCaja.avisarSinAsentar(order.distributorId, asiento, orderId);
-    }
     return order;
   }
 

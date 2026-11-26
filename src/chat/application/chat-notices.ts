@@ -139,6 +139,7 @@ export class ChatNotices {
         to: casilla,
         subject: asunto.replace(/\s+/g, ' ').trim(),
         html: `<h2>${escaparHtml(asunto)}</h2><p>${escaparHtml(texto)}</p>`,
+        registro: { type: 'SUPPORT_NOTICE' },
       });
     } catch (error) {
       this.logger.warn(

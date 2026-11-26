@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { OrderService } from './order.service';
 import {
+  AssignmentMethod,
   Order,
   OrderDeliveryMode,
   OrderStatus,
@@ -12,7 +13,7 @@ import {
   PaymentStatus,
 } from './entities/order.entity';
 import { DispatchOfferStatus } from './entities/dispatch-offer.entity';
-import type { Repository, DataSource } from 'typeorm';
+import type { Repository, DataSource, EntityManager } from 'typeorm';
 import type { DeliveryService } from '../delivery/delivery.service';
 import type { RealtimeDispatchPort } from './domain/ports/realtime-dispatch.port';
 import type { OrderRepositoryPort } from './domain/ports/order.repository.port';
@@ -283,6 +284,41 @@ describe('OrderService · asignación manual', () => {
     expect(result.status).toBe(OrderStatus.ACCEPTED);
     expect(result.deliveryCode).toMatch(/\S{4,}/);
     expect(queryRunner.commitTransaction).toHaveBeenCalled();
+  });
+
+  describe('método de asignación (M1)', () => {
+    it('la asignación del admin queda como manual_override', async () => {
+      const r = await service.assignDelivery(PEDIDO, CHOFER);
+      expect(r.assignmentMethod).toBe(AssignmentMethod.MANUAL_OVERRIDE);
+    });
+
+    it('el lote de recorrido queda como batch', async () => {
+      const r = await service.assignDelivery(PEDIDO, CHOFER, 'dist', {
+        soloSiLibre: true,
+        metodo: AssignmentMethod.BATCH,
+      });
+      expect(r.assignmentMethod).toBe(AssignmentMethod.BATCH);
+    });
+
+    it('la hoja de ruta queda como route_sheet', async () => {
+      const r = await service.assignDelivery(PEDIDO, CHOFER, 'dist', {
+        soloSiLibre: true,
+        metodo: AssignmentMethod.ROUTE_SHEET,
+      });
+      expect(r.assignmentMethod).toBe(AssignmentMethod.ROUTE_SHEET);
+    });
+
+    it('repetir la asignación al mismo chofer no pisa el método que ya tenía', async () => {
+      queryBuilder.getOne.mockResolvedValueOnce(
+        makeLockedOrder({
+          status: OrderStatus.ACCEPTED,
+          deliveryId: CHOFER,
+          assignmentMethod: AssignmentMethod.AUTOMATIC,
+        }),
+      );
+      const r = await service.assignDelivery(PEDIDO, CHOFER);
+      expect(r.assignmentMethod).toBe(AssignmentMethod.AUTOMATIC);
+    });
   });
 
   it('guarda el snapshot del vehículo en uso (decisión de nahue, "vehículo en uso")', async () => {
@@ -564,6 +600,49 @@ describe('OrderService · asignación manual', () => {
       queryBuilder.getOne.mockResolvedValue(null);
       await expect(service.postergarEntrega(PEDIDO, CHOFER)).rejects.toThrow(
         NotFoundException,
+      );
+    });
+
+    it('C5: postergarEntregaEn usa la transacción de quien llama y no avisa; los avisos van aparte, después del commit', async () => {
+      queryBuilder.getOne.mockResolvedValue(
+        makeLockedOrder({ status: OrderStatus.ON_THE_WAY, deliveryId: CHOFER }),
+      );
+      const save = jest.fn((o: Order) => Promise.resolve(o));
+      const externo = { ...queryRunner.manager, save };
+      const r = await service.postergarEntregaEn(
+        externo as unknown as EntityManager,
+        PEDIDO,
+        CHOFER,
+      );
+      expect(r.status).toBe(OrderStatus.ACCEPTED);
+      expect(save).toHaveBeenCalled();
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+      expect(dispatch.notifyAdmins).not.toHaveBeenCalled();
+      await service.avisarPostergada(r, CHOFER);
+      expect(dispatch.stopTracking).toHaveBeenCalledWith(CHOFER_USER_ID);
+      expect(dispatch.notifyAdmins).toHaveBeenCalledWith(
+        'order:accepted',
+        { orderId: PEDIDO, status: OrderStatus.ACCEPTED },
+        'dist',
+      );
+    });
+
+    it('C5: reprogramarEntrega con la transacción de quien llama no abre otra', async () => {
+      queryBuilder.getOne.mockResolvedValue(
+        makeLockedOrder({ status: OrderStatus.PENDING, deliveryId: null }),
+      );
+      const update = jest.fn().mockResolvedValue({});
+      const externo = { ...queryRunner.manager, update };
+      await service.reprogramarEntrega(
+        PEDIDO,
+        '2026-11-16',
+        externo as unknown as EntityManager,
+      );
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+      expect(update).toHaveBeenCalledWith(
+        Order,
+        { orderId: PEDIDO },
+        { scheduledDate: '2026-11-16', timeSlotId: null },
       );
     });
 

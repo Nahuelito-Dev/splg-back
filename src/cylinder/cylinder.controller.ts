@@ -27,7 +27,7 @@ import {
 } from '@nestjs/swagger';
 import { CylinderService } from './cylinder.service';
 import { CylinderPhotoService } from './cylinder-photo.service';
-import { Cylinder } from './entities/cylinder.entity';
+import type { EnvaseVista } from './domain/ports/cylinder-query.port';
 import { CylinderVigenciaService } from './cylinder-vigencia.service';
 import { CylinderMapper } from './cylinder.mapper';
 import {
@@ -70,12 +70,14 @@ export class CylinderController {
   ) {}
 
   /** El DTO del envase con su foto y la de su producto como URL firmada. */
-  private async aDto(cylinder: Cylinder): Promise<CylinderResponseDto> {
+  private async aDto(cylinder: EnvaseVista): Promise<CylinderResponseDto> {
     await this.photo.firmar(cylinder);
     return CylinderMapper.toDto(cylinder);
   }
 
-  private async aDtos(cylinders: Cylinder[]): Promise<CylinderResponseDto[]> {
+  private async aDtos(
+    cylinders: EnvaseVista[],
+  ): Promise<CylinderResponseDto[]> {
     await this.photo.firmar(cylinders);
     return cylinders.map((c) => CylinderMapper.toDto(c));
   }

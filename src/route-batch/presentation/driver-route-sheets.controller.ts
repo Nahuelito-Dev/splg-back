@@ -27,7 +27,10 @@ import { ArrivedDto } from '../../order/dto/arrived.dto';
 import { RouteSheetCloseService } from '../application/route-sheet-close.service';
 import { RouteSheetExecutionQueryService } from '../application/route-sheet-execution-query.service';
 import { RouteSheetStartService } from '../application/route-sheet-start.service';
-import { RouteSheetStopsService } from '../application/route-sheet-stops.service';
+import {
+  RouteSheetStopsService,
+  resultadoParaLaHoja,
+} from '../application/route-sheet-stops.service';
 import { RequiereModulo } from '../../platform/access/requiere-modulo.decorator';
 import {
   CloseRouteSheetDto,
@@ -200,19 +203,21 @@ export class DriverRouteSheetsController {
   })
   @ApiNotFoundResponse({ description: NOT_FOUND_CHOFER })
   @ApiConflictResponse({ description: STOP_CONFLICT })
-  noEntregada(
+  async noEntregada(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('orderId', ParseUUIDPipe) orderId: string,
     @Body() body: FailedStopDto,
     @CurrentUser('user_id') userId: string,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<RouteSheetStopActionResponseDto> {
-    return this.stops.noEntregada(
-      distributorId,
-      id,
-      orderId,
-      { userId, esChofer: true },
-      body,
+    return resultadoParaLaHoja(
+      await this.stops.noEntregada(
+        distributorId,
+        id,
+        orderId,
+        { userId, esChofer: true },
+        body,
+      ),
     );
   }
 

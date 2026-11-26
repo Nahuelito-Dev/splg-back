@@ -4,6 +4,7 @@ import {
   CylinderRecoveryCustomerController,
   CylinderRecoveryDriverController,
 } from './cylinder-recovery.controllers';
+import { CylinderRecoveryScoreController } from './cylinder-recovery-v3.controller';
 import { CylinderRecoveryService } from './cylinder-recovery.service';
 import { RecoveryDecision } from './dto/recovery-request.dto';
 
@@ -21,6 +22,7 @@ describe('controladores del recupero de envases', () => {
     retirosDelChofer: jest.fn().mockResolvedValue(['retiro']),
     confirmarRetiro: jest.fn().mockResolvedValue('confirmado'),
     retiroNoRealizado: jest.fn().mockResolvedValue('no-retirado'),
+    puntajeDelCliente: jest.fn().mockResolvedValue('puntaje'),
   };
   const engine = {
     ejecutar: jest.fn().mockResolvedValue({
@@ -35,6 +37,14 @@ describe('controladores del recupero de envases', () => {
     }),
   };
   const svc = cases as unknown as CylinderRecoveryCasesService;
+
+  describe('puntaje de riesgo (v3)', () => {
+    it('lee el puntaje del cliente dentro de la distribuidora', async () => {
+      const c = new CylinderRecoveryScoreController(svc);
+      expect(await c.puntaje('cli-1', 'd1')).toBe('puntaje');
+      expect(cases.puntajeDelCliente).toHaveBeenCalledWith('cli-1', 'd1');
+    });
+  });
 
   describe('administrador', () => {
     const c = new CylinderRecoveryAdminController(

@@ -64,6 +64,7 @@ describe('GlobalExceptionFilter → Sentry', () => {
     };
     const response = {};
     return {
+      getType: () => 'http',
       switchToHttp: () => ({
         getRequest: () => request,
         getResponse: () => response,

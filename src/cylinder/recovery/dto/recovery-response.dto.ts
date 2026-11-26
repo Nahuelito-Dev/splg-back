@@ -4,6 +4,7 @@ import { CylinderState } from '../../entities/cylinder.entity';
 import { RecoveryCaseStatus } from '../../entities/cylinder-recovery-case.entity';
 import { RecoveryNoticeKind } from '../../entities/cylinder-recovery-notice.entity';
 import { OrderStatus } from '../../../order/entities/order.entity';
+import { RecoveryRiskBand } from '../domain/riesgo-de-recupero';
 
 export class RecoveryCustomerDto {
   @ApiProperty({ format: 'uuid' }) userId!: string;
@@ -43,6 +44,25 @@ export class RecoveryNoticeDto {
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
   respondedAt!: Date | null;
   @ApiProperty({ type: String, nullable: true }) responseNote!: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description:
+      'Hoja de ruta de la que se aprovechó el viaje (retiro aprovechando la hoja); `null` en la oferta común',
+  })
+  routeBatchId?: string | null;
+  @ApiPropertyOptional({
+    description:
+      'La oferta aprovecha una hoja de ruta que pasa cerca del cliente («Retiro aprovechando la hoja #N»)',
+  })
+  opportunistic?: boolean;
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    description: 'Número de la hoja de ruta de la que se aprovechó el viaje',
+  })
+  routeSheetNumber?: number | null;
 }
 
 /** La oferta de retiro vigente (pendiente o aceptada) y el pedido que la lleva. */
@@ -60,6 +80,41 @@ export class RecoveryPickupDto {
   @ApiProperty({ enum: OrderStatus, nullable: true })
   orderStatus!: OrderStatus | null;
   @ApiProperty({ type: String, format: 'date-time' }) expiresAt!: Date;
+  @ApiPropertyOptional({
+    description:
+      'El retiro aprovecha una hoja de ruta que pasa cerca del cliente: el pedido es de una parada vecina, no del cliente',
+  })
+  opportunistic?: boolean;
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    description: 'Número de la hoja de ruta que aprovecha el retiro',
+  })
+  routeSheetNumber?: number | null;
+}
+
+/** El riesgo del cliente para devolver sus envases a tiempo (M5). */
+export class RecoveryRiskDto {
+  @ApiProperty({
+    example: 0.15,
+    description:
+      'Casos demorados históricos sobre pedidos entregados, suavizado hacia un valor neutro (0 a 1)',
+  })
+  score!: number;
+  @ApiProperty({ enum: RecoveryRiskBand }) band!: RecoveryRiskBand;
+  @ApiProperty() delayedCases!: number;
+  @ApiProperty() ordersTotal!: number;
+  @ApiProperty({
+    description: 'Sin historia de casos: puntaje neutro y banda media',
+  })
+  neutral!: boolean;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: 'Cuándo se recalculó (`null` si es neutro y nunca se calculó)',
+  })
+  updatedAt!: Date | null;
 }
 
 export class RecoveryCaseDto {
@@ -92,6 +147,12 @@ export class RecoveryCaseDto {
   lastNotice!: RecoveryNoticeDto | null;
   @ApiProperty({ type: RecoveryPickupDto, nullable: true })
   pickup!: RecoveryPickupDto | null;
+  @ApiPropertyOptional({
+    type: RecoveryRiskDto,
+    description:
+      'Puntaje y banda de riesgo del cliente: cambia cuándo se avisa, nunca el importe',
+  })
+  risk?: RecoveryRiskDto;
 }
 
 export class RecoveryMovementDto {
@@ -199,4 +260,22 @@ export class DriverPickupDto {
   @ApiProperty({ example: 25000 }) depositAmount!: number;
   @ApiProperty({ type: String, nullable: true }) customerName!: string | null;
   @ApiProperty({ type: String, nullable: true }) customerPhone!: string | null;
+  @ApiPropertyOptional({
+    description:
+      'El retiro aprovecha tu hoja de ruta: el pedido es de una parada vecina, no del cliente que devuelve el envase',
+  })
+  opportunistic?: boolean;
+}
+
+/** El puntaje de riesgo de un cliente y los plazos que rigen para su banda (API v3). */
+export class RecoveryCustomerScoreDto extends RecoveryRiskDto {
+  @ApiProperty({ format: 'uuid' }) customerId!: string;
+  @ApiProperty({
+    description: '«Plazo de tolerancia» que rige para este cliente, en días',
+  })
+  toleranceDays!: number;
+  @ApiProperty({
+    description: '«Plazo de cada escalón» que rige para este cliente, en días',
+  })
+  escalationStepDays!: number;
 }

@@ -326,6 +326,7 @@ describe('RepurchaseMapper', () => {
       declaredKgPerMonth: 15,
       noticeDays: 4,
       noticeEnabled: true,
+      offsetDays: 3,
     } as unknown as RecompraEstimada;
 
     it('arma la fila del listado con los días que faltan', () => {
@@ -346,7 +347,27 @@ describe('RepurchaseMapper', () => {
         usualCylinderIds: ['g10', 'g15'],
         noticeDays: 4,
         openInvitation: null,
+        offsetDays: 3,
+        notifyAt: null,
+        notifiedAt: null,
       });
+    });
+
+    it('con una invitación abierta trae la hora programada del aviso y si ya se avisó', () => {
+      const notifyAt = new Date('2026-11-01T21:00:00Z');
+      const pendiente = RepurchaseMapper.forecastRow(
+        cliente,
+        AHORA,
+        invitacion({ notifyAt, notifiedAt: null }),
+      );
+      expect(pendiente.notifyAt).toEqual(notifyAt);
+      expect(pendiente.notifiedAt).toBeNull();
+      const avisada = RepurchaseMapper.forecastRow(
+        cliente,
+        AHORA,
+        invitacion({ notifyAt, notifiedAt: notifyAt }),
+      );
+      expect(avisada.notifiedAt).toEqual(notifyAt);
     });
 
     it('con una invitación abierta la referencia', () => {

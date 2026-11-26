@@ -229,6 +229,7 @@ describe('PdfController (API v2)', () => {
       const contexto = {
         getHandler: () => handler,
         getClass: () => PdfController,
+        getType: () => 'http',
         switchToHttp: () => ({ getRequest: () => ({ user: { role } }) }),
       } as unknown as ExecutionContext;
       try {

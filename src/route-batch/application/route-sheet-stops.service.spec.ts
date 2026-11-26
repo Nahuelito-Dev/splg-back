@@ -2,15 +2,22 @@ import { ConflictException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { RoleType } from '../../common/constants/role-type.enum';
 import { Delivery } from '../../delivery/entities/delivery.entity';
-import { OrderStatus } from '../../order/entities/order.entity';
+import { ReleaseOrderUseCase } from '../../order/application/release-order.use-case';
+import { Order, OrderStatus } from '../../order/entities/order.entity';
 import {
   RouteBatchStop,
   RouteStopRemovedReason,
 } from '../../order/entities/route-batch-stop.entity';
 import { OrderService } from '../../order/order.service';
+import { FailedVisitReason } from '../../failed-visit/domain/nueva-visita';
+import { FailedVisitNotifier } from '../../failed-visit/failed-visit.notifier';
+import { FailedVisitService } from '../../failed-visit/failed-visit.service';
 import { RouteBatchStatus } from '../domain/route-batch.enums';
 import { StopProgress } from '../domain/route-sheet-execution';
-import { RouteSheetInProgress } from './route-sheet-in-progress.service';
+import {
+  PlanDeReprogramacion,
+  RouteSheetInProgress,
+} from './route-sheet-in-progress.service';
 import { RouteSheetLocks } from './route-sheet-locks.service';
 import { RouteSheetNotifier } from './route-sheet-notifier.service';
 import {
@@ -20,6 +27,7 @@ import {
 import {
   FailedDeliveryReason,
   RouteSheetStopsService,
+  resultadoParaLaHoja,
 } from './route-sheet-stops.service';
 import {
   hojaNoEnCurso,
@@ -43,12 +51,78 @@ const codigo = async (p: Promise<unknown>) => {
   }
 };
 
+/** La parada y el pedido como quedan en la base: sólo cambian si la transacción confirma. */
+interface Estado {
+  parada: { active: boolean; failedAttempts: number; removedReason?: string };
+  pedido: { status: string; deliveryId: string | null };
+}
+
+const PLAN: PlanDeReprogramacion = {
+  fecha: '2026-11-16',
+  dias: ['2026-11-16', '2026-11-17'],
+  esperaAlAdmin: false,
+  causa: 'planificacion',
+};
+
+/**
+ * El `EntityManager` de la transacción de la hoja: lo que se escribe queda
+ * pendiente y se aplica al `estado` sólo si la operación termina sin error
+ * (como el commit; si falla, el rollback lo descarta).
+ */
+function managerDeTransaccion(estado: Estado, pendientes: Array<() => void>) {
+  interface Qb {
+    setLock: jest.Mock;
+    leftJoinAndSelect: jest.Mock;
+    where: jest.Mock;
+    getOne: jest.Mock;
+  }
+  const qb: Qb = {
+    setLock: jest.fn((): Qb => qb),
+    leftJoinAndSelect: jest.fn((): Qb => qb),
+    where: jest.fn((): Qb => qb),
+    getOne: jest.fn(() =>
+      Promise.resolve({
+        orderId: 'o2',
+        distributorId: DIST,
+        customerId: 'c1',
+        status: estado.pedido.status,
+        deliveryId: estado.pedido.deliveryId,
+      }),
+    ),
+  };
+  return {
+    update: jest.fn(
+      (entidad: unknown, _where: unknown, valores: Record<string, unknown>) => {
+        pendientes.push(() => {
+          if (entidad === RouteBatchStop) Object.assign(estado.parada, valores);
+          else Object.assign(estado.pedido, valores);
+        });
+        return Promise.resolve(undefined);
+      },
+    ),
+    createQueryBuilder: jest.fn((): Qb => qb),
+    find: jest.fn().mockResolvedValue([]),
+    save: jest.fn((o: { status: string; deliveryId: string | null }) => {
+      pendientes.push(() =>
+        Object.assign(estado.pedido, {
+          status: o.status,
+          deliveryId: o.deliveryId,
+        }),
+      );
+      return Promise.resolve(o);
+    }),
+  };
+}
+
 function armar(
   o: {
     avance?: Array<[string, StopProgress]>;
     otroEnCamino?: boolean;
     intentos?: Record<string, number>;
     stop?: RouteBatchStop | null;
+    alTope?: boolean;
+    plan?: PlanDeReprogramacion;
+    hojaEnTransaccion?: RouteBatchStatus;
   } = {},
 ) {
   const avance = o.avance ?? [
@@ -65,6 +139,14 @@ function armar(
     pedido: pedido(id),
     progress,
   }));
+  const o2 = avance.find(([id]) => id === 'o2');
+  const estado: Estado = {
+    parada: { active: true, failedAttempts: o.intentos?.o2 ?? 0 },
+    pedido: {
+      status: o2?.[1] === 'on_the_way' ? 'on_the_way' : 'accepted',
+      deliveryId: 'chofer-1',
+    },
+  };
   const ds = {
     manager: {
       findOne: jest
@@ -72,10 +154,60 @@ function armar(
         .mockResolvedValue(o.stop === undefined ? parada('o2', 2) : o.stop),
       update: jest.fn().mockResolvedValue(undefined),
     },
-    query: jest.fn().mockResolvedValue([{ customerId: 'c1' }]),
+    query: jest
+      .fn()
+      .mockResolvedValue([{ customerId: 'c1', distributorId: DIST }]),
   };
+  const visitas = {
+    prepararDeHoja: jest.fn().mockResolvedValue({ alAdmin: o.alTope ?? false }),
+    registrarDeHoja: jest.fn(
+      (v: {
+        salida: string;
+        rescheduledTo?: string | null;
+      }): Promise<Record<string, unknown> | null> =>
+        Promise.resolve({
+          visit: { failedVisitId: 'v1' },
+          failedVisitCount: v.salida === 'requeued' ? 0 : 1,
+          outcome:
+            v.salida === 'requeued'
+              ? 'requeued'
+              : v.rescheduledTo
+                ? 'proposed'
+                : 'awaiting_admin',
+          revisitStatus:
+            v.salida === 'requeued'
+              ? null
+              : v.rescheduledTo
+                ? 'proposed'
+                : 'awaiting_admin',
+          scheduledDate: v.rescheduledTo ?? null,
+          timeSlotId: v.salida === 'requeued' ? null : 'franja-1',
+        }),
+    ),
+  };
+  const avisosDeVisita = {
+    visitaFallida: jest.fn().mockResolvedValue(undefined),
+  };
+  let manager: ReturnType<typeof managerDeTransaccion> | null = null;
   const locks = {
     conCerrojo: jest.fn((_ids: string[], fn: () => unknown) => fn()),
+    enTransaccion: jest.fn(
+      async (
+        _dist: string,
+        _hojas: unknown,
+        fn: (m: unknown, hojas: unknown[]) => Promise<unknown>,
+      ) => {
+        const pendientes: Array<() => void> = [];
+        manager = managerDeTransaccion(estado, pendientes);
+        const r = await fn(manager, [
+          hoja({
+            status: o.hojaEnTransaccion ?? RouteBatchStatus.ASSIGNED,
+          }),
+        ]);
+        for (const aplicar of pendientes) aplicar();
+        return r;
+      },
+    ),
   };
   const progress = { paradas: jest.fn().mockResolvedValue(paradas) };
   const orders = {
@@ -83,7 +215,23 @@ function armar(
     notifyDriverArrivedWithDistance: jest
       .fn()
       .mockResolvedValue({ message: 'Cliente notificado' }),
-    postergarEntrega: jest.fn().mockResolvedValue({}),
+    postergarEntregaEn: jest.fn(
+      async (m: ReturnType<typeof managerDeTransaccion>) => {
+        await m.update(Order, { orderId: 'o2' }, { status: 'accepted' });
+        return { orderId: 'o2', status: 'accepted' };
+      },
+    ),
+    avisarPostergada: jest.fn().mockResolvedValue(undefined),
+  };
+  const release = {
+    releaseWithin: jest.fn(
+      (_m: unknown, p: { status: string; deliveryId: string | null }) => {
+        p.status = 'pending';
+        p.deliveryId = null;
+        return Promise.resolve('u-chofer');
+      },
+    ),
+    notifyReleased: jest.fn().mockResolvedValue(undefined),
   };
   const notifier = {
     alPanel: jest.fn(),
@@ -106,9 +254,13 @@ function armar(
       origen: 'gps',
     }),
     avisarCambio: jest.fn(),
-    sacarYLiberar: jest.fn().mockResolvedValue(undefined),
     choferDe: jest.fn().mockResolvedValue(CHOFER),
-    reprogramar: jest.fn().mockResolvedValue('2026-11-16'),
+    planDeReprogramacion: jest.fn().mockResolvedValue(o.plan ?? PLAN),
+    aplicarReprogramacion: jest.fn(
+      (_m: unknown, _s: unknown, _o: string, p: PlanDeReprogramacion) =>
+        Promise.resolve(p),
+    ),
+    avisarReprogramacion: jest.fn(),
   };
   const svc = new RouteSheetStopsService(
     ds as unknown as DataSource,
@@ -117,8 +269,25 @@ function armar(
     orders as unknown as OrderService,
     notifier as unknown as RouteSheetNotifier,
     hojaEnCurso as unknown as RouteSheetInProgress,
+    visitas as unknown as FailedVisitService,
+    avisosDeVisita as unknown as FailedVisitNotifier,
+    release as unknown as ReleaseOrderUseCase,
   );
-  return { svc, ds, locks, orders, notifier, hoja: hojaEnCurso, sheet };
+  return {
+    svc,
+    ds,
+    locks,
+    orders,
+    release,
+    notifier,
+    hoja: hojaEnCurso,
+    sheet,
+    visitas,
+    avisosDeVisita,
+    estado,
+    /** El manager de la última transacción. */
+    tx: () => manager as ReturnType<typeof managerDeTransaccion>,
+  };
 }
 
 describe('RouteSheetStopsService', () => {
@@ -288,6 +457,8 @@ describe('RouteSheetStopsService', () => {
   });
 
   describe('noEntregada («No pude entregar»)', () => {
+    const CHOFER_OPERA = { userId: 'u-chofer', esChofer: true };
+
     it('primer intento, en camino: vuelve a aceptado con el mismo chofer, la parada pasa al final de la cola y se avisa al cliente y al admin', async () => {
       const t = armar({
         avance: [
@@ -296,17 +467,11 @@ describe('RouteSheetStopsService', () => {
           ['o3', 'pending'],
         ],
       });
-      const r = await t.svc.noEntregada(
-        DIST,
-        'hoja-1',
-        'o2',
-        { userId: 'u-chofer', esChofer: true },
-        {
-          reason: FailedDeliveryReason.CUSTOMER_ABSENT,
-          note: '  tocó timbre  ',
-        },
-      );
-      expect(r).toEqual({
+      const r = await t.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+        reason: FailedDeliveryReason.CUSTOMER_ABSENT,
+        note: '  tocó timbre  ',
+      });
+      expect(resultadoParaLaHoja(r)).toEqual({
         sheetId: 'hoja-1',
         orderId: 'o2',
         nextOrderId: 'o3',
@@ -316,10 +481,13 @@ describe('RouteSheetStopsService', () => {
         newWindowStart: null,
         newWindowEnd: null,
       });
-      expect(t.orders.postergarEntrega).toHaveBeenCalledWith('o2', 'chofer-1');
-      expect(t.orders.updateStatus).not.toHaveBeenCalled();
-      expect(t.hoja.sacarYLiberar).not.toHaveBeenCalled();
-      expect(t.ds.manager.update).toHaveBeenCalledWith(
+      // Todo en la transacción de la hoja: el pedido, la parada y la visita.
+      expect(t.orders.postergarEntregaEn).toHaveBeenCalledWith(
+        t.tx(),
+        'o2',
+        'chofer-1',
+      );
+      expect(t.tx().update).toHaveBeenCalledWith(
         RouteBatchStop,
         { stopId: 's-o2' },
         expect.objectContaining({
@@ -329,6 +497,23 @@ describe('RouteSheetStopsService', () => {
           waitAlertedAt: null,
         }),
       );
+      expect(t.visitas.registrarDeHoja).toHaveBeenCalledWith(
+        expect.objectContaining({ salida: 'requeued' }),
+        expect.any(Date),
+        t.tx(),
+      );
+      expect(t.estado).toMatchObject({
+        parada: { active: true, failedAttempts: 1 },
+        pedido: { status: 'accepted', deliveryId: 'chofer-1' },
+      });
+      // Los avisos de la postergación, después del commit.
+      expect(t.orders.avisarPostergada).toHaveBeenCalledWith(
+        { orderId: 'o2', status: 'accepted' },
+        'chofer-1',
+      );
+      expect(t.orders.updateStatus).not.toHaveBeenCalled();
+      expect(t.release.releaseWithin).not.toHaveBeenCalled();
+      expect(t.hoja.planDeReprogramacion).not.toHaveBeenCalled();
       expect(t.hoja.rehacer).toHaveBeenCalledWith(DIST, 'hoja-1', 'u-chofer', {
         reordenar: true,
         postergado: 'o2',
@@ -338,6 +523,7 @@ describe('RouteSheetStopsService', () => {
         'c1',
         'o2',
         1,
+        DIST,
       );
       expect(t.notifier.alPanel).toHaveBeenCalledWith(
         DIST,
@@ -365,13 +551,9 @@ describe('RouteSheetStopsService', () => {
         origen: 'gps',
         postergado: franja,
       });
-      const r = await t.svc.noEntregada(
-        DIST,
-        'hoja-1',
-        'o2',
-        { userId: 'u-chofer', esChofer: true },
-        { reason: FailedDeliveryReason.CUSTOMER_ABSENT },
-      );
+      const r = await t.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+        reason: FailedDeliveryReason.CUSTOMER_ABSENT,
+      });
       expect(r).toMatchObject({
         outcome: 'requeued',
         nextOrderId: 'o3',
@@ -402,13 +584,9 @@ describe('RouteSheetStopsService', () => {
 
     it('segundo intento: el recálculo no lleva postergado ni la respuesta franja nueva', async () => {
       const t = armar({ intentos: { o2: 1 } });
-      const r = await t.svc.noEntregada(
-        DIST,
-        'hoja-1',
-        'o2',
-        { userId: 'u-chofer', esChofer: true },
-        { reason: FailedDeliveryReason.REJECTED },
-      );
+      const r = await t.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+        reason: FailedDeliveryReason.REJECTED,
+      });
       expect(t.hoja.rehacer).toHaveBeenCalledWith(DIST, 'hoja-1', 'u-chofer', {
         reordenar: true,
       });
@@ -448,49 +626,85 @@ describe('RouteSheetStopsService', () => {
 
     it('primer intento sobre una pendiente (no en camino): no cambia el estado del pedido', async () => {
       const t = armar();
-      await t.svc.noEntregada(
-        DIST,
-        'hoja-1',
-        'o2',
-        { userId: 'u', esChofer: true },
-        {
-          reason: FailedDeliveryReason.NO_ACCESS,
-        },
-      );
-      expect(t.orders.postergarEntrega).not.toHaveBeenCalled();
+      await t.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+        reason: FailedDeliveryReason.NO_ACCESS,
+      });
+      expect(t.orders.postergarEntregaEn).not.toHaveBeenCalled();
+      expect(t.orders.avisarPostergada).not.toHaveBeenCalled();
+      expect(t.estado.pedido.status).toBe('accepted');
     });
 
-    it('segundo intento: sale de la hoja (rescheduled), se le libera al chofer y el sistema lo reprograma solo para el día hábil siguiente', async () => {
+    it('segundo intento: en una sola transacción sale de la hoja, se libera al chofer, se reprograma y se asienta la visita; los avisos, después', async () => {
       const t = armar({ intentos: { o2: 1 }, avance: [['o2', 'on_the_way']] });
-      const r = await t.svc.noEntregada(
-        DIST,
-        'hoja-1',
-        'o2',
-        { userId: 'u-chofer', esChofer: true },
-        { reason: FailedDeliveryReason.REJECTED },
-      );
+      const r = await t.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+        reason: FailedDeliveryReason.REJECTED,
+      });
       expect(r).toMatchObject({
         attempt: 2,
         outcome: 'rescheduled',
         rescheduledTo: '2026-11-16',
       });
-      expect(t.hoja.sacarYLiberar).toHaveBeenCalledWith(
-        t.sheet,
+      expect(t.visitas.prepararDeHoja).toHaveBeenCalledWith(
         'o2',
-        { userId: 'u-chofer', esChofer: true },
-        {
-          motivo: RouteStopRemovedReason.RESCHEDULED,
-          nota: 'El cliente rechazó el pedido',
-        },
+        'rescheduled',
+        undefined,
+        expect.any(Date),
+        t.tx(),
       );
-      expect(t.hoja.reprogramar).toHaveBeenCalledWith(t.sheet, 'o2');
-      expect(t.orders.postergarEntrega).not.toHaveBeenCalled();
-      expect(t.ds.manager.update).toHaveBeenCalledWith(
+      expect(t.tx().update).toHaveBeenCalledWith(
         RouteBatchStop,
         { stopId: 's-o2' },
-        expect.objectContaining({ failedAttempts: 2 }),
+        expect.objectContaining({
+          active: false,
+          removedReason: RouteStopRemovedReason.RESCHEDULED,
+          removedNote: 'El cliente rechazó el pedido',
+          failedAttempts: 2,
+        }),
       );
-      // El cliente se entera por el aviso de la reprogramación; el panel, por el evento.
+      expect(t.release.releaseWithin).toHaveBeenCalledWith(
+        t.tx(),
+        expect.objectContaining({ orderId: 'o2' }),
+      );
+      expect(t.hoja.aplicarReprogramacion).toHaveBeenCalledWith(
+        t.tx(),
+        t.sheet,
+        'o2',
+        PLAN,
+      );
+      expect(t.visitas.registrarDeHoja).toHaveBeenCalledWith(
+        expect.objectContaining({
+          salida: 'rescheduled',
+          rescheduledTo: '2026-11-16',
+          dias: ['2026-11-16', '2026-11-17'],
+        }),
+        expect.any(Date),
+        t.tx(),
+      );
+      expect(t.estado).toMatchObject({
+        parada: { active: false, failedAttempts: 2 },
+        pedido: { status: 'pending', deliveryId: null },
+      });
+      // Después del commit: la liberación por entrega fallida (sin «order:pending»
+      // ni «buscando chofer»), la bandeja y un solo aviso al cliente.
+      expect(t.release.notifyReleased).toHaveBeenCalledWith(
+        expect.objectContaining({ orderId: 'o2', status: 'pending' }),
+        'u-chofer',
+        { porEntregaFallida: true },
+      );
+      expect(t.hoja.avisarReprogramacion).toHaveBeenCalledWith(
+        t.sheet,
+        'o2',
+        PLAN,
+        '2026-11-16',
+      );
+      expect(t.avisosDeVisita.visitaFallida).toHaveBeenCalledTimes(1);
+      expect(t.avisosDeVisita.visitaFallida).toHaveBeenCalledWith(
+        expect.objectContaining({ orderId: 'o2', customerId: 'c1' }),
+        'El cliente rechazó el pedido',
+        { deHoja: true, adminYaAvisado: false },
+      );
+      expect(t.orders.updateStatus).not.toHaveBeenCalled();
+      expect(t.orders.postergarEntregaEn).not.toHaveBeenCalled();
       expect(t.notifier.noEntregadoAlCliente).not.toHaveBeenCalled();
       expect(t.notifier.alPanel).toHaveBeenCalledWith(
         DIST,
@@ -500,32 +714,375 @@ describe('RouteSheetStopsService', () => {
       expect(t.notifier.aLaBandeja).not.toHaveBeenCalled();
     });
 
-    it('segundo intento que no se pudo reprogramar: rescheduledTo null (espera al admin)', async () => {
-      const t = armar({ intentos: { o2: 1 } });
-      t.hoja.reprogramar.mockResolvedValue(null);
+    it('C5: si la visita no se puede asentar en el primer intento, no cambia nada: la parada sigue igual, el pedido sigue en camino y el error sube', async () => {
+      const t = armar({ avance: [['o2', 'on_the_way']] });
+      t.visitas.registrarDeHoja.mockRejectedValue(new Error('base caída'));
+      await expect(
+        t.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+          reason: FailedDeliveryReason.CUSTOMER_ABSENT,
+        }),
+      ).rejects.toThrow('base caída');
+      expect(t.estado).toEqual({
+        parada: { active: true, failedAttempts: 0 },
+        pedido: { status: 'on_the_way', deliveryId: 'chofer-1' },
+      });
+      expect(t.orders.avisarPostergada).not.toHaveBeenCalled();
+      expect(t.hoja.rehacer).not.toHaveBeenCalled();
+      expect(t.notifier.alPanel).not.toHaveBeenCalled();
+    });
+
+    it('C5: si la visita no se puede asentar en el segundo intento, la parada sigue en la hoja, el pedido sigue en camino con su chofer y no se avisa nada', async () => {
+      const t = armar({ intentos: { o2: 1 }, avance: [['o2', 'on_the_way']] });
+      t.visitas.registrarDeHoja.mockRejectedValue(new Error('base caída'));
+      await expect(
+        t.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+          reason: FailedDeliveryReason.CUSTOMER_ABSENT,
+        }),
+      ).rejects.toThrow('base caída');
+      // Se intentó todo en la transacción, pero el rollback lo descarta.
+      expect(t.release.releaseWithin).toHaveBeenCalled();
+      expect(t.hoja.aplicarReprogramacion).toHaveBeenCalled();
+      expect(t.estado).toEqual({
+        parada: { active: true, failedAttempts: 1 },
+        pedido: { status: 'on_the_way', deliveryId: 'chofer-1' },
+      });
+      expect(t.release.notifyReleased).not.toHaveBeenCalled();
+      expect(t.hoja.avisarReprogramacion).not.toHaveBeenCalled();
+      expect(t.avisosDeVisita.visitaFallida).not.toHaveBeenCalled();
+      expect(t.hoja.rehacer).not.toHaveBeenCalled();
+      expect(t.notifier.alPanel).not.toHaveBeenCalled();
+    });
+
+    it('C5: si el pedido cambió de manos y la visita no se asienta, 409 y no se escribe nada', async () => {
+      const t = armar({ intentos: { o2: 1 }, avance: [['o2', 'on_the_way']] });
+      t.visitas.registrarDeHoja.mockResolvedValue(null);
+      expect(
+        await codigo(
+          t.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+            reason: FailedDeliveryReason.CUSTOMER_ABSENT,
+          }),
+        ),
+      ).toBe('ROUTE_STOP_NOT_PENDING');
+      expect(t.estado.parada.active).toBe(true);
+      expect(t.estado.pedido.status).toBe('on_the_way');
+      const primero = armar();
+      primero.visitas.registrarDeHoja.mockResolvedValue(null);
+      expect(
+        await codigo(
+          primero.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+            reason: FailedDeliveryReason.CUSTOMER_ABSENT,
+          }),
+        ),
+      ).toBe('ROUTE_STOP_NOT_PENDING');
+      expect(primero.estado.parada.failedAttempts).toBe(0);
+    });
+
+    it('C5: el día acordado que no vale corta antes de tocar la parada (el error del servicio sube)', async () => {
+      const t = armar({ intentos: { o2: 1 }, avance: [['o2', 'on_the_way']] });
+      t.visitas.prepararDeHoja.mockRejectedValue(
+        new ConflictException('sin cupo'),
+      );
+      await expect(
+        t.svc.noEntregada(
+          DIST,
+          'hoja-1',
+          'o2',
+          CHOFER_OPERA,
+          { reason: FailedDeliveryReason.CUSTOMER_ABSENT },
+          {
+            reason: FailedVisitReason.CUSTOMER_ABSENT,
+            agreed: { date: '2026-11-17', timeSlotId: 'franja-1' },
+          },
+        ),
+      ).rejects.toThrow('sin cupo');
+      expect(t.release.releaseWithin).not.toHaveBeenCalled();
+      expect(t.estado.parada.active).toBe(true);
+    });
+
+    it('la hoja que dejó de estar en curso mientras tanto: 409 sin escribir', async () => {
+      const t = armar({ hojaEnTransaccion: RouteBatchStatus.COMPLETED });
+      expect(
+        await codigo(
+          t.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+            reason: FailedDeliveryReason.CUSTOMER_ABSENT,
+          }),
+        ),
+      ).toBe('ROUTE_SHEET_NOT_IN_PROGRESS');
+      expect(t.visitas.registrarDeHoja).not.toHaveBeenCalled();
+    });
+
+    it('segundo intento con un pedido que ya no es del chofer de la hoja: 409 sin escribir', async () => {
+      const t = armar({ intentos: { o2: 1 }, avance: [['o2', 'on_the_way']] });
+      t.estado.pedido.deliveryId = 'otro-chofer';
+      await expect(
+        t.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+          reason: FailedDeliveryReason.CUSTOMER_ABSENT,
+        }),
+      ).rejects.toThrow('El pedido ya no es del chofer de esta hoja de ruta');
+      expect(t.estado.parada.active).toBe(true);
+      expect(t.release.releaseWithin).not.toHaveBeenCalled();
+    });
+
+    it('C5: el primer intento queda en el historial de visitas sin contar ni avisar una nueva visita, con la ubicación del chofer', async () => {
+      const t = armar({ avance: [['o2', 'on_the_way']] });
       const r = await t.svc.noEntregada(
         DIST,
         'hoja-1',
         'o2',
-        { userId: 'u', esChofer: true },
+        CHOFER_OPERA,
+        { reason: FailedDeliveryReason.CUSTOMER_ABSENT },
         {
-          reason: FailedDeliveryReason.NO_ACCESS,
+          reason: FailedVisitReason.CUSTOMER_ABSENT,
+          latitude: -27.36,
+          longitude: -55.89,
+          accuracyMeters: 8,
         },
       );
+      expect(t.visitas.prepararDeHoja).not.toHaveBeenCalled();
+      expect(t.visitas.registrarDeHoja).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderId: 'o2',
+          salida: 'requeued',
+          reason: FailedVisitReason.CUSTOMER_ABSENT,
+          latitude: -27.36,
+          longitude: -55.89,
+          accuracyMeters: 8,
+          userId: 'u-chofer',
+          role: RoleType.DELIVERY,
+        }),
+        expect.any(Date),
+        t.tx(),
+      );
+      expect(t.avisosDeVisita.visitaFallida).not.toHaveBeenCalled();
+      expect(r.visita).toMatchObject({ outcome: 'requeued' });
+    });
+
+    it('C5: el segundo intento cuenta como visita fallida, queda propuesta con el día de la hoja y se le avisa al cliente una sola vez', async () => {
+      const t = armar({ intentos: { o2: 1 } });
+      const r = await t.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+        reason: FailedDeliveryReason.WRONG_ADDRESS,
+        note: 'no existe el 123',
+      });
+      // Un motivo de la hoja sin equivalente va como «otro» con su texto.
+      expect(t.visitas.registrarDeHoja).toHaveBeenCalledWith(
+        expect.objectContaining({
+          salida: 'rescheduled',
+          rescheduledTo: '2026-11-16',
+          reason: FailedVisitReason.OTHER,
+          note: 'La dirección no es correcta: no existe el 123',
+        }),
+        expect.any(Date),
+        t.tx(),
+      );
+      expect(t.avisosDeVisita.visitaFallida).toHaveBeenCalledTimes(1);
+      expect(t.avisosDeVisita.visitaFallida).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderId: 'o2',
+          customerId: 'c1',
+          revisitStatus: 'proposed',
+          scheduledDate: '2026-11-16',
+          timeSlotId: 'franja-1',
+        }),
+        'Otro motivo: La dirección no es correcta: no existe el 123',
+        { deHoja: true, adminYaAvisado: false },
+      );
+      expect(r.visita).toMatchObject({ outcome: 'proposed' });
+    });
+
+    it('C5: «otro motivo» sin nota lleva la etiqueta de la hoja', async () => {
+      const t = armar({ intentos: { o2: 1 } });
+      await t.svc.noEntregada(
+        DIST,
+        'hoja-1',
+        'o2',
+        CHOFER_OPERA,
+        { reason: FailedDeliveryReason.OTHER },
+        { reason: FailedVisitReason.OTHER },
+      );
+      expect(t.visitas.registrarDeHoja).toHaveBeenCalledWith(
+        expect.objectContaining({ note: 'Otro motivo' }),
+        expect.any(Date),
+        t.tx(),
+      );
+    });
+
+    it('C5: si la nueva visita quedó en otro día de la hoja (el primero sin cupo), ese día es el de la respuesta y la bandeja', async () => {
+      const t = armar({ intentos: { o2: 1 } });
+      t.visitas.registrarDeHoja.mockResolvedValue({
+        visit: { failedVisitId: 'v1' },
+        failedVisitCount: 1,
+        outcome: 'proposed',
+        revisitStatus: 'proposed',
+        scheduledDate: '2026-11-17',
+        timeSlotId: 'franja-2',
+      });
+      const r = await t.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+        reason: FailedDeliveryReason.CUSTOMER_ABSENT,
+      });
+      expect(r.rescheduledTo).toBe('2026-11-17');
+      expect(t.hoja.avisarReprogramacion).toHaveBeenCalledWith(
+        t.sheet,
+        'o2',
+        PLAN,
+        '2026-11-17',
+      );
+    });
+
+    it('C5: sin cupo en ningún día de la hoja, la parada queda esperando al admin y se lo pide el aviso de la visita (no la bandeja de la hoja)', async () => {
+      const t = armar({ intentos: { o2: 1 } });
+      t.visitas.registrarDeHoja.mockResolvedValue({
+        visit: { failedVisitId: 'v1' },
+        failedVisitCount: 1,
+        outcome: 'awaiting_admin',
+        revisitStatus: 'awaiting_admin',
+        scheduledDate: null,
+        timeSlotId: null,
+      });
+      const r = await t.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+        reason: FailedDeliveryReason.CUSTOMER_ABSENT,
+      });
       expect(r).toMatchObject({ outcome: 'rescheduled', rescheduledTo: null });
+      expect(t.estado.parada.removedReason).toBe(
+        RouteStopRemovedReason.NEEDS_RESCHEDULE,
+      );
+      expect(t.hoja.avisarReprogramacion).not.toHaveBeenCalled();
+      expect(t.avisosDeVisita.visitaFallida).toHaveBeenCalledWith(
+        expect.objectContaining({ revisitStatus: 'awaiting_admin' }),
+        expect.any(String),
+        { deHoja: true, adminYaAvisado: false },
+      );
+    });
+
+    it('C5: si con esta visita el pedido llega al tope, sale de la hoja esperando al admin y no se reprograma solo', async () => {
+      const t = armar({ intentos: { o2: 1 }, alTope: true });
+      const r = await t.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+        reason: FailedDeliveryReason.CUSTOMER_ABSENT,
+      });
+      expect(t.tx().update).toHaveBeenCalledWith(
+        RouteBatchStop,
+        { stopId: 's-o2' },
+        expect.objectContaining({
+          active: false,
+          removedReason: RouteStopRemovedReason.NEEDS_RESCHEDULE,
+        }),
+      );
+      expect(t.hoja.aplicarReprogramacion).not.toHaveBeenCalled();
+      expect(t.visitas.registrarDeHoja).toHaveBeenCalledWith(
+        expect.objectContaining({
+          salida: 'rescheduled',
+          rescheduledTo: null,
+          dias: [],
+        }),
+        expect.any(Date),
+        t.tx(),
+      );
+      expect(r).toMatchObject({ outcome: 'rescheduled', rescheduledTo: null });
+      expect(t.hoja.avisarReprogramacion).not.toHaveBeenCalled();
+      expect(t.avisosDeVisita.visitaFallida).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.any(String),
+        { deHoja: true, adminYaAvisado: false },
+      );
+    });
+
+    it('segundo intento sin día con la hoja abierta: rescheduledTo null, la bandeja de la hoja le pide al admin y la visita no lo repite', async () => {
+      const sinDia: PlanDeReprogramacion = {
+        fecha: null,
+        dias: [],
+        esperaAlAdmin: true,
+        causa: 'sin_dia',
+      };
+      const t = armar({ intentos: { o2: 1 }, plan: sinDia });
+      const r = await t.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+        reason: FailedDeliveryReason.NO_ACCESS,
+      });
+      expect(r).toMatchObject({ outcome: 'rescheduled', rescheduledTo: null });
+      expect(t.hoja.aplicarReprogramacion).toHaveBeenCalledWith(
+        t.tx(),
+        t.sheet,
+        'o2',
+        sinDia,
+      );
+      expect(t.hoja.avisarReprogramacion).toHaveBeenCalledWith(
+        t.sheet,
+        'o2',
+        sinDia,
+        null,
+      );
+      expect(t.avisosDeVisita.visitaFallida).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.any(String),
+        { deHoja: true, adminYaAvisado: true },
+      );
+    });
+
+    it('C5: si al aplicar la planificación del día ya cerró, la visita y los avisos usan el plan revalidado', async () => {
+      const t = armar({ intentos: { o2: 1 } });
+      const otroDia: PlanDeReprogramacion = {
+        ...PLAN,
+        fecha: '2026-11-17',
+        dias: ['2026-11-17'],
+      };
+      t.hoja.aplicarReprogramacion.mockResolvedValue(otroDia);
+      const r = await t.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+        reason: FailedDeliveryReason.CUSTOMER_ABSENT,
+      });
+      expect(t.visitas.registrarDeHoja).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rescheduledTo: '2026-11-17',
+          dias: ['2026-11-17'],
+        }),
+        expect.any(Date),
+        t.tx(),
+      );
+      expect(r.rescheduledTo).toBe('2026-11-17');
+      expect(t.hoja.avisarReprogramacion).toHaveBeenCalledWith(
+        t.sheet,
+        'o2',
+        otroDia,
+        '2026-11-17',
+      );
+
+      const cerrado: PlanDeReprogramacion = {
+        fecha: null,
+        dias: [],
+        esperaAlAdmin: true,
+        causa: 'sin_dia',
+      };
+      const t2 = armar({ intentos: { o2: 1 } });
+      t2.hoja.aplicarReprogramacion.mockResolvedValue(cerrado);
+      const r2 = await t2.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+        reason: FailedDeliveryReason.CUSTOMER_ABSENT,
+      });
+      expect(r2.rescheduledTo).toBeNull();
+      expect(t2.visitas.registrarDeHoja).toHaveBeenCalledWith(
+        expect.objectContaining({ rescheduledTo: null, dias: [] }),
+        expect.any(Date),
+        t2.tx(),
+      );
+      expect(t2.avisosDeVisita.visitaFallida).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.any(String),
+        { deHoja: true, adminYaAvisado: true },
+      );
+    });
+
+    it('un aviso que falla después del commit no deshace el intento', async () => {
+      const t = armar({ intentos: { o2: 1 } });
+      t.release.notifyReleased.mockRejectedValue(new Error('socket caído'));
+      const r = await t.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+        reason: FailedDeliveryReason.CUSTOMER_ABSENT,
+      });
+      expect(r).toMatchObject({ outcome: 'rescheduled' });
+      expect(t.estado.pedido.status).toBe('pending');
+      expect(t.hoja.rehacer).toHaveBeenCalled();
     });
 
     it('el primer intento no trae rescheduledTo', async () => {
       const t = armar();
-      const r = await t.svc.noEntregada(
-        DIST,
-        'hoja-1',
-        'o2',
-        { userId: 'u', esChofer: true },
-        {
-          reason: FailedDeliveryReason.NO_ACCESS,
-        },
-      );
+      const r = await t.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+        reason: FailedDeliveryReason.NO_ACCESS,
+      });
       expect(r).not.toHaveProperty('rescheduledTo');
     });
 
@@ -541,6 +1098,14 @@ describe('RouteSheetStopsService', () => {
       );
       expect(t.hoja.choferDeLaHoja).not.toHaveBeenCalled();
       expect(t.hoja.choferDe).toHaveBeenCalledWith(t.sheet);
+      expect(t.visitas.registrarDeHoja).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: RoleType.ADMIN,
+          note: 'portón cerrado',
+        }),
+        expect.any(Date),
+        t.tx(),
+      );
       expect(t.hoja.avisarCambio).toHaveBeenCalledWith(
         CHOFER,
         'hoja-1',
@@ -555,36 +1120,26 @@ describe('RouteSheetStopsService', () => {
       expect(r.nextOrderId).toBeNull();
     });
 
-    it('409 si la parada ya se entregó; si la liberación del segundo intento falla, sube sin avisos', async () => {
+    it('409 si la parada ya se entregó; si la liberación del segundo intento falla, sube sin escribir ni avisar', async () => {
       expect(
         await codigo(
-          armar().svc.noEntregada(
-            DIST,
-            'hoja-1',
-            'o1',
-            { userId: 'u', esChofer: true },
-            {
-              reason: FailedDeliveryReason.NO_ACCESS,
-            },
-          ),
+          armar().svc.noEntregada(DIST, 'hoja-1', 'o1', CHOFER_OPERA, {
+            reason: FailedDeliveryReason.NO_ACCESS,
+          }),
         ),
       ).toBe('ROUTE_STOP_NOT_PENDING');
       const falla = armar({ intentos: { o2: 1 } });
-      falla.hoja.sacarYLiberar.mockRejectedValue(
+      falla.release.releaseWithin.mockRejectedValue(
         new ConflictException('ya entregado'),
       );
       await expect(
-        falla.svc.noEntregada(
-          DIST,
-          'hoja-1',
-          'o2',
-          { userId: 'u', esChofer: true },
-          {
-            reason: FailedDeliveryReason.WRONG_ADDRESS,
-          },
-        ),
+        falla.svc.noEntregada(DIST, 'hoja-1', 'o2', CHOFER_OPERA, {
+          reason: FailedDeliveryReason.WRONG_ADDRESS,
+        }),
       ).rejects.toThrow('ya entregado');
+      expect(falla.estado.parada.active).toBe(true);
       expect(falla.notifier.alPanel).not.toHaveBeenCalled();
+      expect(falla.release.notifyReleased).not.toHaveBeenCalled();
     });
 
     it('sin chofer en la hoja ni cliente visible: el resto sigue igual', async () => {

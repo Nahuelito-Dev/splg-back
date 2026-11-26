@@ -13,12 +13,7 @@ import {
   diaArgentino,
 } from '../../common/utils/dias-argentina';
 import { PaymentGatewayPort } from '../../payments/domain/ports/payment-gateway.port';
-import { saldoACobrar } from '../../truck-load/domain/truck-load-rules';
-import {
-  CashBoxKind,
-  CashMethod,
-  CashReferenceType,
-} from '../domain/cash.enums';
+import { CashBoxKind, CashReferenceType } from '../domain/cash.enums';
 import { CajaNoEncontradaError } from '../domain/errors/cash.errors';
 import {
   OrderCashSettlementResponseDto,
@@ -65,25 +60,11 @@ interface ComisionPendiente {
   metadata: Record<string, unknown> | null;
 }
 
-interface SenaPendiente {
-  order_id: string;
-  deposit_amount: string;
-  deposit_paid_at: Date;
-}
-
-interface CobroTransferenciaPendiente {
-  order_id: string;
-  total: string;
-  deposit_amount: string;
-  deposit_paid: boolean;
-  confirmed_at: Date;
-}
-
 const numeroDe = (valor: unknown): number | null =>
   typeof valor === 'number' && Number.isFinite(valor) ? valor : null;
 
 /**
- * Configuración de las cajas de cobro (Mercado Pago y transferencias) y los
+ * Configuración de la caja de cobro de Mercado Pago y los
  * cobros de las ventas que todavía no entraron a una caja: cuántos hay y cómo
  * asentarlos cuando el administrador lo pide. Nada se asienta hacia atrás por
  * su cuenta: `settle-pending` exige la fecha desde la que se quiere.
@@ -104,10 +85,9 @@ export class CashCollectionSettingsService {
     const config = await manager.findOne(CashCollectionSettings, {
       where: { distributorId },
     });
-    const ids = [
-      config?.mercadoPagoCashBoxId,
-      config?.transferCashBoxId,
-    ].filter((id): id is string => !!id);
+    const ids = [config?.mercadoPagoCashBoxId].filter(
+      (id): id is string => !!id,
+    );
     const cajas = ids.length
       ? await manager
           .createQueryBuilder(CashBox, 'c')
@@ -136,7 +116,6 @@ export class CashCollectionSettingsService {
         manager.create(CashCollectionSettings, {
           distributorId,
           mercadoPagoCashBoxId: null,
-          transferCashBoxId: null,
         });
       if (dto.mercadoPagoCashBoxId !== undefined) {
         if (dto.mercadoPagoCashBoxId) {
@@ -149,18 +128,6 @@ export class CashCollectionSettingsService {
           );
         }
         actual.mercadoPagoCashBoxId = dto.mercadoPagoCashBoxId;
-      }
-      if (dto.transferCashBoxId !== undefined) {
-        if (dto.transferCashBoxId) {
-          await this.exigirCaja(
-            manager,
-            dto.transferCashBoxId,
-            distributorId,
-            CashBoxKind.BANK,
-            'Las transferencias entran a una cuenta de banco: elegí una caja de clase banco',
-          );
-        }
-        actual.transferCashBoxId = dto.transferCashBoxId;
       }
       actual.updatedByUserId = userId;
       await manager.save(actual);
@@ -175,12 +142,6 @@ export class CashCollectionSettingsService {
     const desde = this.desde(from);
     const manager = this.dataSource.manager;
     const mp = await this.cobrosMpPendientes(manager, distributorId, desde);
-    const transferencias = await this.transferenciasPendientes(
-      manager,
-      distributorId,
-      desde,
-    );
-    const senas = await this.senasPendientes(manager, distributorId, desde);
     const devoluciones = await this.devolucionesPendientes(
       manager,
       distributorId,
@@ -189,31 +150,17 @@ export class CashCollectionSettingsService {
     const suma = <T>(filas: T[], importe: (f: T) => Decimal.Value) =>
       filas.reduce((acc, f) => acc.plus(importe(f)), new Decimal(0));
     const sumaMp = suma(mp, (c) => this.importeMp(c));
-    const sumaTransf = suma(transferencias, (t) =>
-      this.importeTransferencia(t),
-    );
-    const sumaSenas = suma(senas, (x) => x.deposit_amount);
     const sumaDevoluciones = suma(devoluciones, (d) => d.amount);
     const fechas = [
       ...mp.map((c) => c.approved_at),
-      ...transferencias.map((t) => t.confirmed_at),
-      ...senas.map((x) => x.deposit_paid_at),
       ...devoluciones.map((d) => d.refunded_at),
     ].sort((a, b) => a.getTime() - b.getTime());
     const respuesta = new PendingCollectionsResponseDto();
     respuesta.from = desde;
-    respuesta.count =
-      mp.length + transferencias.length + senas.length + devoluciones.length;
+    respuesta.count = mp.length + devoluciones.length;
     // Lo que falta entrar menos lo que falta salir: el efecto neto sobre las cajas.
-    respuesta.amount = aCentavos(
-      sumaMp.plus(sumaTransf).plus(sumaSenas).minus(sumaDevoluciones),
-    );
+    respuesta.amount = aCentavos(sumaMp.minus(sumaDevoluciones));
     respuesta.mercadoPago = { count: mp.length, amount: aCentavos(sumaMp) };
-    respuesta.transfer = {
-      count: transferencias.length,
-      amount: aCentavos(sumaTransf),
-    };
-    respuesta.deposits = { count: senas.length, amount: aCentavos(sumaSenas) };
     respuesta.refunds = {
       count: devoluciones.length,
       amount: aCentavos(sumaDevoluciones),
@@ -224,7 +171,7 @@ export class CashCollectionSettingsService {
 
   /**
    * Asienta los cobros pendientes desde `from` en las cajas configuradas: los
-   * cobros de Mercado Pago (con sus devoluciones), las transferencias, las señas,
+   * cobros de Mercado Pago (con sus devoluciones),
    * las devoluciones cuyo egreso falló y las comisiones que faltan. Cada uno va
    * en su propia transacción: uno que la caja rechaza no frena a los demás.
    * Idempotente: lo que ya tiene movimiento no se vuelve a asentar.
@@ -285,39 +232,6 @@ export class CashCollectionSettingsService {
             );
           }
           return resultado;
-        }),
-      );
-    }
-
-    for (const t of await this.transferenciasPendientes(
-      base,
-      distributorId,
-      desde,
-    )) {
-      contar(
-        await this.dataSource.transaction(async (manager) => {
-          await this.bloquearPedido(manager, t.order_id, distributorId);
-          return this.ventas.asentarTransferencia(manager, {
-            distributorId,
-            orderId: t.order_id,
-            amount: this.importeTransferencia(t),
-            userId,
-          });
-        }),
-      );
-    }
-
-    for (const sena of await this.senasPendientes(base, distributorId, desde)) {
-      contar(
-        await this.dataSource.transaction(async (manager) => {
-          await this.bloquearPedido(manager, sena.order_id, distributorId);
-          return this.ventas.asentarSena(manager, {
-            distributorId,
-            orderId: sena.order_id,
-            amount: sena.deposit_amount,
-            metodo: CashMethod.TRANSFER,
-            userId,
-          });
         }),
       );
     }
@@ -400,7 +314,11 @@ export class CashCollectionSettingsService {
     return resumen;
   }
 
-  /** Los cobros del pedido por Mercado Pago, transferencia o seña y su movimiento de caja. */
+  /**
+   * Los cobros del pedido por Mercado Pago o seña y su movimiento de caja. Un
+   * pedido viejo por transferencia (o su seña) no aplica: no se asentó en
+   * ninguna caja ni hay nada que asentar, así que no figura acá.
+   */
   async delPedido(
     orderId: string,
     distributorId: string,
@@ -437,17 +355,13 @@ export class CashCollectionSettingsService {
        ORDER BY "approved_at" NULLS LAST, "createdAt"`,
       [orderId],
     );
-    const hayTransferencia =
-      pedido.payment_method === 'transfer' && pedido.payment_status === 'paid';
-    const haySena = pedido.deposit_paid_at != null;
+    const haySena =
+      pedido.deposit_paid_at != null && pedido.payment_method !== 'transfer';
     const referencias = [
       ...pagos.map((p) => ({
         tipo: CashReferenceType.PAYMENT,
         id: p.payment_id,
       })),
-      ...(hayTransferencia
-        ? [{ tipo: CashReferenceType.ORDER_TRANSFER, id: orderId }]
-        : []),
       ...(haySena
         ? [{ tipo: CashReferenceType.ORDER_DEPOSIT, id: orderId }]
         : []),
@@ -506,17 +420,6 @@ export class CashCollectionSettingsService {
           Number(pedido.deposit_amount),
           pedido.deposit_paid_at,
           movimientoDe(CashReferenceType.ORDER_DEPOSIT, orderId),
-          nombreDeCaja,
-        ),
-      );
-    }
-    if (hayTransferencia) {
-      entradas.push(
-        this.entrada(
-          'transfer',
-          aCentavos(this.importeTransferencia(pedido)),
-          pedido.confirmed_at,
-          movimientoDe(CashReferenceType.ORDER_TRANSFER, orderId),
           nombreDeCaja,
         ),
       );
@@ -668,19 +571,6 @@ export class CashCollectionSettingsService {
     return new Decimal(numeroDe(cobro.metadata?.gatewayAmount) ?? cobro.amount);
   }
 
-  private importeTransferencia(t: {
-    total: string;
-    deposit_amount: string;
-    deposit_paid: boolean;
-  }): Decimal {
-    return new Decimal(
-      saldoACobrar(
-        Number(t.total),
-        t.deposit_paid ? Number(t.deposit_amount) : 0,
-      ),
-    );
-  }
-
   private bloquearPago(
     manager: EntityManager,
     paymentId: string,
@@ -717,44 +607,6 @@ export class CashCollectionSettingsService {
            SELECT 1 FROM "cash_movement" m
            WHERE m."reference_type" = 'payment' AND m."reference_id" = p."payment_id")
        ORDER BY p."approved_at"`,
-      [distributorId, desde],
-    );
-  }
-
-  private transferenciasPendientes(
-    manager: EntityManager,
-    distributorId: string,
-    desde: Date,
-  ): Promise<CobroTransferenciaPendiente[]> {
-    return manager.query(
-      `SELECT o."order_id", o."totalAmount" AS total, o."deposit_amount", o."deposit_paid",
-              o."payment_confirmed_at" AS confirmed_at
-       FROM "order" o
-       WHERE o."distributor_id" = $1 AND o."paymentMethod" = 'transfer' AND o."paymentStatus" = 'paid'
-         AND o."payment_confirmed_at" >= $2
-         AND NOT EXISTS (
-           SELECT 1 FROM "cash_movement" m
-           WHERE m."reference_type" = 'order_transfer' AND m."reference_id" = o."order_id")
-       ORDER BY o."payment_confirmed_at"`,
-      [distributorId, desde],
-    );
-  }
-
-  /** Señas por transferencia confirmadas a mano desde `desde` sin movimiento (la de efectivo necesita que el admin elija la caja). */
-  private senasPendientes(
-    manager: EntityManager,
-    distributorId: string,
-    desde: Date,
-  ): Promise<SenaPendiente[]> {
-    return manager.query(
-      `SELECT o."order_id", o."deposit_amount", o."deposit_paid_at"
-       FROM "order" o
-       WHERE o."distributor_id" = $1 AND o."paymentMethod" = 'transfer' AND o."deposit_paid" = true
-         AND o."deposit_amount" > 0 AND o."deposit_paid_at" >= $2
-         AND NOT EXISTS (
-           SELECT 1 FROM "cash_movement" m
-           WHERE m."reference_type" = 'order_deposit' AND m."reference_id" = o."order_id")
-       ORDER BY o."deposit_paid_at"`,
       [distributorId, desde],
     );
   }

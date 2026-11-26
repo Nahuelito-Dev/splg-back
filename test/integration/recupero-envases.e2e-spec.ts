@@ -15,7 +15,7 @@ import {
 } from '@testcontainers/postgresql';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ActorEnLaBase } from '../../src/audit/data/actor-en-la-base';
-import { CylinderService } from '../../src/cylinder/cylinder.service';
+import { armarEnvases } from '../../src/cylinder/cylinder-test-kit';
 import { Cylinder } from '../../src/cylinder/entities/cylinder.entity';
 import { CylinderMovement } from '../../src/cylinder/entities/cylinder-movement.entity';
 import {
@@ -26,6 +26,7 @@ import {
   CylinderRecoveryNotice,
   RecoveryNoticeKind,
 } from '../../src/cylinder/entities/cylinder-recovery-notice.entity';
+import { CustomerRecoveryScore } from '../../src/cylinder/entities/customer-recovery-score.entity';
 import { CylinderRecoveryCasesService } from '../../src/cylinder/recovery/cylinder-recovery-cases.service';
 import { CylinderRecoveryService } from '../../src/cylinder/recovery/cylinder-recovery.service';
 import { RecoveryDecision } from '../../src/cylinder/recovery/dto/recovery-request.dto';
@@ -413,16 +414,20 @@ describe('Recupero de envases (e2e)', () => {
         orders,
         notifier as never,
         apagado as never,
+        ds.getRepository(CustomerRecoveryScore),
       );
-      const cylinders = new CylinderService(
-        ds.getRepository(Cylinder),
-        ds.getRepository(CylinderMovement),
+      const { service: cylinders } = armarEnvases({
+        cylinders: ds.getRepository(Cylinder),
+        movements: ds.getRepository(CylinderMovement),
+        inspections: {} as never,
         orders,
-        {} as never,
-        new EventEmitter2(),
-        {} as never,
-        { descontarPropioDevuelto: () => Promise.resolve(false) } as never,
-      );
+        gasCylinders: {} as never,
+        eventos: new EventEmitter2(),
+        deliveries: {} as never,
+        cuentaDeEnvases: {
+          descontarPropioDevuelto: () => Promise.resolve(false),
+        } as never,
+      });
       cases = new CylinderRecoveryCasesService(
         ds.getRepository(CylinderRecoveryCase),
         ds.getRepository(CylinderRecoveryNotice),

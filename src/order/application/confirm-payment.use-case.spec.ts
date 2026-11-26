@@ -52,6 +52,7 @@ describe('ConfirmPaymentUseCase', () => {
 
   const fullOrder = {
     orderId: 'ord-1',
+    distributorId: 'dist-1',
     paymentStatus: PaymentStatus.PENDING,
     gatewayPaymentId: null,
     deliveryPoint: { type: 'Point', coordinates: [-58.4, -34.6] },
@@ -61,6 +62,7 @@ describe('ConfirmPaymentUseCase', () => {
   beforeEach(() => {
     lockedOrder = {
       orderId: 'ord-1',
+      distributorId: 'dist-1',
       paymentStatus: PaymentStatus.PENDING,
       gatewayPaymentId: null,
     };
@@ -145,6 +147,7 @@ describe('ConfirmPaymentUseCase', () => {
         'cus-1',
         'ord-1',
         false,
+        'dist-1',
       );
     });
 
@@ -167,6 +170,7 @@ describe('ConfirmPaymentUseCase', () => {
         'cus-1',
         'ord-1',
         true,
+        'dist-1',
       );
       expect(queryRunner.release.mock.invocationCallOrder[0]).toBeLessThan(
         notifications.sendPaymentApprovedPush.mock.invocationCallOrder[0],
@@ -191,6 +195,7 @@ describe('ConfirmPaymentUseCase', () => {
         'cus-1',
         'ord-1',
         false,
+        'dist-1',
       );
     });
 

@@ -258,7 +258,6 @@ describe('QuoteOrderUseCase', () => {
     'el recargo sale del parámetro de la distribuidora: %s %% con %s',
     async (porcentaje, medio, recargo) => {
       parametrosDeRecargo = {
-        transferPercentage: porcentaje,
         mercadoPagoPercentage: porcentaje,
         cashPercentage: 0,
       };
@@ -711,7 +710,7 @@ describe('QuoteOrderUseCase', () => {
     });
 
     it('editar sin cambiar de medio conserva el % con que se creó el pedido, aunque el parámetro haya cambiado', async () => {
-      parametrosDeRecargo = { transferPercentage: 3 };
+      parametrosDeRecargo = { mercadoPagoPercentage: 3 };
       manager.findOne.mockResolvedValue(
         pedido({
           paymentMethod: PaymentMethod.TRANSFER,
@@ -724,7 +723,7 @@ describe('QuoteOrderUseCase', () => {
     });
 
     it('un pedido anterior a la parametrización conserva el 10 % online que regía', async () => {
-      parametrosDeRecargo = { transferPercentage: 3 };
+      parametrosDeRecargo = { mercadoPagoPercentage: 3 };
       manager.findOne.mockResolvedValue(
         pedido({
           paymentMethod: PaymentMethod.TRANSFER,

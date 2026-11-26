@@ -165,6 +165,17 @@ describe('VencimientoSinChoferService', () => {
       ).toBe(true);
     });
 
+    it('C5: una entrega fallida que espera la decisión del admin no vence sola (ni en la consulta ni con la fila bloqueada)', async () => {
+      expect(
+        await condicion(
+          bloqueado({ revisitStatus: 'awaiting_admin' } as Partial<Order>),
+        ),
+      ).toBe(false);
+      expect((query.mock.calls as unknown[][])[0][0]).toContain(
+        `o."revisit_status" IS DISTINCT FROM 'awaiting_admin'`,
+      );
+    });
+
     it('la consulta de candidatos usa la jornada para los agendados sin franja', async () => {
       query.mockResolvedValue([]);
       await service.vencer(['d1'], () => AHORA);

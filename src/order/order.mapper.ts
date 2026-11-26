@@ -11,6 +11,7 @@ import {
   OrderResponseDto,
   ProductoDelRenglonDto,
   ReceiverDeOrderDto,
+  RevisitDeOrderDto,
   VehicleDeOrderDto,
   ZoneSurchargeDto,
 } from './dto/order-response.dto';
@@ -115,6 +116,34 @@ function confirmacionDe(
   return dto;
 }
 
+/**
+ * La nueva visita (C5) mientras el pedido sigue abierto. El día y la franja son
+ * los del pedido; con la decisión en manos del admin no se muestra fecha.
+ */
+function nuevaVisitaDe(order: Order): RevisitDeOrderDto | null {
+  if (!order.revisitStatus) return null;
+  if (
+    order.status === OrderStatus.DELIVERED ||
+    order.status === OrderStatus.CANCELLED
+  ) {
+    return null;
+  }
+  const decideElAdmin = order.revisitStatus === 'awaiting_admin';
+  const dto = new RevisitDeOrderDto();
+  dto.status = order.revisitStatus as RevisitDeOrderDto['status'];
+  dto.failedVisitCount = order.failedVisitCount ?? 0;
+  dto.scheduledDate = decideElAdmin ? null : (order.scheduledDate ?? null);
+  dto.timeSlotId = decideElAdmin ? null : (order.timeSlotId ?? null);
+  dto.timeSlotName = decideElAdmin ? null : (order.timeSlot?.name ?? null);
+  dto.windowStart = decideElAdmin ? null : (order.timeSlot?.startTime ?? null);
+  dto.windowEnd = decideElAdmin ? null : (order.timeSlot?.endTime ?? null);
+  dto.canRespond =
+    order.status === OrderStatus.PENDING &&
+    !order.deliveryId &&
+    order.revisitStatus === 'proposed';
+  return dto;
+}
+
 export class OrderMapper {
   /**
    * `paraElPersonal`: la respuesta va a un admin o super admin (suma los datos
@@ -156,6 +185,10 @@ export class OrderMapper {
     // El chofer sólo se agrega en la lectura individual (ver `OrderService.getOne`).
     dto.driver = null;
     dto.deliveryConfirmation = confirmacionDe(order, paraElPersonal);
+    dto.revisit = nuevaVisitaDe(order);
+    dto.assignmentMethod = paraElPersonal
+      ? (order.assignmentMethod ?? null)
+      : null;
     dto.cancelledBy = null;
 
     // Status Mapping

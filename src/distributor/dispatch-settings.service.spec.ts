@@ -13,6 +13,7 @@ describe('DispatchSettingsService (CU-171)', () => {
     finishingRadiusMeters: 300,
     noDriverExpiryMinutes: 120,
     arrivalRadiusMeters: 150,
+    osrmCandidateCount: 8,
   };
 
   beforeEach(() => {
@@ -49,6 +50,7 @@ describe('DispatchSettingsService (CU-171)', () => {
       finishingRadiusMeters: 300,
       noDriverExpiryMinutes: 120,
       arrivalRadiusMeters: 150,
+      osrmCandidateCount: 8,
     });
   });
 
@@ -106,6 +108,7 @@ describe('DispatchSettingsService (CU-171)', () => {
       finishingRadiusMeters: 300,
       noDriverExpiryMinutes: 120,
       arrivalRadiusMeters: 150,
+      osrmCandidateCount: 8,
     });
     // La otra distribuidora conserva su copia: no volvió a la base.
     await service.obtener('d2');
@@ -197,6 +200,17 @@ describe('DispatchSettingsService (CU-171)', () => {
       'u1',
     );
     expect(r).toMatchObject({ noDriverExpiryMinutes: 45, isDefault: false });
+  });
+
+  it('osrmCandidateCount: enteros de 1 a 20; fuera de rango cae al 8', () => {
+    const leer = (v: unknown) =>
+      dispatchSettingsDesde({ osrmCandidateCount: v }).osrmCandidateCount;
+    expect(leer(1)).toBe(1);
+    expect(leer(20)).toBe(20);
+    expect(leer(0)).toBe(8);
+    expect(leer(21)).toBe(8);
+    expect(leer(2.5)).toBe(8);
+    expect(leer('5')).toBe(8);
   });
 
   it('arrivalRadiusMeters: 0 lo apaga; los enteros entre 0 y 5000 son válidos', () => {

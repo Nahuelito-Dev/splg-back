@@ -5,8 +5,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, LessThanOrEqual, MoreThan, Repository } from 'typeorm';
+import { In, IsNull, LessThanOrEqual, MoreThan, Repository } from 'typeorm';
 import { PaymentMethod } from '../order/entities/order.entity';
+import {
+  MEDIDAS_MAXIMAS_DEL_OFFSET,
+  errorContraLaBase,
+} from './domain/ajuste-por-cliente';
 import {
   RepurchaseEstimateSource,
   RepurchaseInvitation,
@@ -32,6 +36,10 @@ export interface NuevaInvitacion {
   estimateSource: RepurchaseEstimateSource;
   suggestedItems: SuggestedItem[];
   expiresAt: Date;
+  /** Días que el ajuste del cliente corrió la fecha proyectada (0 si no se aplicó). */
+  offsetDays: number;
+  /** Desde cuándo se le puede avisar. */
+  notifyAt: Date;
 }
 
 export interface FiltroDeInvitaciones {
@@ -115,6 +123,48 @@ export class RepurchaseInvitationService {
       }
     }
     return ultimas;
+  }
+
+  /**
+   * Las invitaciones abiertas con el aviso pendiente cuya hora ya llegó (de una
+   * distribuidora o de todas). Las que ya vencieron no entran: avisar de una
+   * oferta muerta sería ruido.
+   */
+  paraAvisar(
+    ahora: Date,
+    distributorId?: string,
+  ): Promise<RepurchaseInvitation[]> {
+    return this.repo.find({
+      where: {
+        status: RepurchaseInvitationStatus.PENDING,
+        notifiedAt: IsNull(),
+        notifyAt: LessThanOrEqual(ahora),
+        expiresAt: MoreThan(ahora),
+        ...(distributorId ? { distributorId } : {}),
+      },
+      order: { notifyAt: 'ASC' },
+    });
+  }
+
+  /**
+   * Se queda con el derecho a avisar: una sola sentencia condicionada a que la
+   * invitación siga abierta, vigente, con la hora cumplida y sin avisar. Dos
+   * barridos (o la corrida y un barrido) a la vez no pueden ganarla los dos:
+   * nunca hay dos avisos.
+   */
+  async reclamarAviso(invitationId: string, ahora: Date): Promise<boolean> {
+    const r = await this.repo
+      .createQueryBuilder()
+      .update(RepurchaseInvitation)
+      .set({ notifiedAt: ahora })
+      .where('invitation_id = :invitationId', { invitationId })
+      .andWhere('status = :abierta', {
+        abierta: RepurchaseInvitationStatus.PENDING,
+      })
+      .andWhere('notified_at IS NULL')
+      .andWhere('notify_at <= :ahora AND expires_at > :ahora', { ahora })
+      .execute();
+    return (r.affected ?? 0) > 0;
   }
 
   /** Pasa a «vencida» las abiertas cuya vigencia terminó (de una distribuidora o de todas). */
@@ -346,6 +396,45 @@ export class RepurchaseInvitationService {
         ? [{ predicha: new Date(f.predicha), real: new Date(f.real) }]
         : [],
     );
+  }
+
+  /**
+   * El error de las últimas invitaciones medidas de un cliente, en días con
+   * signo (compra real − fecha base predicha, sin el ajuste que llevaba), la más
+   * nueva primero. Alimenta el ajuste por cliente (M3a).
+   */
+  async erroresDelCliente(
+    distributorId: string,
+    userId: string,
+  ): Promise<number[]> {
+    const filas = await this.repo.query<
+      Array<{ predicha: Date; offset_days: number; real: Date }>
+    >(
+      `SELECT inv."projected_depletion_at" AS predicha,
+              inv."offset_days" AS offset_days,
+              (SELECT MIN(o."deliveredAt") FROM "order" o
+                WHERE o."customer_id" = inv."user_id"
+                  AND o."distributor_id" = inv."distributor_id"
+                  AND o."status" = 'delivered'
+                  AND o."deliveredAt" >= inv."created_at") AS real
+         FROM "repurchase_invitation" inv
+        WHERE inv."distributor_id" = $1
+          AND inv."user_id" = $2
+          AND inv."status" <> 'pending'
+        ORDER BY inv."created_at" DESC
+        LIMIT $3`,
+      [distributorId, userId, MEDIDAS_MAXIMAS_DEL_OFFSET * 3],
+    );
+    return filas
+      .filter((f) => f.real)
+      .slice(0, MEDIDAS_MAXIMAS_DEL_OFFSET)
+      .map((f) =>
+        errorContraLaBase(
+          new Date(f.predicha),
+          Number(f.offset_days),
+          new Date(f.real),
+        ),
+      );
   }
 
   /** Las abiertas de la distribuidora para los clientes dados: se ven en el listado de próximas recompras. */

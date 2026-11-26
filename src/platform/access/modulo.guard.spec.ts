@@ -138,6 +138,22 @@ describe('ModuloGuard y @RequiereModulo (§6.2)', () => {
     expect(habilitado).not.toHaveBeenCalled();
   });
 
+  it('en GraphQL aplica igual, con la empresa de la request del contexto', async () => {
+    const ctx = {
+      getType: () => 'graphql',
+      getArgs: () => [undefined, {}, { req: { distributorId: 'A' } }, {}],
+      getHandler: () =>
+        (AtadoController.prototype as unknown as Record<string, object>)[
+          'atado'
+        ],
+      getClass: () => AtadoController,
+    } as unknown as ExecutionContext;
+    await expect(guard.canActivate(ctx)).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(habilitado).toHaveBeenCalledWith('A', 'repurchase');
+  });
+
   it('fuera de HTTP no aplica', async () => {
     await expect(
       guard.canActivate(contexto(AtadoController, 'atado', 'A', 'ws')),

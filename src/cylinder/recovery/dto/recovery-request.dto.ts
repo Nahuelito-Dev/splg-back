@@ -150,6 +150,76 @@ export class PatchRecoverySettingsDto {
   pickupWindowDays?: number;
 
   @ApiPropertyOptional({
+    description:
+      'Porcentaje de la tolerancia para clientes de riesgo bajo (10 a 300; más de 100 da más margen)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(10)
+  @Max(300)
+  toleranceLowRiskPercent?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Porcentaje de la tolerancia para clientes de riesgo medio y sin historia (10 a 300)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(10)
+  @Max(300)
+  toleranceMediumRiskPercent?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Porcentaje de la tolerancia para clientes de riesgo alto (10 a 300; menos de 100 acorta el plazo)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(10)
+  @Max(300)
+  toleranceHighRiskPercent?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Porcentaje del plazo de cada escalón para clientes de riesgo bajo (10 a 300)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(10)
+  @Max(300)
+  stepLowRiskPercent?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Porcentaje del plazo de cada escalón para clientes de riesgo medio y sin historia (10 a 300)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(10)
+  @Max(300)
+  stepMediumRiskPercent?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Porcentaje del plazo de cada escalón para clientes de riesgo alto (10 a 300)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(10)
+  @Max(300)
+  stepHighRiskPercent?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Radio, en metros, para ofrecer el retiro aprovechando una hoja de ruta en curso (50 a 2000)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(50)
+  @Max(2000)
+  opportunisticPickupRadiusMeters?: number;
+
+  @ApiPropertyOptional({
     description: 'Hora de ejecución diaria (0 a 23, hora de Argentina)',
   })
   @IsOptional()

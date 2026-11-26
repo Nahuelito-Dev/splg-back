@@ -16,6 +16,8 @@ import {
   DISPATCH_ARRIVAL_RADIUS_MAX_METERS,
   DISPATCH_ARRIVAL_RADIUS_MIN_METERS,
   DISPATCH_NO_DRIVER_EXPIRY_MAX_MINUTES,
+  DISPATCH_OSRM_CANDIDATES_MAX,
+  DISPATCH_OSRM_CANDIDATES_MIN,
   DISPATCH_NO_DRIVER_EXPIRY_MIN_MINUTES,
   DISPATCH_OFFER_TTL_MAX_SECONDS,
   DISPATCH_OFFER_TTL_MIN_SECONDS,
@@ -97,6 +99,20 @@ export class DispatchConfigDto {
   @Min(DISPATCH_ARRIVAL_RADIUS_MIN_METERS)
   @Max(DISPATCH_ARRIVAL_RADIUS_MAX_METERS)
   arrivalRadiusMeters?: number;
+
+  @ApiPropertyOptional({
+    description: `Cuántos choferes de cada paso de radio se miden por calle para ofrecer al que llega antes (${DISPATCH_OSRM_CANDIDATES_MIN} a ${DISPATCH_OSRM_CANDIDATES_MAX}, entero). Con 1 sólo se mide al primero del radar. Si el servicio de calles no responde, se ofrece en el orden del radar`,
+    type: 'integer',
+    example: 8,
+    default: 8,
+    minimum: DISPATCH_OSRM_CANDIDATES_MIN,
+    maximum: DISPATCH_OSRM_CANDIDATES_MAX,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(DISPATCH_OSRM_CANDIDATES_MIN)
+  @Max(DISPATCH_OSRM_CANDIDATES_MAX)
+  osrmCandidateCount?: number;
 }
 
 /** Respuesta de `GET`/`PUT /module-config/dispatch`. */
@@ -120,6 +136,14 @@ export class DispatchConfigResponseDto {
 
   @ApiProperty({ type: 'integer', example: 150 })
   arrivalRadiusMeters!: number;
+
+  @ApiProperty({
+    description:
+      'Choferes de cada paso de radio que se miden por calle para ofrecer al que llega antes',
+    type: 'integer',
+    example: 8,
+  })
+  osrmCandidateCount!: number;
 
   @ApiProperty({
     description:

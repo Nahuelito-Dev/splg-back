@@ -20,10 +20,8 @@ describe('CashCollectionSettingsService', () => {
   let config: CashCollectionSettings | null;
   let guardado: CashCollectionSettings | null;
   let mpPendientes: Array<Record<string, unknown>>;
-  let transferenciasPendientes: Array<Record<string, unknown>>;
   let devoluciones: Array<Record<string, unknown>>;
   let devolucionesSinEgreso: Array<Record<string, unknown>>;
-  let senas: Array<Record<string, unknown>>;
   let comisiones: Array<Record<string, unknown>>;
   let pagosIngresados: Array<Record<string, unknown>>;
   let queries: string[];
@@ -33,7 +31,6 @@ describe('CashCollectionSettingsService', () => {
   let asentarExterna: jest.Mock;
   let asentarCobro: jest.Mock;
   let asentarDevolucion: jest.Mock;
-  let asentarTransferencia: jest.Mock;
   let pedidos: Array<Record<string, unknown>>;
   let pagosDelPedido: Array<Record<string, unknown>>;
   let movimientos: Array<Record<string, unknown>>;
@@ -68,10 +65,8 @@ describe('CashCollectionSettingsService', () => {
     config = null;
     guardado = null;
     mpPendientes = [];
-    transferenciasPendientes = [];
     devoluciones = [];
     devolucionesSinEgreso = [];
-    senas = [];
     comisiones = [];
     pagosIngresados = [];
     queries = [];
@@ -84,7 +79,6 @@ describe('CashCollectionSettingsService', () => {
     movimientos = [];
     asentarCobro = jest.fn().mockResolvedValue('asentado');
     asentarDevolucion = jest.fn().mockResolvedValue('asentado');
-    asentarTransferencia = jest.fn().mockResolvedValue('asentado');
 
     const manager: Record<string, jest.Mock> = {
       findOne: jest.fn(
@@ -120,10 +114,6 @@ describe('CashCollectionSettingsService', () => {
           return Promise.resolve(pagosIngresados);
         if (sql.includes('JOIN "payment" p'))
           return Promise.resolve(devolucionesSinEgreso);
-        if (sql.includes('"deposit_paid_at" >= $2'))
-          return Promise.resolve(senas);
-        if (sql.includes('FROM "order" o'))
-          return Promise.resolve(transferenciasPendientes);
         if (sql.includes('FROM "payment_refund"'))
           return Promise.resolve(devoluciones);
         if (sql.includes('FROM "payment"\n'))
@@ -145,7 +135,6 @@ describe('CashCollectionSettingsService', () => {
       {
         asentarCobroDeMercadoPago: asentarCobro,
         asentarDevolucion,
-        asentarTransferencia,
         asentarSena,
         asentarComision,
         asentarDevolucionExterna: asentarExterna,
@@ -157,7 +146,7 @@ describe('CashCollectionSettingsService', () => {
   describe('actualizar', () => {
     it('crea la configuración con las cajas elegidas y el autor', async () => {
       await service.actualizar(
-        { mercadoPagoCashBoxId: 'wallet-1', transferCashBoxId: 'bank-1' },
+        { mercadoPagoCashBoxId: 'wallet-1' },
         DIST,
         ADMIN,
       );
@@ -165,7 +154,6 @@ describe('CashCollectionSettingsService', () => {
       expect(guardado).toMatchObject({
         distributorId: DIST,
         mercadoPagoCashBoxId: 'wallet-1',
-        transferCashBoxId: 'bank-1',
         updatedByUserId: ADMIN,
       });
     });
@@ -174,15 +162,18 @@ describe('CashCollectionSettingsService', () => {
       config = {
         distributorId: DIST,
         mercadoPagoCashBoxId: 'wallet-1',
-        transferCashBoxId: 'bank-1',
       } as CashCollectionSettings;
 
-      await service.actualizar({ transferCashBoxId: null }, DIST, 'adm-2');
-
+      await service.actualizar({}, DIST, 'adm-2');
       expect(guardado).toMatchObject({
         mercadoPagoCashBoxId: 'wallet-1',
-        transferCashBoxId: null,
         updatedByUserId: 'adm-2',
+      });
+
+      await service.actualizar({ mercadoPagoCashBoxId: null }, DIST, 'adm-3');
+      expect(guardado).toMatchObject({
+        mercadoPagoCashBoxId: null,
+        updatedByUserId: 'adm-3',
       });
     });
 
@@ -196,13 +187,6 @@ describe('CashCollectionSettingsService', () => {
       expect(guardado).toBeNull();
     });
 
-    it('la caja de transferencias tiene que ser un banco', async () => {
-      await expect(
-        service.actualizar({ transferCashBoxId: 'wallet-1' }, DIST, ADMIN),
-      ).rejects.toThrow(BadRequestException);
-      expect(guardado).toBeNull();
-    });
-
     it('una caja desactivada se rechaza', async () => {
       await expect(
         service.actualizar({ mercadoPagoCashBoxId: 'wallet-off' }, DIST, ADMIN),
@@ -211,13 +195,13 @@ describe('CashCollectionSettingsService', () => {
 
     it('una caja inexistente o de otra distribuidora es 404', async () => {
       await expect(
-        service.actualizar({ transferCashBoxId: 'ajena' }, DIST, ADMIN),
+        service.actualizar({ mercadoPagoCashBoxId: 'ajena' }, DIST, ADMIN),
       ).rejects.toThrow(CajaNoEncontradaError);
     });
   });
 
   describe('pendientes', () => {
-    it('suma los cobros de Mercado Pago y las transferencias sin movimiento', async () => {
+    it('suma los cobros de Mercado Pago sin movimiento', async () => {
       mpPendientes = [
         {
           payment_id: 'p1',
@@ -232,23 +216,15 @@ describe('CashCollectionSettingsService', () => {
           approved_at: new Date('2026-10-05T12:00:00Z'),
         },
       ];
-      transferenciasPendientes = [
-        {
-          order_id: 'o1',
-          total: '4500',
-          deposit_amount: '1000',
-          deposit_paid: true,
-          confirmed_at: new Date('2026-10-01T12:00:00Z'),
-        },
-      ];
 
       const r = await service.pendientes(DIST, '2026-10-01');
 
-      expect(r.count).toBe(3);
+      expect(r.count).toBe(2);
       expect(r.mercadoPago).toEqual({ count: 2, amount: 3900.5 });
-      expect(r.transfer).toEqual({ count: 1, amount: 3500 });
-      expect(r.amount).toBe(7400.5);
-      expect(r.oldestAt).toEqual(new Date('2026-10-01T12:00:00Z'));
+      expect(r).not.toHaveProperty('transfer');
+      expect(r).not.toHaveProperty('deposits');
+      expect(r.amount).toBe(3900.5);
+      expect(r.oldestAt).toEqual(new Date('2026-10-02T12:00:00Z'));
       expect(r.from).toEqual(new Date('2026-10-01T03:00:00Z'));
     });
 
@@ -276,22 +252,13 @@ describe('CashCollectionSettingsService', () => {
           approved_at: new Date(),
         },
       ];
-      transferenciasPendientes = [
-        {
-          order_id: 'o2',
-          total: '4500',
-          deposit_amount: '0',
-          deposit_paid: false,
-          confirmed_at: new Date(),
-        },
-      ];
     });
 
     it('asienta cada cobro con el administrador como autor y cuenta el resultado', async () => {
       const r = await service.asentarPendientes(DIST, '2026-10-01', ADMIN);
 
       expect(r).toEqual({
-        settled: 2,
+        settled: 1,
         alreadySettled: 0,
         withoutCashBox: 0,
         failed: 0,
@@ -314,12 +281,6 @@ describe('CashCollectionSettingsService', () => {
             .amount,
         ),
       ).toBe(3000);
-      expect(asentarTransferencia).toHaveBeenCalledWith(expect.anything(), {
-        distributorId: DIST,
-        orderId: 'o2',
-        amount: expect.anything() as unknown,
-        userId: ADMIN,
-      });
     });
 
     it('al asentar tarde un cobro, saca también las devoluciones que ya se hicieron', async () => {
@@ -342,16 +303,13 @@ describe('CashCollectionSettingsService', () => {
       asentarCobro.mockResolvedValue(
         'ya_asentado' satisfies ResultadoDelAsiento,
       );
-      asentarTransferencia.mockResolvedValue(
-        'ya_asentado' satisfies ResultadoDelAsiento,
-      );
       devoluciones = [{ refund_id: 'r1', amount: '500' }];
 
       const r = await service.asentarPendientes(DIST, '2026-10-01', ADMIN);
 
       expect(r).toEqual({
         settled: 0,
-        alreadySettled: 2,
+        alreadySettled: 1,
         withoutCashBox: 0,
         failed: 0,
         refundsSettled: 0,
@@ -362,9 +320,6 @@ describe('CashCollectionSettingsService', () => {
 
     it('sin caja configurada o con la caja rechazando, informa cuántos quedaron', async () => {
       asentarCobro.mockResolvedValue('sin_caja' satisfies ResultadoDelAsiento);
-      asentarTransferencia.mockResolvedValue(
-        'fallo' satisfies ResultadoDelAsiento,
-      );
 
       const r = await service.asentarPendientes(DIST, '2026-10-01', ADMIN);
 
@@ -372,7 +327,7 @@ describe('CashCollectionSettingsService', () => {
         settled: 0,
         alreadySettled: 0,
         withoutCashBox: 1,
-        failed: 1,
+        failed: 0,
         refundsSettled: 0,
         feesSettled: 0,
       });
@@ -380,7 +335,6 @@ describe('CashCollectionSettingsService', () => {
 
     it('sin cobros pendientes no asienta nada', async () => {
       mpPendientes = [];
-      transferenciasPendientes = [];
 
       const r = await service.asentarPendientes(DIST, '2026-10-01', ADMIN);
 
@@ -396,7 +350,7 @@ describe('CashCollectionSettingsService', () => {
     });
   });
 
-  describe('devoluciones, señas y comisiones pendientes', () => {
+  describe('devoluciones y comisiones pendientes', () => {
     it('las devoluciones cerradas sin egreso (con el cobro adentro) cuentan y se asientan con el administrador como autor', async () => {
       devolucionesSinEgreso = [
         {
@@ -424,32 +378,6 @@ describe('CashCollectionSettingsService', () => {
         userId: ADMIN,
       });
       expect(r.refundsSettled).toBe(1);
-    });
-
-    it('las señas por transferencia confirmadas a mano se cuentan y se asientan', async () => {
-      senas = [
-        {
-          order_id: 'o5',
-          deposit_amount: '1000',
-          deposit_paid_at: new Date('2026-10-03T12:00:00Z'),
-        },
-      ];
-
-      expect((await service.pendientes(DIST, '2026-10-01')).deposits).toEqual({
-        count: 1,
-        amount: 1000,
-      });
-      const r = await service.asentarPendientes(DIST, '2026-10-01', ADMIN);
-
-      expect(asentarSena).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          orderId: 'o5',
-          metodo: 'transfer',
-          userId: ADMIN,
-        }),
-      );
-      expect(r.settled).toBe(1);
     });
 
     it('un cobro histórico sin datos guardados le pregunta a Mercado Pago lo cobrado y la comisión, y lo guarda', async () => {
@@ -667,7 +595,7 @@ describe('CashCollectionSettingsService', () => {
     it('la seña confirmada a mano figura con su movimiento', async () => {
       pedidos = [
         {
-          payment_method: 'transfer',
+          payment_method: 'cash',
           payment_status: 'pending',
           total: '4500',
           deposit_amount: '1000',
@@ -697,7 +625,7 @@ describe('CashCollectionSettingsService', () => {
       ]);
     });
 
-    it('muestra el cobro de Mercado Pago con su movimiento y el de transferencia sin asentar', async () => {
+    it('muestra el cobro de Mercado Pago con su movimiento y NO muestra la transferencia vieja (no aplica)', async () => {
       pedidos = [
         {
           payment_method: 'transfer',
@@ -737,16 +665,33 @@ describe('CashCollectionSettingsService', () => {
           cashBoxId: 'wallet-1',
           cashBoxName: 'Mercado Pago',
         },
-        {
-          kind: 'transfer',
-          amount: 4500,
-          collectedAt: new Date('2026-10-03T00:00:00Z'),
-          settled: false,
-          movementId: null,
-          cashBoxId: null,
-          cashBoxName: null,
-        },
       ]);
+    });
+
+    it('una seña vieja por transferencia no figura ni se enlaza a una caja', async () => {
+      pedidos = [
+        {
+          payment_method: 'transfer',
+          payment_status: 'pending',
+          total: '4500',
+          deposit_amount: '1000',
+          deposit_paid: true,
+          confirmed_at: null,
+          deposit_paid_at: new Date('2026-10-04T00:00:00Z'),
+        },
+      ];
+      movimientos = [
+        {
+          movementId: 'mov-s',
+          cashBoxId: 'bank-1',
+          referenceType: CashReferenceType.ORDER_DEPOSIT,
+          referenceId: 'o1',
+        },
+      ];
+
+      const r = await service.delPedido('o1', DIST);
+
+      expect(r.entries).toEqual([]);
     });
   });
 });

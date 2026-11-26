@@ -26,3 +26,20 @@ describe('UpdateUserDto: phone_number', () => {
     expect(await invalidas({ full_name: 'Ana Pérez' })).toEqual([]);
   });
 });
+
+describe('UpdateUserDto: password (política)', () => {
+  it('una clave que cumple pasa', async () => {
+    expect(await invalidas({ password: 'Nueva clave 2026' })).toEqual([]);
+  });
+
+  it.each([
+    'Abcde12',
+    'abcdef12',
+    'Abcdefgh',
+    'ABCDEF12',
+    'Password1',
+    `A1${'x'.repeat(127)}`,
+  ])('%s es 400', async (password) => {
+    expect(await invalidas({ password })).toEqual(['password']);
+  });
+});

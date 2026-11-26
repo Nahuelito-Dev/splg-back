@@ -21,7 +21,7 @@ const logger = new Logger('FirebaseAuthPort');
 
 const MENSAJES_DE_ALTA_EN_FIREBASE: Record<string, string> = {
   'auth/invalid-password':
-    'La contraseña es muy débil: usá al menos 6 caracteres',
+    'La contraseña es muy débil: usá al menos 8 caracteres, una mayúscula, una minúscula y un número',
   'auth/email-already-exists': 'Ese correo ya está registrado',
   'auth/phone-number-already-exists': 'El teléfono ya está en uso',
   'auth/invalid-email': 'El formato del correo no es válido',
@@ -64,6 +64,13 @@ export abstract class FirebaseAuthPort {
     props: auth.UpdateRequest,
   ): Promise<auth.UserRecord>;
 
+  /**
+   * Invalida los refresh tokens del usuario: no puede renovar su sesión. El ID
+   * token ya emitido vive hasta su vencimiento (≤ 1 h); el bloqueo inmediato lo
+   * da el AuthGuard con la base.
+   */
+  abstract revokeRefreshTokens(uid: string): Promise<void>;
+
   /** Genera un link de reseteo de contraseña (out-of-band, Firebase lo firma). */
   abstract generatePasswordResetLink(
     email: string,
@@ -98,6 +105,21 @@ export abstract class FirebaseAuthPort {
       }
 
       throw new BadRequestException(errorMessage);
+    }
+  }
+
+  /**
+   * Revoca los refresh tokens de una cuenta, sin lanzar: si Firebase falla se
+   * registra y la operación que lo pidió (bloqueo, baja, cambio de clave) sigue,
+   * porque el acceso ya lo corta el AuthGuard con la base.
+   */
+  async revokeRefreshTokensSafe(uid: string, logger: Logger): Promise<void> {
+    try {
+      await this.revokeRefreshTokens(uid);
+    } catch (error) {
+      logger.error(
+        `No se pudieron revocar las sesiones de la cuenta Firebase ${uid}: ${mensajeDe(error)}`,
+      );
     }
   }
 

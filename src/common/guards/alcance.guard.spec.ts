@@ -220,6 +220,49 @@ describe('AlcanceGuard', () => {
     });
   });
 
+  describe('GraphQL: decide la operación, no el método HTTP', () => {
+    const enGraphql = (
+      request: Request,
+      operacion: 'query' | 'mutation',
+    ): true | string => {
+      const instancia: { metodo: () => void } = new DeEmpresa();
+      const ctx = {
+        getType: () => 'graphql',
+        getArgs: () => [
+          undefined,
+          {},
+          { req: request },
+          { operation: { operation: operacion } },
+        ],
+        getHandler: () => instancia.metodo,
+        getClass: () => DeEmpresa,
+      } as unknown as ExecutionContext;
+      try {
+        return guard.canActivate(ctx) as true;
+      } catch (error) {
+        return (error as { response: { code: string } }).response.code;
+      }
+    };
+
+    it('una query por POST con sesión de soporte es lectura: pasa', () => {
+      expect(
+        enGraphql(pedido(RoleType.SUPER_ADMIN, 'POST', SESION), 'query'),
+      ).toBe(true);
+    });
+
+    it('una mutation con sesión de soporte es escritura, aunque viaje por GET', () => {
+      expect(
+        enGraphql(pedido(RoleType.SUPER_ADMIN, 'GET', SESION), 'mutation'),
+      ).toBe(RO);
+    });
+
+    it('sin sesión de soporte, lo de una empresa sigue cerrado', () => {
+      expect(enGraphql(pedido(RoleType.SUPER_ADMIN, 'POST'), 'query')).toBe(
+        REQ,
+      );
+    });
+  });
+
   it('fuera de HTTP (sockets, crons) no hace nada', () => {
     const ctx = {
       getType: () => 'ws',

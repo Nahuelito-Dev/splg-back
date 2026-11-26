@@ -22,7 +22,10 @@ function fabrica(): Fabrica {
 }
 
 const contexto = (request: object): ExecutionContext =>
-  ({ switchToHttp: () => ({ getRequest: () => request }) }) as ExecutionContext;
+  ({
+    getType: () => 'http',
+    switchToHttp: () => ({ getRequest: () => request }),
+  }) as unknown as ExecutionContext;
 
 describe('CurrentDistributor', () => {
   const resolver = fabrica();

@@ -246,6 +246,30 @@ describe('ReleaseOrderUseCase', () => {
       );
     });
 
+    it('C5, por entrega fallida: no deja la constancia que le impide al chofer volver a recibirlo ni le dice «buscando chofer» al cliente', async () => {
+      const order = makeOrder({
+        status: OrderStatus.PENDING,
+        deliveryId: null,
+      });
+      await useCase.notifyReleased(order, 'user-drv-1', {
+        porEntregaFallida: true,
+      });
+
+      expect(dispatch.stopTracking).toHaveBeenCalledWith('user-drv-1');
+      expect(dispatchOrchestrator.releaseOffer).not.toHaveBeenCalled();
+      expect(dispatchOrchestrator.onOrderClosed).toHaveBeenCalledWith('ord-1');
+      expect(dispatch.notifyDriverOrderCancelled).toHaveBeenCalledWith(
+        'user-drv-1',
+        expect.objectContaining({
+          message:
+            'Quedó registrado que no pudiste entregar. El pedido se reprograma.',
+        }),
+      );
+      expect(dispatch.notifyCustomer).not.toHaveBeenCalled();
+      // El panel se entera por `order:failed-visit`: un solo aviso en la campana.
+      expect(dispatch.notifyAdmins).not.toHaveBeenCalled();
+    });
+
     it('sin chofer previo, no corta tracking ni cierra oferta (pero sí avisa a cliente/admins)', async () => {
       const order = makeOrder({ status: OrderStatus.PENDING });
       await useCase.notifyReleased(order, null);

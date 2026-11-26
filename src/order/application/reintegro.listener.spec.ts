@@ -57,6 +57,7 @@ describe('ReintegroListener (CU-168)', () => {
       'cus-1',
       'ord-1234567890',
       expect.objectContaining({ event: 'PAYMENT_REFUNDED' }),
+      'dist-1',
     );
   });
 

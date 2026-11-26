@@ -4,7 +4,10 @@ import { RoleType } from '../../common/constants/role-type.enum';
 import { errorMessage } from '../../common/errors/error-message';
 import { diaArgentino } from '../../common/utils/dias-argentina';
 import { DeliveryService } from '../../delivery/delivery.service';
-import { OrderStatus } from '../../order/entities/order.entity';
+import {
+  AssignmentMethod,
+  OrderStatus,
+} from '../../order/entities/order.entity';
 import { RouteStopRemovedReason } from '../../order/entities/route-batch-stop.entity';
 import { OrderService } from '../../order/order.service';
 import { RouteBatchStatus } from '../domain/route-batch.enums';
@@ -152,6 +155,7 @@ export class RouteSheetAssignmentService {
     }
     if (primeraVez) {
       void this.notifier.pushAlChofer(
+        { distributorId: sheet.distributorId, driverUserId: chofer.userId },
         chofer.notificationToken,
         id,
         `Tenés tu hoja de ruta de hoy: ${asignados.length} entrega(s). Cuando tengas la carga, iniciá el viaje.`,
@@ -249,6 +253,7 @@ export class RouteSheetAssignmentService {
       }
       await this.orders.assignDelivery(orderId, deliveryId, distributorId, {
         soloSiLibre: true,
+        metodo: AssignmentMethod.ROUTE_SHEET,
         hojaDeRuta: sheetId,
         vehiculoDeLaHoja: vehiculo,
       });

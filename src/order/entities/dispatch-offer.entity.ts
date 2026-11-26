@@ -32,6 +32,12 @@ export enum DispatchOfferStatus {
   SUPERSEDED = 'superseded',
 }
 
+/** De dónde salió el tiempo estimado que se guardó en la oferta. */
+export enum OfferEstimateSource {
+  OSRM = 'osrm',
+  HAVERSINE = 'haversine',
+}
+
 /**
  * Oferta secuencial de un pedido a un chofer (una fila por intento). Es el
  * registro DURABLE del despacho: quién recibió la oferta, cuándo y hasta cuándo.
@@ -40,6 +46,10 @@ export enum DispatchOfferStatus {
  * proceso para disputas/analytics. Reemplaza el broadcast a todos sin estado.
  */
 @Check('CHK_order_dispatch_offer_vencimiento', `"expiresAt" > "offeredAt"`)
+@Check(
+  'CHK_order_dispatch_offer_estimacion',
+  `("estimated_minutes" IS NULL) = ("estimate_source" IS NULL) AND ("estimated_minutes" IS NULL OR "estimated_minutes" >= 0)`,
+)
 @Index('UQ_order_dispatch_offer_viva', { synchronize: false })
 @Index('UQ_order_dispatch_offer_aceptada', { synchronize: false })
 @ForeignKey(
@@ -123,4 +133,31 @@ export class DispatchOffer {
    */
   @Column({ type: 'timestamptz', nullable: true })
   respondedAt!: Date | null;
+
+  /**
+   * Minutos que se estimó que el chofer tardaba en llegar al cliente cuando se
+   * le ofreció (null: sin posición reciente, o anterior a la columna).
+   */
+  @Column({
+    name: 'estimated_minutes',
+    type: 'numeric',
+    precision: 7,
+    scale: 1,
+    nullable: true,
+    transformer: {
+      to: (v: number | null | undefined) => v ?? null,
+      from: (v: string | null) => (v === null ? null : Number(v)),
+    },
+  })
+  estimatedMinutes!: number | null;
+
+  /** Con qué se estimó: `osrm` por calles, `haversine` en línea recta de respaldo. */
+  @Column({
+    name: 'estimate_source',
+    type: 'enum',
+    enum: OfferEstimateSource,
+    enumName: 'offer_estimate_source_enum',
+    nullable: true,
+  })
+  estimateSource!: OfferEstimateSource | null;
 }

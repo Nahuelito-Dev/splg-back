@@ -125,6 +125,7 @@ describe('RouteSheetAssignmentService', () => {
       DIST,
       {
         soloSiLibre: true,
+        metodo: 'route_sheet',
         hojaDeRuta: 'hoja-1',
         vehiculoDeLaHoja: {
           carId: 'auto-1',
@@ -145,6 +146,7 @@ describe('RouteSheetAssignmentService', () => {
       },
     );
     expect(t.notifier.pushAlChofer).toHaveBeenCalledWith(
+      { distributorId: DIST, driverUserId: 'u-chofer' },
       'tok',
       'hoja-1',
       expect.stringContaining('2 entrega(s)'),

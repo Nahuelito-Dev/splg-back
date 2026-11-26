@@ -7,6 +7,7 @@
  * idiomático para puertos (las interfaces no existen en runtime). Ver
  * ResendEmailAdapter (infrastructure) para la implementación concreta.
  */
+import { AvisoContexto } from '../../notification-log/domain/aviso';
 
 export interface SendEmailInput {
   to: string;
@@ -14,6 +15,11 @@ export interface SendEmailInput {
   html: string;
   /** Versión en texto plano (la arma `armarCorreo`); opcional para no romper a quien sólo manda HTML. */
   text?: string;
+  /**
+   * Para el registro de avisos enviados: de qué aviso se trata (tipo, pedido,
+   * destinatario, distribuidora). Opcional; sin tipo queda `UNKNOWN`.
+   */
+  registro?: AvisoContexto;
 }
 
 export abstract class EmailSenderPort {

@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   OSRM_MAX_COORDENADAS,
   OsrmTableMatrixAdapter,
+  PLAZO_DESPACHO_MS,
   PLAZO_TOTAL_MS,
   TIMEOUT_MS,
 } from './osrm-table.adapter';
@@ -308,6 +309,122 @@ describe('OsrmTableMatrixAdapter', () => {
       );
       expect(m.source).toBe('haversine');
       expect(m.minutes).toHaveLength(N);
+    });
+  });
+
+  describe('durationsTo (N orígenes a un destino)', () => {
+    const ORIGENES = PUNTOS.slice(0, 2);
+    const DESTINO = PUNTOS[2];
+
+    it('pide un solo /table con sources = orígenes y destinations = el destino', async () => {
+      const { http, urls } = osrmFalso();
+      const r = await new OsrmTableMatrixAdapter(
+        config(OSRM),
+        http as FetchFn,
+      ).durationsTo(ORIGENES, DESTINO);
+      expect(urls).toEqual([
+        'https://osrm.splg.test/table/v1/driving/-55.9,-27.36;-55.91,-27.37;-55.92,-27.38?annotations=duration,distance&sources=0;1&destinations=2',
+      ]);
+      expect(r.source).toBe('osrm');
+      // 2 y 1 centésimas de grado de diferencia: 2 y 1 minutos.
+      expect(r.minutes[0]).toBeCloseTo(2, 6);
+      expect(r.minutes[1]).toBeCloseTo(1, 6);
+    });
+
+    it('sin orígenes no llama a OSRM', async () => {
+      const http = jest.fn();
+      const r = await new OsrmTableMatrixAdapter(
+        config(OSRM),
+        http as unknown as FetchFn,
+      ).durationsTo([], DESTINO);
+      expect(r).toEqual({ minutes: [], source: 'haversine' });
+      expect(http).not.toHaveBeenCalled();
+    });
+
+    it('si OSRM falla, todo en línea recta', async () => {
+      const http: FetchFn = () => respuesta({}, false, 502);
+      const r = await new OsrmTableMatrixAdapter(
+        config(OSRM),
+        http,
+      ).durationsTo(ORIGENES, DESTINO);
+      expect(r.source).toBe('haversine');
+      expect(r.minutes[0]).toBeCloseTo(
+        haversinePair(ORIGENES[0], DESTINO).minutes,
+        6,
+      );
+    });
+
+    it('sin OSRM configurado, línea recta', async () => {
+      const http = jest.fn();
+      const r = await new OsrmTableMatrixAdapter(
+        config({}),
+        http as unknown as FetchFn,
+      ).durationsTo(ORIGENES, DESTINO);
+      expect(r.source).toBe('haversine');
+      expect(http).not.toHaveBeenCalled();
+    });
+
+    it('un origen sin camino sale de la línea recta y los demás de OSRM', async () => {
+      const http: FetchFn = () =>
+        respuesta({ code: 'Ok', durations: [[null], [120]] });
+      const r = await new OsrmTableMatrixAdapter(
+        config(OSRM),
+        http,
+      ).durationsTo(ORIGENES, DESTINO);
+      expect(r.source).toBe('osrm');
+      expect(r.minutes[0]).toBeCloseTo(
+        haversinePair(ORIGENES[0], DESTINO).minutes,
+        6,
+      );
+      expect(r.minutes[1]).toBeCloseTo(2, 6);
+      // La fuente va por chofer: el de línea recta no se cuenta como OSRM.
+      expect(r.sources).toEqual(['haversine', 'osrm']);
+    });
+
+    it('al despachar no espera a OSRM más que el plazo corto', async () => {
+      jest.useFakeTimers();
+      try {
+        const http: FetchFn = (_url, init) =>
+          new Promise((_ok, no) => {
+            init?.signal?.addEventListener('abort', () =>
+              no(new Error('abortado')),
+            );
+          });
+        const promesa = new OsrmTableMatrixAdapter(
+          config(OSRM),
+          http,
+        ).durationsTo(ORIGENES, DESTINO);
+        await jest.advanceTimersByTimeAsync(PLAZO_DESPACHO_MS - 1);
+        expect(jest.getTimerCount()).toBe(1);
+        await jest.advanceTimersByTimeAsync(1);
+        const r = await promesa;
+        expect(r.source).toBe('haversine');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('una respuesta incompleta cae a la línea recta', async () => {
+      const http: FetchFn = () => respuesta({ code: 'Ok', durations: [[60]] });
+      const r = await new OsrmTableMatrixAdapter(
+        config(OSRM),
+        http,
+      ).durationsTo(ORIGENES, DESTINO);
+      expect(r.source).toBe('haversine');
+    });
+
+    it('con más puntos de los que admite /table, línea recta sin llamar', async () => {
+      const http = jest.fn();
+      const muchos = Array.from({ length: OSRM_MAX_COORDENADAS }, (_, i) => ({
+        lat: -27.3 - i * 0.001,
+        lng: -55.9,
+      }));
+      const r = await new OsrmTableMatrixAdapter(
+        config(OSRM),
+        http as unknown as FetchFn,
+      ).durationsTo(muchos, DESTINO);
+      expect(r.source).toBe('haversine');
+      expect(http).not.toHaveBeenCalled();
     });
   });
 });

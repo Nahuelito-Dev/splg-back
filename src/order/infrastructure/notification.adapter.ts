@@ -23,12 +23,14 @@ export class NotificationAdapter extends NotificationPort {
     orderId: string,
     token?: string,
     efectivo?: DesgloseDelEfectivo | null,
+    distributorId?: string | null,
   ) {
     return this.notifications.sendOrderConfirmation(
       customerId,
       orderId,
       token,
       efectivo,
+      distributorId,
     );
   }
 
@@ -36,27 +38,41 @@ export class NotificationAdapter extends NotificationPort {
     customerId: string,
     orderId: string,
     efectivo: EfectivoDeSalida,
+    distributorId?: string | null,
   ) {
-    return this.notifications.sendCashReadyPush(customerId, orderId, efectivo);
+    return this.notifications.sendCashReadyPush(
+      customerId,
+      orderId,
+      efectivo,
+      distributorId,
+    );
   }
 
   sendArrivalPushToCustomer(
     customerId: string,
     orderId: string,
     driverName: string,
+    distributorId?: string | null,
   ) {
     return this.notifications.sendArrivalPushToCustomer(
       customerId,
       orderId,
       driverName,
+      distributorId,
     );
   }
 
-  sendPaymentApprovedPush(customerId: string, orderId: string, esSena = false) {
+  sendPaymentApprovedPush(
+    customerId: string,
+    orderId: string,
+    esSena = false,
+    distributorId?: string | null,
+  ) {
     return this.notifications.sendPaymentApprovedPush(
       customerId,
       orderId,
       esSena,
+      distributorId,
     );
   }
 
@@ -64,7 +80,14 @@ export class NotificationAdapter extends NotificationPort {
     customerId: string,
     orderId: string,
     aviso: { title: string; body: string; event: string },
+    distributorId?: string | null,
   ) {
-    return this.notifications.sendOrderNoticePush(customerId, orderId, aviso);
+    return this.notifications.sendOrderNoticePush(
+      customerId,
+      orderId,
+      aviso,
+      undefined,
+      distributorId,
+    );
   }
 }

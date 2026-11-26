@@ -51,9 +51,11 @@ describe('DispatchOrchestratorService', () => {
   let notifications: { sendOfferPushToDriver: jest.Mock };
   let truckGate: {
     choferesQuePuedenRecibir: jest.Mock;
+    choferesConStockPara: jest.Mock;
     motivoParaNoRecibir: jest.Mock;
     motivoParaElAdmin: jest.Mock;
   };
+  let matrix: { matrix: jest.Mock; durationsTo: jest.Mock };
   let offers: {
     create: jest.Mock;
     findDriverOfferState: jest.Mock;
@@ -62,6 +64,7 @@ describe('DispatchOrchestratorService', () => {
     isInPlannedRouteSheet: jest.Mock;
     isHeldForBatching: jest.Mock;
     isAwaitingReschedule: jest.Mock;
+    isAwaitingRevisit: jest.Mock;
     findExpired: jest.Mock;
     updateStatus: jest.Mock;
     closeActiveOffer: jest.Mock;
@@ -124,6 +127,7 @@ describe('DispatchOrchestratorService', () => {
       isInPlannedRouteSheet: jest.fn().mockResolvedValue(false),
       isHeldForBatching: jest.fn().mockResolvedValue(false),
       isAwaitingReschedule: jest.fn().mockResolvedValue(false),
+      isAwaitingRevisit: jest.fn().mockResolvedValue(false),
       findExpired: jest.fn().mockResolvedValue([]),
       updateStatus: jest.fn().mockResolvedValue(true),
       closeActiveOffer: jest.fn().mockResolvedValue(true),
@@ -158,8 +162,16 @@ describe('DispatchOrchestratorService', () => {
       choferesQuePuedenRecibir: jest.fn((_dist: string, ids: string[]) =>
         Promise.resolve(new Set(ids)),
       ),
+      // Por defecto nadie se descarta por stock.
+      choferesConStockPara: jest.fn((_dist: string, ids: string[]) =>
+        Promise.resolve(new Set(ids)),
+      ),
       motivoParaNoRecibir: jest.fn().mockResolvedValue(null),
       motivoParaElAdmin: jest.fn().mockResolvedValue(null),
+    };
+    matrix = {
+      matrix: jest.fn(),
+      durationsTo: jest.fn(),
     };
     notifications = {
       sendOfferPushToDriver: jest.fn().mockResolvedValue(undefined),
@@ -177,6 +189,7 @@ describe('DispatchOrchestratorService', () => {
       expressSettings as unknown as import('../../distributor/express-settings.service').ExpressSettingsService,
       expressDegrade as unknown as import('./express-degrade.service').ExpressDegradeService,
       events as unknown as import('@nestjs/event-emitter').EventEmitter2,
+      matrix as unknown as import('../../routes/route-matrix.port').RouteMatrixPort,
     );
   });
 
@@ -213,6 +226,247 @@ describe('DispatchOrchestratorService', () => {
       dispatch.findNearbyDrivers.mockResolvedValueOnce(['a', 'b']);
 
       expect(await orchestrator.offerToNextDriver(conTenant())).toBe('a');
+    });
+  });
+
+  describe('offerToNextDriver · quien llega antes por calle (M1c)', () => {
+    const conTenant = () => makeOrder({ distributorId: 'dist-1' });
+    const ahora = () => new Date().toISOString();
+    /** Posiciones recientes de los choferes pasados (lat distinta por chofer). */
+    const conPosicion = (ids: string[]) => {
+      dispatch.lastKnownPosition.mockImplementation((id: string) =>
+        Promise.resolve(
+          ids.includes(id)
+            ? { lat: -26.8, lng: -65.2 + ids.indexOf(id) * 0.01, at: ahora() }
+            : null,
+        ),
+      );
+    };
+
+    it('gana el que llega antes aunque esté más lejos en línea recta', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['cerca', 'lejos']);
+      conPosicion(['cerca', 'lejos']);
+      matrix.durationsTo.mockResolvedValue({
+        minutes: [12, 4],
+        source: 'osrm',
+      });
+
+      expect(await orchestrator.offerToNextDriver(conTenant())).toBe('lejos');
+      expect(matrix.durationsTo).toHaveBeenCalledTimes(1);
+      const [origenes, destino] = matrix.durationsTo.mock.calls[0] as [
+        unknown[],
+        { lat: number; lng: number },
+      ];
+      expect(origenes).toHaveLength(2);
+      expect(destino).toEqual({ lat: -26.8, lng: -65.2 });
+      expect(offers.create).toHaveBeenCalledWith(
+        'ord-1',
+        'lejos',
+        expect.any(Date),
+        'dist-1',
+        { minutes: 4, source: 'osrm' },
+      );
+    });
+
+    it('con el puerto en línea recta ofrece igual y guarda la fuente', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['a', 'b']);
+      conPosicion(['a', 'b']);
+      matrix.durationsTo.mockResolvedValue({
+        minutes: [3, 5],
+        source: 'haversine',
+      });
+
+      expect(await orchestrator.offerToNextDriver(conTenant())).toBe('a');
+      expect(offers.create).toHaveBeenCalledWith(
+        'ord-1',
+        'a',
+        expect.any(Date),
+        'dist-1',
+        { minutes: 3, source: 'haversine' },
+      );
+    });
+
+    it('el chofer que OSRM no pudo rutear se guarda con línea recta aunque el resto sea OSRM', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['a', 'b']);
+      conPosicion(['a', 'b']);
+      matrix.durationsTo.mockResolvedValue({
+        minutes: [3, 5],
+        source: 'osrm',
+        sources: ['haversine', 'osrm'],
+      });
+
+      expect(await orchestrator.offerToNextDriver(conTenant())).toBe('a');
+      expect(offers.create).toHaveBeenCalledWith(
+        'ord-1',
+        'a',
+        expect.any(Date),
+        'dist-1',
+        { minutes: 3, source: 'haversine' },
+      );
+    });
+
+    it('si el puerto falla, la oferta sale igual y en el orden del radar, sin estimación', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['a', 'b']);
+      conPosicion(['a', 'b']);
+      matrix.durationsTo.mockRejectedValue(new Error('boom'));
+
+      expect(await orchestrator.offerToNextDriver(conTenant())).toBe('a');
+      expect(offers.create).toHaveBeenCalledWith(
+        'ord-1',
+        'a',
+        expect.any(Date),
+        'dist-1',
+        null,
+      );
+    });
+
+    it('sin posición reciente queda después de los que la tienen', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce([
+        'sin-posicion',
+        'vieja',
+        'con-posicion',
+      ]);
+      dispatch.lastKnownPosition.mockImplementation((id: string) =>
+        Promise.resolve(
+          id === 'con-posicion'
+            ? { lat: -26.8, lng: -65.2, at: ahora() }
+            : id === 'vieja'
+              ? {
+                  lat: -26.8,
+                  lng: -65.2,
+                  at: new Date(Date.now() - 3600_000).toISOString(),
+                }
+              : null,
+        ),
+      );
+      matrix.durationsTo.mockResolvedValue({ minutes: [9], source: 'osrm' });
+
+      expect(await orchestrator.offerToNextDriver(conTenant())).toBe(
+        'con-posicion',
+      );
+      const origenes = (matrix.durationsTo.mock.calls[0] as [unknown[]])[0];
+      expect(origenes).toHaveLength(1);
+    });
+
+    it('si nadie tiene posición reciente no pide minutos y sigue el radar', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['a', 'b']);
+
+      expect(await orchestrator.offerToNextDriver(conTenant())).toBe('a');
+      expect(matrix.durationsTo).not.toHaveBeenCalled();
+      expect(offers.create).toHaveBeenCalledWith(
+        'ord-1',
+        'a',
+        expect.any(Date),
+        'dist-1',
+        null,
+      );
+    });
+
+    it('mide sólo a los primeros N con posición (osrmCandidateCount)', async () => {
+      settings.obtener.mockResolvedValue({
+        radiusStepsKm: [5],
+        offerTtlSeconds: 30,
+        finishingRadiusMeters: 300,
+        osrmCandidateCount: 2,
+      });
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['a', 'b', 'c']);
+      conPosicion(['a', 'b', 'c']);
+      matrix.durationsTo.mockResolvedValue({ minutes: [8, 7], source: 'osrm' });
+
+      // c queda fuera de la medición aunque llegaría antes: no se mide.
+      expect(await orchestrator.offerToNextDriver(conTenant())).toBe('b');
+      expect((matrix.durationsTo.mock.calls[0] as [unknown[]])[0]).toHaveLength(
+        2,
+      );
+    });
+
+    it('no reordena a quien ya fue contactado', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['a', 'b']);
+      offers.findDriverOfferState.mockResolvedValue(estado(['a']));
+      conPosicion(['a', 'b']);
+      matrix.durationsTo.mockResolvedValue({ minutes: [6], source: 'osrm' });
+
+      expect(await orchestrator.offerToNextDriver(conTenant())).toBe('b');
+      expect((matrix.durationsTo.mock.calls[0] as [unknown[]])[0]).toHaveLength(
+        1,
+      );
+    });
+  });
+
+  describe('offerToNextDriver · stock del vehículo (M1b)', () => {
+    const RENGLONES = [
+      { gasCylinderId: 'g10', quantity: 2 },
+      { gasCylinderId: 'g15', quantity: 1 },
+    ];
+    const conItems = () =>
+      makeOrder({
+        distributorId: 'dist-1',
+        items: RENGLONES as unknown as Order['items'],
+      });
+
+    it('no le ofrece al chofer sin las garrafas y sí al que las lleva', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce([
+        'sin-stock',
+        'con-stock',
+      ]);
+      orders.findByIdFull.mockResolvedValue(conItems());
+      truckGate.choferesConStockPara.mockResolvedValue(new Set(['con-stock']));
+
+      expect(await orchestrator.offerToNextDriver(conItems())).toBe(
+        'con-stock',
+      );
+      expect(truckGate.choferesConStockPara).toHaveBeenCalledWith(
+        'dist-1',
+        ['sin-stock', 'con-stock'],
+        RENGLONES,
+      );
+    });
+
+    it('si nadie alcanza por stock avisa con el motivo no_stock y no ofrece', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValue(['a', 'b']);
+      orders.findByIdFull.mockResolvedValue(conItems());
+      truckGate.choferesConStockPara.mockResolvedValue(new Set());
+
+      expect(await orchestrator.offerToNextDriver(conItems())).toBeNull();
+      expect(offers.create).not.toHaveBeenCalled();
+      expect(dispatch.notifyAdmins).toHaveBeenCalledWith(
+        'order:no-drivers',
+        expect.objectContaining({ reason: 'no_stock' }),
+        'dist-1',
+      );
+    });
+
+    it('sin choferes en el radar el motivo sigue siendo no_drivers_in_range, no no_stock', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValue([]);
+      orders.findByIdFull.mockResolvedValue(conItems());
+
+      await orchestrator.offerToNextDriver(conItems());
+
+      expect(dispatch.notifyAdmins).toHaveBeenCalledWith(
+        'order:no-drivers',
+        expect.objectContaining({ reason: 'no_drivers_in_range' }),
+        'dist-1',
+      );
+    });
+
+    it('un pedido sin renglones no consulta el stock', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['a']);
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ distributorId: 'dist-1', items: [] }),
+      );
+
+      expect(
+        await orchestrator.offerToNextDriver(
+          makeOrder({ distributorId: 'dist-1' }),
+        ),
+      ).toBe('a');
+      expect(truckGate.choferesConStockPara).not.toHaveBeenCalled();
+    });
+
+    it('el pool de lotes y de motos no filtra por stock (no hay pedido)', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValue(['a']);
+      await orchestrator.choferesElegiblesCerca(-26.8, -65.2, 'dist-1');
+      expect(truckGate.choferesConStockPara).not.toHaveBeenCalled();
     });
   });
 
@@ -437,6 +691,7 @@ describe('DispatchOrchestratorService', () => {
         'moto-1',
         pedido.orderId,
         22600,
+        'dist-1',
       );
       expect(dispatch.notifyDriverNewOrder).toHaveBeenCalledWith(
         'moto-1',
@@ -749,6 +1004,15 @@ describe('DispatchOrchestratorService', () => {
       expect(offers.create).not.toHaveBeenCalled();
     });
 
+    it('C5: un pedido que espera su nueva visita (o al admin) tras una entrega fallida no se ofrece', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['near']);
+      offers.isAwaitingRevisit.mockResolvedValue(true);
+
+      expect(await orchestrator.offerToNextDriver(makeOrder())).toBeNull();
+      expect(offers.isAwaitingRevisit).toHaveBeenCalledWith('ord-1');
+      expect(offers.create).not.toHaveBeenCalled();
+    });
+
     it('F34: un pedido que salió de una hoja en la calle y espera al admin no vuelve al despacho', async () => {
       dispatch.findNearbyDrivers.mockResolvedValueOnce(['near']);
       offers.isAwaitingReschedule.mockResolvedValue(true);
@@ -895,6 +1159,7 @@ describe('DispatchOrchestratorService', () => {
         'd2',
         expect.any(Date),
         undefined,
+        null,
       );
     });
 
@@ -1240,6 +1505,7 @@ describe('DispatchOrchestratorService', () => {
         'd2',
         expect.any(Date),
         undefined,
+        null,
       );
     });
 
@@ -1329,6 +1595,7 @@ describe('DispatchOrchestratorService', () => {
         'd1',
         expect.any(Date),
         undefined,
+        null,
       );
     });
 
@@ -1379,6 +1646,7 @@ describe('DispatchOrchestratorService', () => {
         'd2',
         expect.any(Date),
         undefined,
+        null,
       );
     });
   });

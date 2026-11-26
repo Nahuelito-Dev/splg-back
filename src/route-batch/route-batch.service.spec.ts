@@ -949,6 +949,19 @@ describe('RouteBatchService · aceptar (paso 8)', () => {
     expect(m.mocks.orderService.assignDelivery).toHaveBeenCalledTimes(2);
   });
 
+  it('M1: el lote asigna sus pedidos con el método batch', async () => {
+    const { m, batchId } = await conLoteOfrecido();
+
+    await m.service.aceptar('u1', batchId);
+
+    expect(m.mocks.orderService.assignDelivery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      { soloSiLibre: true, metodo: 'batch' },
+    );
+  });
+
   it('un chofer que no tiene la oferta no puede aceptar (409) y no se asigna nada', async () => {
     const { m, batchId } = await conLoteOfrecido();
 

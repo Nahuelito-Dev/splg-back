@@ -134,7 +134,7 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     ['tire', 'cash_movement_id', 'cash_movement'],
     ['vehicle_accident', 'payment_cash_movement_id', 'cash_movement'],
     ['vehicle_accident', 'reimbursement_cash_movement_id', 'cash_movement'],
-    // Cajas de cobro de las ventas (Mercado Pago y transferencias)
+    // Cajas de cobro de las ventas (Mercado Pago; la de transferencias quedó sin uso)
     ['cash_collection_settings', 'mercadopago_cash_box_id', 'cash_box'],
     ['cash_collection_settings', 'transfer_cash_box_id', 'cash_box'],
     // Diferencias de la conciliación con Mercado Pago
@@ -192,6 +192,11 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     ['chat_agent_settings', 'user_id', 'admin'],
     // Responsable de la tarea de flota en el tablero
     ['maintenance_task', 'assignee_employee_id', 'employee'],
+    // Visitas fallidas y nueva visita (C5)
+    ['order_failed_visit', 'order_id', 'order'],
+    ['order_failed_visit', 'delivery_id', 'delivery'],
+    ['order_failed_visit', 'proposed_time_slot_id', 'time_slot'],
+    ['order_failed_visit', 'final_time_slot_id', 'time_slot'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>

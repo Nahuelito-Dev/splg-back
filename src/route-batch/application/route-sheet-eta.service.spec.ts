@@ -224,6 +224,7 @@ describe('RouteSheetEtaService', () => {
         'o1',
         expect.objectContaining({ etaMs: AHORA + 30 * 60_000 }),
         true,
+        DIST,
       );
     });
 
@@ -253,6 +254,7 @@ describe('RouteSheetEtaService', () => {
         'c1',
         'o1',
         franja,
+        DIST,
       );
       expect(notifier.franjaAlCliente).not.toHaveBeenCalled();
       expect(query).toHaveBeenCalledWith(
@@ -517,6 +519,7 @@ describe('RouteSheetEtaService', () => {
           windowEndMs: eta.getTime() + 30 * 60_000,
           etaMs: eta.getTime(),
         },
+        DIST,
       );
     });
 
@@ -536,6 +539,7 @@ describe('RouteSheetEtaService', () => {
         'o2',
         DIA,
         expect.anything(),
+        DIST,
       );
       const reclamo = (t.query.mock.calls as unknown[][]).find((c) =>
         String(c[0]).includes('IS DISTINCT FROM $3'),
@@ -599,6 +603,7 @@ describe('RouteSheetEtaService', () => {
         'o1',
         expect.objectContaining({ etaMs: AHORA + 30 * 60_000 }),
         undefined,
+        DIST,
       );
       expect(t.notifier.alPanel).toHaveBeenCalledWith(
         DIST,
@@ -630,6 +635,7 @@ describe('RouteSheetEtaService', () => {
         'o1',
         expect.anything(),
         { monto: 17600, salida: 'd1:1' },
+        DIST,
       );
       expect(t.notifier.salidaAlCliente).toHaveBeenCalledTimes(1);
     });
@@ -642,6 +648,7 @@ describe('RouteSheetEtaService', () => {
         'o1',
         expect.anything(),
         undefined,
+        DIST,
       );
     });
 

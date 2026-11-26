@@ -64,6 +64,7 @@ export class AttendanceOpenAlertCron {
               subject: correo.asunto,
               html: correo.html,
               text: correo.text,
+              registro: { type: 'ATTENDANCE_OPEN', distributorId },
             }),
           ),
         );

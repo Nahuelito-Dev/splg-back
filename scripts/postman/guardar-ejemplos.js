@@ -9,7 +9,8 @@ const path = require('node:path');
 
 const BASE = process.cwd();
 const MAX_ELEMENTOS = 3;
-const CLAVES_SECRETAS = /^(accessToken|refreshToken|idToken|authorization|password|token|deliveryCode)$/i;
+const CLAVES_SECRETAS =
+  /^(accessToken|refreshToken|idToken|authorization|password|token|deliveryCode)$/i;
 
 function arg(nombre, defecto) {
   const prefijo = `--${nombre}=`;
@@ -26,10 +27,16 @@ function limpiarTexto(texto) {
 // Oculta secretos y recorta las listas largas a unos pocos elementos.
 function seguro(valor, profundidad = 0) {
   if (valor == null) return valor;
-  if (Array.isArray(valor)) return valor.slice(0, MAX_ELEMENTOS).map((v) => seguro(v, profundidad + 1));
+  if (Array.isArray(valor))
+    return valor.slice(0, MAX_ELEMENTOS).map((v) => seguro(v, profundidad + 1));
   if (typeof valor === 'object') {
     return Object.fromEntries(
-      Object.entries(valor).map(([k, v]) => [k, CLAVES_SECRETAS.test(k) && typeof v === 'string' ? '<oculto>' : seguro(v, profundidad + 1)]),
+      Object.entries(valor).map(([k, v]) => [
+        k,
+        CLAVES_SECRETAS.test(k) && typeof v === 'string'
+          ? '<oculto>'
+          : seguro(v, profundidad + 1),
+      ]),
     );
   }
   if (typeof valor === 'string') return limpiarTexto(valor);
@@ -44,12 +51,16 @@ function cuerpoDe(response) {
   try {
     return JSON.stringify(seguro(JSON.parse(texto)), null, 2);
   } catch {
-    return /^[\x20-\x7e\s]*$/.test(texto.slice(0, 200)) ? limpiarTexto(texto).slice(0, 2000) : '<contenido binario>';
+    return /^[\x20-\x7e\s]*$/.test(texto.slice(0, 200))
+      ? limpiarTexto(texto).slice(0, 2000)
+      : '<contenido binario>';
   }
 }
 
 function headersBasicos(headers) {
-  const lista = Array.isArray(headers) ? headers : Object.entries(headers || {}).map(([key, value]) => ({ key, value }));
+  const lista = Array.isArray(headers)
+    ? headers
+    : Object.entries(headers || {}).map(([key, value]) => ({ key, value }));
   return lista
     .filter((h) => /^(content-type|location)$/i.test(h.key || h.name || ''))
     .map((h) => ({ key: h.key || h.name, value: String(h.value) }));
@@ -63,14 +74,21 @@ function walk(items, cb) {
 }
 
 function main() {
-  const collectionPath = path.resolve(BASE, arg('collection', 'postman/SPLG.postman_collection.json'));
-  const reportPath = path.resolve(BASE, arg('report', '.orq/newman-reporte.json'));
+  const collectionPath = path.resolve(
+    BASE,
+    arg('collection', 'postman/SPLG.postman_collection.json'),
+  );
+  const reportPath = path.resolve(
+    BASE,
+    arg('report', '.orq/newman-reporte.json'),
+  );
   const outPath = path.resolve(BASE, arg('out', collectionPath));
   const collection = JSON.parse(fs.readFileSync(collectionPath, 'utf8'));
   const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
   const porId = new Map();
   for (const execution of report.run?.executions || []) {
-    if (execution.item?.id && execution.response?.code) porId.set(execution.item.id, execution.response);
+    if (execution.item?.id && execution.response?.code)
+      porId.set(execution.item.id, execution.response);
   }
 
   let reemplazados = 0;
@@ -81,7 +99,9 @@ function main() {
       sinCorrida += 1;
       return;
     }
-    const documentales = (item.response || []).filter((r) => [500, 503, 504].includes(r.code));
+    const documentales = (item.response || []).filter((r) =>
+      [500, 503, 504].includes(r.code),
+    );
     const real = {
       name: `Respuesta real ${response.code} ${response.status || ''}`.trim(),
       originalRequest: item.request,

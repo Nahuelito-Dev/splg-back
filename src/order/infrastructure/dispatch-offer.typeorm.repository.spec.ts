@@ -11,8 +11,14 @@ describe('DispatchOfferTypeormRepository.findDriverOfferState', () => {
   const now = new Date('2026-10-03T12:00:00Z');
   const hace = (ms: number) => new Date(now.getTime() - ms);
 
-  const repoCon = (rows: Partial<DispatchOffer>[]) => {
-    const orm = { find: jest.fn().mockResolvedValue(rows) };
+  const repoCon = (
+    rows: Partial<DispatchOffer>[],
+    ultimaVisitaFallida: Date | null = null,
+  ) => {
+    const orm = {
+      find: jest.fn().mockResolvedValue(rows),
+      query: jest.fn().mockResolvedValue([{ desde: ultimaVisitaFallida }]),
+    };
     return new DispatchOfferTypeormRepository(
       orm as unknown as Repository<DispatchOffer>,
     );
@@ -62,6 +68,30 @@ describe('DispatchOfferTypeormRepository.findDriverOfferState', () => {
     const estado = await repo.findDriverOfferState('o', now, COOLDOWN, MAX);
     expect(estado.blocked).toEqual(expect.arrayContaining(['A', 'B']));
     expect(estado.reofferable).toEqual([]);
+  });
+
+  it('C5: las ofertas anteriores a la última visita fallida no cuentan; el chofer que lo tuvo vuelve a ser candidato', async () => {
+    const repo = repoCon(
+      [
+        {
+          driverId: 'A',
+          status: DispatchOfferStatus.REJECTED,
+          expiresAt: hace(60_000),
+          offeredAt: hace(120_000),
+        },
+        {
+          driverId: 'B',
+          status: DispatchOfferStatus.REJECTED,
+          expiresAt: hace(1000),
+          offeredAt: hace(5000),
+        },
+      ],
+      hace(30_000),
+    );
+    expect(await repo.findDriverOfferState('o', now, COOLDOWN, MAX)).toEqual({
+      blocked: ['B'],
+      reofferable: [],
+    });
   });
 
   it('una oferta retirada por edición del pedido no cuenta: ni bloquea, ni vencida, ni contactado', async () => {
@@ -414,6 +444,22 @@ describe('DispatchOfferTypeormRepository.isInPlannedRouteSheet', () => {
       `AND NOT (b."batch_id" = $2 AND b."status" = 'confirmed' AND b."delivery_id" = $3)`,
     );
     expect(params).toEqual(['ord-1', 'hoja-1', 'chofer-1']);
+  });
+});
+
+describe('DispatchOfferTypeormRepository.isAwaitingRevisit', () => {
+  it('C5: consulta la retención de la nueva visita (admin o franja sin empezar) del pedido', async () => {
+    const query = jest.fn().mockResolvedValueOnce([{}]).mockResolvedValue([]);
+    const repo = new DispatchOfferTypeormRepository({
+      query,
+    } as unknown as Repository<DispatchOffer>);
+    expect(await repo.isAwaitingRevisit('ord-1')).toBe(true);
+    expect(await repo.isAwaitingRevisit('ord-2')).toBe(false);
+    const [sql, params] = query.mock.calls[0] as [string, string[]];
+    expect(sql).toContain(`"revisit_status" = 'awaiting_admin'`);
+    expect(sql).toContain(`"status"::text = 'pending'`);
+    expect(sql).toContain('"scheduled_date"');
+    expect(params).toEqual(['ord-1']);
   });
 });
 

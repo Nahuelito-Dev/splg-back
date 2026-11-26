@@ -1,3 +1,4 @@
+import { condicionEsperaNuevaVisita } from './nueva-visita.sql';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, LessThan, Not, Repository } from 'typeorm';
@@ -8,6 +9,7 @@ import {
   DispatchOfferRepositoryPort,
   DriverOfferState,
   HojaQueAsigna,
+  OfferEstimate,
 } from '../domain/ports/dispatch-offer.repository.port';
 import {
   DispatchOffer,
@@ -29,12 +31,15 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     driverId: string,
     expiresAt: Date,
     distributorId?: string | null,
+    estimate?: OfferEstimate | null,
   ): Promise<DispatchOffer> {
     const offer = this.repo.create({
       orderId,
       driverId,
       distributorId: distributorId ?? undefined,
       expiresAt,
+      estimatedMinutes: estimate ? estimate.minutes : null,
+      estimateSource: estimate ? estimate.source : null,
       status: ESTADO_ABIERTO,
     });
     return this.repo.save(offer);
@@ -46,10 +51,26 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     cooldownMs: number,
     maxReofertas: number,
   ): Promise<DriverOfferState> {
-    const rows = await this.repo.find({
+    const todas = await this.repo.find({
       where: { orderId },
-      select: { driverId: true, status: true, expiresAt: true },
+      select: {
+        driverId: true,
+        status: true,
+        expiresAt: true,
+        offeredAt: true,
+      },
     });
+    // La nueva visita después de una entrega fallida (C5) arranca de cero.
+    const [pedido]: Array<{ desde: Date | string | null }> =
+      await this.repo.query(
+        `SELECT "last_failed_visit_at" AS "desde" FROM "order" WHERE "order_id" = $1`,
+        [orderId],
+      );
+    const desde = pedido?.desde ? new Date(pedido.desde).getTime() : null;
+    const rows =
+      desde === null
+        ? todas
+        : todas.filter((row) => row.offeredAt.getTime() > desde);
     const cooldownHasta = now.getTime() - cooldownMs;
     const blocked = new Set<string>();
     const contactados = new Set<string>();
@@ -132,6 +153,14 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     return filas.length > 0;
   }
 
+  async isAwaitingRevisit(orderId: string): Promise<boolean> {
+    const filas: unknown[] = await this.repo.query(
+      `SELECT 1 FROM "order" o WHERE o."order_id" = $1 AND ${condicionEsperaNuevaVisita('o')}`,
+      [orderId],
+    );
+    return filas.length > 0;
+  }
+
   async isHeldForBatching(orderId: string): Promise<boolean> {
     const filas: unknown[] = await this.repo.query(
       `SELECT 1 FROM "order" o
@@ -173,16 +202,27 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
       },
       { status: DispatchOfferStatus.REJECTED },
     );
+    // Si ya tiene su constancia (lo tuvo antes y volvió a tocarle, p. ej. la
+    // nueva visita después de una entrega fallida), la oferta viva se retira
+    // sin contar: sólo puede haber una aceptada por pedido y la suya sigue
+    // valiendo, sin pasar a rechazada.
+    const yaConstancia = await this.repo.count({
+      where: { orderId, driverId, status: DispatchOfferStatus.ACCEPTED },
+    });
+    if (yaConstancia > 0) {
+      await this.closeActiveOffer(
+        orderId,
+        driverId,
+        DispatchOfferStatus.SUPERSEDED,
+      );
+      return;
+    }
     const cerradas = await this.closeActiveOffer(
       orderId,
       driverId,
       DispatchOfferStatus.ACCEPTED,
     );
     if (cerradas) return;
-    const yaConstancia = await this.repo.count({
-      where: { orderId, driverId, status: DispatchOfferStatus.ACCEPTED },
-    });
-    if (yaConstancia > 0) return;
     const order = await this.repo.manager.findOne(Order, {
       where: { orderId },
       select: { orderId: true, distributorId: true },

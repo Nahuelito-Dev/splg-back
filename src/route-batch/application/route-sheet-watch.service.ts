@@ -99,6 +99,7 @@ export class RouteSheetWatchService {
     }
     const etaRecalculated = await this.eta.porReloj(nowMs);
     const notStartedAlerts = await this.sinIniciar(nowMs);
+    this.notifier.hojaEnCurso(null, null);
     return {
       assigned,
       waitExpired,
@@ -172,6 +173,7 @@ export class RouteSheetWatchService {
           );
         }
         void this.notifier.pushAlChofer(
+          { distributorId: f.distributorId, driverUserId: f.driverUserId },
           f.token,
           f.batchId,
           `Pasaron ${f.waitMinutes} minutos en la puerta. Si nadie atiende, marcá «No pude entregar»: el pedido pasa al final de tu recorrido.`,

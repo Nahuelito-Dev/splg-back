@@ -79,7 +79,7 @@ export class AttachmentController {
     summary:
       'Subir un adjunto a un dueño (PDF, JPG, PNG, WEBP, Word .docx, Excel .xlsx, CSV)',
     description:
-      'Admin y super admin: PDF, JPG, PNG, WEBP, Word (.docx), Excel (.xlsx) y CSV (UTF-8 o Windows-1252; también se acepta `application/vnd.ms-excel` si el archivo se llama `.csv`), hasta 10 MB. Se valida el contenido por su estructura, no sólo el tipo declarado: un docx/xlsx con macros, ejecutables u objetos incrustados se rechaza. Chofer: sólo PDF y imágenes. Word, Excel y CSV se entregan siempre como descarga. Dueños (`ownerType`): employee, fuel_load, traffic_fine, vehicle_accident, purchase_receipt, stock_adjustment, driver_settlement, cash_movement, customer_account_entry, order, insurance_policy e insurance_installment. Los de `insurance_installment` (comprobante de una cuota de seguro) no se suben ni se dan de baja por acá: entran sólo por `POST /api/v2/insurance-installments/:id/receipt`.',
+      'Admin y super admin: PDF, JPG, PNG, WEBP, Word (.docx), Excel (.xlsx) y CSV (UTF-8 o Windows-1252; también se acepta `application/vnd.ms-excel` si el archivo se llama `.csv`), hasta 10 MB. Se valida el contenido por su estructura, no sólo el tipo declarado: un docx/xlsx con macros, ejecutables u objetos incrustados se rechaza. Chofer: sólo PDF y imágenes. Word, Excel y CSV se entregan siempre como descarga. Dueños (`ownerType`): employee, fuel_load, traffic_fine, vehicle_accident, purchase_receipt, stock_adjustment, driver_settlement, cash_movement, customer_account_entry, insurance_policy e insurance_installment. Los de `insurance_installment` (comprobante de una cuota de seguro) no se suben ni se dan de baja por acá: entran sólo por `POST /api/v2/insurance-installments/:id/receipt`.',
   })
   @ApiParam(OWNER_TYPE_PARAM)
   @ApiParam({ name: 'ownerId', description: 'UUID del dueño' })
@@ -124,6 +124,12 @@ export class AttachmentController {
   ): Promise<AttachmentResponseDto> {
     if (OWNER_TYPES_SOLO_POR_SU_ENDPOINT.includes(ownerType)) {
       throw new BadRequestException(mensajeSoloPorSuEndpoint(ownerType));
+    }
+    // Los comprobantes de transferencia viejos se leen, pero a un pedido no se le suben archivos nuevos.
+    if (ownerType === AttachmentOwnerType.ORDER) {
+      throw new BadRequestException(
+        'Los pedidos ya no admiten adjuntos nuevos: sólo se pueden ver los comprobantes anteriores',
+      );
     }
     return AttachmentMapper.toDto(
       await this.attachmentsService.upload(

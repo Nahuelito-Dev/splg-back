@@ -30,7 +30,7 @@ export enum ConfigurableProcess {
   DISPATCH = 'dispatch',
   /** Frecuencia de las tareas programadas (CU-173). */
   SCHEDULED_TASKS = 'scheduled_tasks',
-  /** Recargo por medio de pago, en % (transferencia, Mercado Pago, efectivo). */
+  /** Recargo por medio de pago, en % (Mercado Pago, efectivo). */
   PAYMENT_SURCHARGES = 'payment_surcharges',
   /** Cobro de los envases que no posee el cliente. */
   CONTAINER_CHARGE = 'container_charge',
@@ -104,6 +104,13 @@ const RANGOS_DE_LA_RECUPERACION: ReadonlyArray<[string, number, number]> = [
   ['escalationAmountThreshold', 0, 100_000_000],
   ['pickupOfferTtlHours', 1, 720],
   ['pickupWindowDays', 1, 60],
+  ['toleranceLowRiskPercent', 10, 300],
+  ['toleranceMediumRiskPercent', 10, 300],
+  ['toleranceHighRiskPercent', 10, 300],
+  ['stepLowRiskPercent', 10, 300],
+  ['stepMediumRiskPercent', 10, 300],
+  ['stepHighRiskPercent', 10, 300],
+  ['opportunisticPickupRadiusMeters', 50, 2000],
   ['runHour', 0, 23],
   ['enabled', 0, 1],
 ];
@@ -145,6 +152,7 @@ const RANGOS_DE_LA_HOJA: ReadonlyArray<[string, number, number]> = [
   ['reviewMinutes', 0, 720],
   ['maxStopsPerSheet', 2, 40],
   ['serviceMinutes', 1, 60],
+  ['serviceMinutesMode', 0, 1],
   ['trafficFactor', 1, 3],
   ['etaWindowMinutes', 10, 120],
   ['etaRecalcMinSeconds', 30, 900],
@@ -213,6 +221,7 @@ const CHECK_DESPACHO = [
       ['finishingRadiusMeters', 0, 5000],
       ['noDriverExpiryMinutes', 1, 1440],
       ['arrivalRadiusMeters', 0, 5000],
+      ['osrmCandidateCount', 1, 20],
     ] as const
   ).map(
     ([k, min, max]) =>

@@ -1,5 +1,14 @@
 import { EntityManager } from 'typeorm';
-import { DispatchOffer } from '../../entities/dispatch-offer.entity';
+import {
+  DispatchOffer,
+  OfferEstimateSource,
+} from '../../entities/dispatch-offer.entity';
+
+/** Tiempo estimado al cliente que se guarda en la oferta, y con qué se calculó. */
+export interface OfferEstimate {
+  minutes: number;
+  source: OfferEstimateSource;
+}
 
 /** Ver `DispatchOfferRepositoryPort.findDriverOfferState`. */
 export interface DriverOfferState {
@@ -25,6 +34,7 @@ export abstract class DispatchOfferRepositoryPort {
     driverId: string,
     expiresAt: Date,
     distributorId?: string | null,
+    estimate?: OfferEstimate | null,
   ): Promise<DispatchOffer>;
 
   /**
@@ -35,6 +45,8 @@ export abstract class DispatchOfferRepositoryPort {
    *  - `reofferable`: todas sus ofertas vencieron hace más de `cooldownMs` y
    *    tienen menos de `maxReofertas`; pueden volver a ser candidatos si no
    *    hay choferes nuevos.
+   * Las ofertas anteriores a la última visita fallida del pedido (C5) no
+   * cuentan: la nueva visita se ofrece de cero, también a quien ya lo tuvo.
    */
   abstract findDriverOfferState(
     orderId: string,
@@ -82,6 +94,13 @@ export abstract class DispatchOfferRepositoryPort {
    * ningún pedido de una hoja vuelve solo al despacho común.
    */
   abstract isAwaitingReschedule(orderId: string): Promise<boolean>;
+
+  /**
+   * True si el pedido espera su nueva visita después de una entrega fallida
+   * (C5): decide el admin, o todavía no empezó la franja del día acordado. El
+   * despacho no lo ofrece hasta entonces.
+   */
+  abstract isAwaitingRevisit(orderId: string): Promise<boolean>;
 
   /**
    * True si el pedido es programado, la agrupación por recorrido (M4) está

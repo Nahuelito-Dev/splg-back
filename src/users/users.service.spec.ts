@@ -24,7 +24,11 @@ describe('UsersService', () => {
     softRemove: jest.Mock;
     preload: jest.Mock;
   };
-  let firebase: { deleteUserSafe: jest.Mock; updateUser: jest.Mock };
+  let firebase: {
+    deleteUserSafe: jest.Mock;
+    updateUser: jest.Mock;
+    revokeRefreshTokensSafe: jest.Mock;
+  };
   let eventos: { emitAsync: jest.Mock; emit: jest.Mock };
   let orderLookup: {
     countActiveByDelivery: jest.Mock;
@@ -42,7 +46,11 @@ describe('UsersService', () => {
       softRemove: jest.fn(),
       preload: jest.fn(),
     };
-    firebase = { deleteUserSafe: jest.fn(), updateUser: jest.fn() };
+    firebase = {
+      deleteUserSafe: jest.fn(),
+      updateUser: jest.fn(),
+      revokeRefreshTokensSafe: jest.fn().mockResolvedValue(undefined),
+    };
     eventos = { emitAsync: jest.fn().mockResolvedValue([]), emit: jest.fn() };
     redis = { removeDriver: jest.fn().mockResolvedValue(undefined) };
     orderLookup = {
@@ -106,6 +114,21 @@ describe('UsersService', () => {
       });
       expect(manager.softRemove).toHaveBeenCalledWith(user);
       expect(users.delete).not.toHaveBeenCalled();
+    });
+
+    it('con la baja hecha revoca las sesiones de Firebase', async () => {
+      users.findOne.mockResolvedValue({ userId: 'u1', firebaseUid: 'fb' });
+      await service.remove('u1');
+      expect(firebase.revokeRefreshTokensSafe).toHaveBeenCalledWith(
+        'fb',
+        expect.anything(),
+      );
+    });
+
+    it('sin cuenta de acceso no hay nada que revocar', async () => {
+      users.findOne.mockResolvedValue({ userId: 'u1', firebaseUid: null });
+      await service.remove('u1');
+      expect(firebase.revokeRefreshTokensSafe).not.toHaveBeenCalled();
     });
 
     it('con la baja hecha corta sus conexiones de tiempo real', async () => {
@@ -434,6 +457,47 @@ describe('UsersService', () => {
       expect(qr.commitTransaction).toHaveBeenCalled();
     });
 
+    it('cambiar la clave de otro revoca sus sesiones, después del commit', async () => {
+      users.preload.mockResolvedValue({ userId: 'u1', firebaseUid: 'fb1' });
+      const qr = conTransaccion();
+      await service.update('u1', { password: 'Nueva1234' });
+      expect(firebase.revokeRefreshTokensSafe).toHaveBeenCalledWith(
+        'fb1',
+        expect.anything(),
+      );
+      expect(qr.commitTransaction.mock.invocationCallOrder[0]).toBeLessThan(
+        firebase.revokeRefreshTokensSafe.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('bloquear por PATCH revoca las sesiones', async () => {
+      users.preload.mockResolvedValue({ userId: 'u1', firebaseUid: 'fb1' });
+      const qr = conTransaccion();
+      qr.manager.findOne.mockResolvedValue(null);
+      await service.update('u1', { blocked: true });
+      expect(firebase.revokeRefreshTokensSafe).toHaveBeenCalledWith(
+        'fb1',
+        expect.anything(),
+      );
+    });
+
+    it('editar sólo el nombre no revoca', async () => {
+      users.preload.mockResolvedValue({ userId: 'u1', firebaseUid: 'fb1' });
+      conTransaccion();
+      await service.update('u1', { full_name: 'Ana' });
+      expect(firebase.revokeRefreshTokensSafe).not.toHaveBeenCalled();
+    });
+
+    it('si falla la transacción no se revoca', async () => {
+      users.preload.mockResolvedValue({ userId: 'u1', firebaseUid: 'fb1' });
+      conTransaccion();
+      const autorizar = jest.fn(() => Promise.reject(new ForbiddenException()));
+      await expect(
+        service.update('u1', { password: 'Nueva1234' }, autorizar),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(firebase.revokeRefreshTokensSafe).not.toHaveBeenCalled();
+    });
+
     it('si un control de la transacción falla, no queda cambiada', async () => {
       users.preload.mockResolvedValue({ userId: 'u1', firebaseUid: 'fb1' });
       const qr = conTransaccion();
@@ -697,6 +761,28 @@ describe('UsersService', () => {
       expect(eventos.emit).not.toHaveBeenCalled();
     });
 
+    it('bloquear revoca las sesiones de Firebase; desbloquear no', async () => {
+      users.findOne.mockResolvedValue({ ...admin, firebaseUid: 'fb1' });
+      conManager(1);
+      await service.toggleBlockUser('u1', true);
+      expect(firebase.revokeRefreshTokensSafe).toHaveBeenCalledWith(
+        'fb1',
+        expect.anything(),
+      );
+      firebase.revokeRefreshTokensSafe.mockClear();
+      await service.toggleBlockUser('u1', false);
+      expect(firebase.revokeRefreshTokensSafe).not.toHaveBeenCalled();
+    });
+
+    it('el bloqueo que no se concreta (último admin) no revoca nada', async () => {
+      users.findOne.mockResolvedValue({ ...admin, firebaseUid: 'fb1' });
+      conManager(0);
+      await expect(service.toggleBlockUser('u1', true)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      expect(firebase.revokeRefreshTokensSafe).not.toHaveBeenCalled();
+    });
+
     it('con otro activo bloquea, y desbloquear no pasa por la regla', async () => {
       users.findOne.mockResolvedValue(admin);
       const m = conManager(1);
@@ -790,6 +876,25 @@ describe('UsersService', () => {
       expect(qr.manager.save).not.toHaveBeenCalled();
       expect(qr.rollbackTransaction).toHaveBeenCalled();
       expect(qr.commitTransaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('revocarSesionesDe', () => {
+    it('revoca por el uid del usuario', async () => {
+      users.findOne.mockResolvedValue({ userId: 'u1', firebaseUid: 'fb1' });
+      await service.revocarSesionesDe('u1');
+      expect(firebase.revokeRefreshTokensSafe).toHaveBeenCalledWith(
+        'fb1',
+        expect.anything(),
+      );
+    });
+
+    it('sin cuenta de acceso o inexistente no hace nada', async () => {
+      users.findOne.mockResolvedValueOnce({ userId: 'u1', firebaseUid: null });
+      await service.revocarSesionesDe('u1');
+      users.findOne.mockResolvedValueOnce(null);
+      await service.revocarSesionesDe('u2');
+      expect(firebase.revokeRefreshTokensSafe).not.toHaveBeenCalled();
     });
   });
 

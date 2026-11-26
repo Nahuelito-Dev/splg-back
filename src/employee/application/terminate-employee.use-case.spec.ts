@@ -36,6 +36,7 @@ describe('TerminateEmployeeUseCase', () => {
   let users: {
     bloquearEnTransaccion: jest.Mock;
     avisarAccesoRevocado: jest.Mock;
+    revocarSesionesDe: jest.Mock;
     findRoleTypes: jest.Mock;
   };
   let autoridad: { assertPuedeAdministrarA: jest.Mock };
@@ -91,6 +92,7 @@ describe('TerminateEmployeeUseCase', () => {
     users = {
       bloquearEnTransaccion: jest.fn(),
       avisarAccesoRevocado: jest.fn(),
+      revocarSesionesDe: jest.fn().mockResolvedValue(undefined),
       findRoleTypes: jest.fn(() =>
         Promise.resolve(new Map([['u1', RoleType.DELIVERY]])),
       ),
@@ -145,6 +147,7 @@ describe('TerminateEmployeeUseCase', () => {
     });
     expect(deliveries.quitarDelRadar).toHaveBeenCalledWith('u1');
     expect(users.avisarAccesoRevocado).toHaveBeenCalledWith('u1', 'bloqueo');
+    expect(users.revocarSesionesDe).toHaveBeenCalledWith('u1');
   });
 
   it('sin cuenta: sólo cambia el legajo', async () => {
@@ -156,6 +159,7 @@ describe('TerminateEmployeeUseCase', () => {
     expect(guardado).toHaveLength(1);
     expect(users.bloquearEnTransaccion).not.toHaveBeenCalled();
     expect(users.avisarAccesoRevocado).not.toHaveBeenCalled();
+    expect(users.revocarSesionesDe).not.toHaveBeenCalled();
     expect(deliveries.findByUserIdEnTransaccion).not.toHaveBeenCalled();
     expect(vehicles.liberarSiTieneUno).not.toHaveBeenCalled();
     expect(deliveries.quitarDelRadar).not.toHaveBeenCalled();

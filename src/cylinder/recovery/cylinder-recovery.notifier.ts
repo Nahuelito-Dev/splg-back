@@ -28,6 +28,8 @@ export interface ContextoDelRecupero {
   diasAfuera: number;
   /** Para la oferta de retiro: el día agendado de la entrega. */
   entregaProgramada?: string;
+  /** La oferta de retiro aprovecha una hoja de ruta que pasa cerca (no una entrega del propio cliente). */
+  retiroAprovechandoLaHoja?: boolean;
   customerName?: string | null;
 }
 
@@ -66,6 +68,12 @@ export function textoDelAviso(
         body: `El envase ${ctx.serial} sigue sin volver. Si no lo devolvés antes del ${cuando(aviso.expiresAt)}, el depósito de ${pesos(caso.depositAmount)} puede quedar a cargo tuyo.`,
       };
     case RecoveryNoticeKind.PICKUP_OFFER:
+      if (ctx.retiroAprovechandoLaHoja) {
+        return {
+          title: '¿Devolvés el envase hoy?',
+          body: `Hoy pasamos cerca de tu casa: el chofer puede retirar el envase ${ctx.serial} en ese recorrido, sin cargo. Aceptá antes del ${cuando(aviso.expiresAt)}.`,
+        };
+      }
       return {
         title: '¿Devolvés el envase en tu próxima entrega?',
         body: `El ${ctx.entregaProgramada ?? 'día de tu entrega'} te llevamos tu pedido: el chofer puede retirar el envase ${ctx.serial} en ese mismo viaje. Aceptá antes del ${cuando(aviso.expiresAt)}.`,
@@ -142,6 +150,7 @@ export class CylinderRecoveryNotifier {
         expiresAt: aviso.expiresAt.toISOString(),
         orderId: aviso.orderId,
         scheduledDate: ctx.entregaProgramada ?? null,
+        routeSheetId: aviso.routeBatchId ?? null,
         title,
         body,
       }),
@@ -167,16 +176,24 @@ export class CylinderRecoveryNotifier {
       const { token } =
         await this.customersService.findNotificationToken(userId);
       if (!token) return;
-      await this.fcm.sendToToken(token, {
-        notification: { title, body },
-        data: {
-          type: 'CYLINDER_RECOVERY',
-          kind: principal.aviso.kind,
-          caseId: principal.caso.caseId,
-          noticeId: principal.aviso.noticeId,
-          count: String(avisos.length),
+      await this.fcm.sendToToken(
+        token,
+        {
+          notification: { title, body },
+          data: {
+            type: 'CYLINDER_RECOVERY',
+            kind: principal.aviso.kind,
+            caseId: principal.caso.caseId,
+            noticeId: principal.aviso.noticeId,
+            count: String(avisos.length),
+          },
         },
-      });
+        {
+          type: 'CYLINDER_RECOVERY',
+          distributorId: principal.caso.distributorId,
+          recipientUserId: userId,
+        },
+      );
     });
   }
 

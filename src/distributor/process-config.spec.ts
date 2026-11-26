@@ -99,9 +99,45 @@ describe('process-config', () => {
         'escalationAmountThreshold',
         'pickupOfferTtlHours',
         'pickupWindowDays',
+        'toleranceLowRiskPercent',
+        'toleranceMediumRiskPercent',
+        'toleranceHighRiskPercent',
+        'stepLowRiskPercent',
+        'stepMediumRiskPercent',
+        'stepHighRiskPercent',
+        'opportunisticPickupRadiusMeters',
         'runHour',
         'enabled',
       ]);
+    });
+
+    it('los porcentajes por banda y el radio traen sus valores por omisión y sus rangos', () => {
+      const porOmision = valoresPorOmision(RECUPERO);
+      expect(porOmision).toEqual(
+        expect.objectContaining({
+          toleranceLowRiskPercent: 120,
+          toleranceMediumRiskPercent: 100,
+          toleranceHighRiskPercent: 70,
+          stepLowRiskPercent: 100,
+          stepMediumRiskPercent: 100,
+          stepHighRiskPercent: 70,
+          opportunisticPickupRadiusMeters: 300,
+        }),
+      );
+      expect(
+        validarParametros(RECUPERO, {
+          toleranceHighRiskPercent: 9,
+          stepLowRiskPercent: 301,
+          opportunisticPickupRadiusMeters: 49,
+        }),
+      ).toHaveLength(3);
+      expect(
+        validarParametros(RECUPERO, {
+          toleranceHighRiskPercent: 10,
+          stepLowRiskPercent: 300,
+          opportunisticPickupRadiusMeters: 2000,
+        }),
+      ).toEqual([]);
     });
 
     it('el umbral admite decimales; el resto son enteros', () => {

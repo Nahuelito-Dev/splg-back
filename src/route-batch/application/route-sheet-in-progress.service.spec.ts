@@ -292,6 +292,7 @@ describe('RouteSheetInProgress', () => {
         { sheetId: 'hoja-1', reason: motivo, orderId: 'o1' },
       );
       expect(t.notifier.pushAlChofer).toHaveBeenCalledWith(
+        { distributorId: 'dist-1', driverUserId: 'u-chofer' },
         'tok',
         'hoja-1',
         texto,
@@ -430,6 +431,7 @@ describe('RouteSheetInProgress', () => {
         'c1',
         'o1',
         '2026-11-16',
+        DIST,
       );
       expect(t.notifier.aLaBandeja).toHaveBeenCalledWith(
         DIST,
@@ -440,6 +442,30 @@ describe('RouteSheetInProgress', () => {
       );
       // Con la hoja de ruta encendida, no queda esperando al admin.
       expect(t.ds.manager.update).not.toHaveBeenCalled();
+    });
+
+    it('C5: con `avisarAlCliente: false` reprograma igual pero el aviso al cliente lo manda la nueva visita', async () => {
+      const t = armar();
+      encendida(t, []);
+      expect(
+        await t.svc.reprogramar(
+          hoja({ planDate: '2026-11-14', distributorId: DIST }),
+          'o1',
+          { avisarAlCliente: false },
+        ),
+      ).toBe('2026-11-16');
+      expect(t.notifier.reprogramadoAlCliente).not.toHaveBeenCalled();
+
+      const sinJornada = armar();
+      encendida(sinJornada, [], 1, false);
+      expect(
+        await sinJornada.svc.reprogramar(
+          hoja({ planDate: '2026-11-14' }),
+          'o1',
+          { avisarAlCliente: false },
+        ),
+      ).toBe('2026-11-16');
+      expect(sinJornada.notifier.reprogramadoAlCliente).not.toHaveBeenCalled();
     });
 
     it('si el plan de mañana ya se propuso (o se cerró, o pasó su cierre), pasado mañana', async () => {
@@ -660,6 +686,273 @@ describe('RouteSheetInProgress', () => {
       expect(
         await t.svc.reprogramar(hoja({ planDate: '2026-11-16' }), 'o1'),
       ).toBe('2026-11-17');
+    });
+  });
+
+  describe('C5: la reprogramación en partes (para la transacción de la hoja)', () => {
+    const encendida = (
+      t: ReturnType<typeof armar>,
+      enabled = 1,
+      jornada = true,
+    ) =>
+      t.ds.query.mockImplementation((sql: string) =>
+        Promise.resolve(
+          sql.includes('"module_config"')
+            ? [{ enabled }]
+            : sql.includes('"time_slot"')
+              ? [{ hay: jornada }]
+              : [],
+        ),
+      );
+
+    it('planDeReprogramacion sólo lee: el día y los que siguen con la planificación abierta', async () => {
+      const t = armar();
+      encendida(t);
+      const plan = await t.svc.planDeReprogramacion(
+        hoja({ planDate: '2026-11-14' }),
+        'o1',
+      );
+      expect(plan).toMatchObject({
+        fecha: '2026-11-16',
+        esperaAlAdmin: false,
+        causa: 'planificacion',
+      });
+      expect(plan.dias.slice(0, 3)).toEqual([
+        '2026-11-16',
+        '2026-11-17',
+        '2026-11-18',
+      ]);
+      expect(t.orders.reprogramarEntrega).not.toHaveBeenCalled();
+      expect(t.ds.manager.update).not.toHaveBeenCalled();
+      expect(t.notifier.aLaBandeja).not.toHaveBeenCalled();
+    });
+
+    it('apagada o sin jornada: el día hábil siguiente y los hábiles que siguen, esperando al admin; si falla la lectura, causa error', async () => {
+      const apagada = armar();
+      encendida(apagada, 0);
+      const plan = await apagada.svc.planDeReprogramacion(
+        hoja({ planDate: '2026-11-14' }),
+        'o1',
+      );
+      expect(plan).toMatchObject({
+        fecha: '2026-11-16',
+        esperaAlAdmin: true,
+        causa: 'apagada',
+      });
+      expect(plan.dias.slice(0, 2)).toEqual(['2026-11-16', '2026-11-17']);
+      const sinJornada = armar();
+      encendida(sinJornada, 1, false);
+      expect(
+        (
+          await sinJornada.svc.planDeReprogramacion(
+            hoja({ planDate: '2026-11-14' }),
+            'o1',
+          )
+        ).causa,
+      ).toBe('sin_franjas');
+      const rota = armar();
+      rota.ds.query.mockRejectedValue(new Error('base caída'));
+      expect(await rota.svc.planDeReprogramacion(hoja(), 'o1')).toEqual({
+        fecha: null,
+        dias: [],
+        esperaAlAdmin: true,
+        causa: 'error',
+      });
+    });
+
+    it('aplicarReprogramacion escribe con el manager de la transacción (sin avisar); un error sube', async () => {
+      const t = armar();
+      const m = { update: jest.fn().mockResolvedValue(undefined) };
+      const sheet = hoja();
+      await t.svc.aplicarReprogramacion(
+        m as unknown as EntityManager,
+        sheet,
+        'o1',
+        {
+          fecha: '2026-11-16',
+          dias: [],
+          esperaAlAdmin: true,
+          causa: 'apagada',
+        },
+      );
+      expect(t.orders.reprogramarEntrega).toHaveBeenCalledWith(
+        'o1',
+        '2026-11-16',
+        m,
+      );
+      expect(m.update).toHaveBeenCalledWith(
+        RouteBatchStop,
+        { batchId: 'hoja-1', orderId: 'o1', active: false },
+        { removedReason: RouteStopRemovedReason.NEEDS_RESCHEDULE },
+      );
+      expect(t.ds.manager.update).not.toHaveBeenCalled();
+      expect(t.notifier.aLaBandeja).not.toHaveBeenCalled();
+      expect(t.notifier.reprogramadoAlCliente).not.toHaveBeenCalled();
+
+      const sinDia = armar();
+      const m2 = { update: jest.fn().mockResolvedValue(undefined) };
+      await sinDia.svc.aplicarReprogramacion(
+        m2 as unknown as EntityManager,
+        sheet,
+        'o1',
+        { fecha: null, dias: [], esperaAlAdmin: true, causa: 'sin_dia' },
+      );
+      expect(sinDia.orders.reprogramarEntrega).not.toHaveBeenCalled();
+      expect(m2.update).toHaveBeenCalled();
+
+      const falla = armar();
+      falla.orders.reprogramarEntrega.mockRejectedValue(new Error('no'));
+      const m3 = {
+        update: jest.fn().mockResolvedValue(undefined),
+        query: jest.fn().mockResolvedValue([]),
+      };
+      await expect(
+        falla.svc.aplicarReprogramacion(
+          m3 as unknown as EntityManager,
+          sheet,
+          'o1',
+          {
+            fecha: '2026-11-16',
+            dias: [],
+            esperaAlAdmin: false,
+            causa: 'planificacion',
+          },
+        ),
+      ).rejects.toThrow('no');
+    });
+
+    it('aplicarReprogramacion revalida la planificación con las filas bloqueadas: un día que cerró en el medio se saltea; si cerraron todos, espera al admin', async () => {
+      const t = armar();
+      const plan = {
+        fecha: '2026-11-16',
+        dias: ['2026-11-16', '2026-11-17', '2026-11-18'],
+        esperaAlAdmin: false,
+        causa: 'planificacion' as const,
+      };
+      const m = {
+        update: jest.fn().mockResolvedValue(undefined),
+        query: jest.fn().mockResolvedValue([
+          { fecha: '2026-11-16', status: 'closed', cutoffAt: new Date(0) },
+          {
+            fecha: '2026-11-17',
+            status: 'open',
+            cutoffAt: new Date(Date.now() - 1000),
+          },
+          {
+            fecha: '2026-11-18',
+            status: 'open',
+            cutoffAt: new Date(Date.now() + 3_600_000),
+          },
+        ]),
+      };
+      const vigente = await t.svc.aplicarReprogramacion(
+        m as unknown as EntityManager,
+        hoja(),
+        'o1',
+        plan,
+      );
+      expect(m.query).toHaveBeenCalledWith(
+        expect.stringContaining('FOR SHARE'),
+        [DIST, plan.dias],
+      );
+      expect(vigente).toEqual({
+        ...plan,
+        fecha: '2026-11-18',
+        dias: ['2026-11-18'],
+      });
+      expect(t.orders.reprogramarEntrega).toHaveBeenCalledWith(
+        'o1',
+        '2026-11-18',
+        m,
+      );
+
+      const todos = armar();
+      const m2 = {
+        update: jest.fn().mockResolvedValue(undefined),
+        query: jest.fn().mockResolvedValue(
+          plan.dias.map((fecha) => ({
+            fecha,
+            status: 'proposed',
+            cutoffAt: new Date(0),
+          })),
+        ),
+      };
+      expect(
+        await todos.svc.aplicarReprogramacion(
+          m2 as unknown as EntityManager,
+          hoja(),
+          'o1',
+          plan,
+        ),
+      ).toEqual({
+        fecha: null,
+        dias: [],
+        esperaAlAdmin: true,
+        causa: 'sin_dia',
+      });
+      expect(todos.orders.reprogramarEntrega).not.toHaveBeenCalled();
+      expect(m2.update).toHaveBeenCalledWith(
+        RouteBatchStop,
+        { batchId: 'hoja-1', orderId: 'o1', active: false },
+        { removedReason: RouteStopRemovedReason.NEEDS_RESCHEDULE },
+      );
+    });
+
+    it('avisarReprogramacion: la bandeja con el día en que quedó el pedido, según la causa', () => {
+      const t = armar();
+      const sheet = hoja();
+      const plan = {
+        fecha: '2026-11-16',
+        dias: [],
+        esperaAlAdmin: false,
+        causa: 'planificacion' as const,
+      };
+      // La nueva visita lo corrió al martes (el lunes no tenía cupo).
+      t.svc.avisarReprogramacion(sheet, 'o1', plan, '2026-11-17');
+      expect(t.notifier.aLaBandeja).toHaveBeenLastCalledWith(
+        DIST,
+        expect.objectContaining({
+          kind: 'route_sheet_order_rescheduled',
+          body: expect.stringContaining('martes 17/11') as string,
+        }),
+      );
+      t.svc.avisarReprogramacion(
+        sheet,
+        'o1',
+        { ...plan, causa: 'sin_franjas', esperaAlAdmin: true },
+        '2026-11-16',
+      );
+      expect(t.notifier.aLaBandeja).toHaveBeenLastCalledWith(
+        DIST,
+        expect.objectContaining({
+          kind: 'route_sheet_reschedule_needs_admin',
+          body: expect.stringContaining(
+            'no tiene franjas horarias activas',
+          ) as string,
+        }),
+      );
+      t.svc.avisarReprogramacion(
+        sheet,
+        'o1',
+        { fecha: null, dias: [], esperaAlAdmin: true, causa: 'sin_dia' },
+        null,
+      );
+      expect(t.notifier.aLaBandeja).toHaveBeenLastCalledWith(
+        DIST,
+        expect.objectContaining({
+          title: 'Pedido no entregado: reprogramalo vos',
+        }),
+      );
+      t.svc.avisarReprogramacion(
+        sheet,
+        'o1',
+        { fecha: null, dias: [], esperaAlAdmin: true, causa: 'error' },
+        null,
+      );
+      expect(t.notifier.aLaBandeja).toHaveBeenLastCalledWith(
+        DIST,
+        expect.objectContaining({ kind: 'route_sheet_reschedule_failed' }),
+      );
     });
   });
 });

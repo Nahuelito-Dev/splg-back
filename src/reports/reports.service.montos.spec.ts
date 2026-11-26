@@ -2,6 +2,11 @@ import { Repository } from 'typeorm';
 import { Order } from '../order/entities/order.entity';
 import { OrderItem } from '../order/entities/order-item.entity';
 import { ReportsService } from './reports.service';
+import { FleetCostService } from '../fleet-expense/fleet-cost.service';
+import { EntityPhotoService } from '../s3/entity-photo.service';
+
+const costService = {} as FleetCostService;
+const photoService = {} as EntityPhotoService;
 
 /** Los totales, el resumen, los impagos y el día a día del chofer salen del back. */
 describe('ReportsService — cuentas de plata del panel y de la app del chofer', () => {
@@ -29,6 +34,8 @@ describe('ReportsService — cuentas de plata del panel y de la app del chofer',
     service = new ReportsService(
       orders as unknown as Repository<Order>,
       {} as Repository<OrderItem>,
+      costService,
+      photoService,
     );
   });
 
@@ -62,6 +69,8 @@ describe('ReportsService — cuentas de plata del panel y de la app del chofer',
     const svc = new ReportsService(
       ordersConChoferes as unknown as Repository<Order>,
       {} as Repository<OrderItem>,
+      costService,
+      photoService,
     );
     const r = await svc.getSalesByDriverConTotales(new Date(), new Date());
     expect(r.rows.map((f) => f.driverName)).toEqual(['Beto', 'Ana']);
@@ -86,6 +95,8 @@ describe('ReportsService — cuentas de plata del panel y de la app del chofer',
     const svc = new ReportsService(
       orders as unknown as Repository<Order>,
       {} as Repository<OrderItem>,
+      costService,
+      photoService,
     );
     const r = await svc.getSalesByDriverConTotales(new Date(), new Date());
     expect(r.rows.map((f) => f.driverId)).toEqual(['u1', 'u2']);

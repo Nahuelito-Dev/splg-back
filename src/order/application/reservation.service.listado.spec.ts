@@ -21,7 +21,7 @@ describe('ReservationService.findReservations', () => {
     { getOrThrow: jest.fn(() => 1) } as never,
     payments as never,
     undefined as never,
-    undefined as never,
+    { cajaDelPago: jest.fn().mockResolvedValue(null) } as never,
     undefined as never,
   );
 
@@ -113,8 +113,8 @@ describe('ReservationService.findReservations', () => {
     );
   });
 
-  it('confirmar la seña de una reserva por transferencia la marca cobrada, para que el cron la active', async () => {
-    const order = reserva({ paymentMethod: PaymentMethod.TRANSFER });
+  it('confirmar la seña de una reserva en efectivo la marca cobrada, para que el cron la active', async () => {
+    const order = reserva({ paymentMethod: PaymentMethod.CASH });
     (order as { depositPaid: boolean }).depositPaid = false;
     enTransaccion(order);
     const saved = await service.confirmDeposit('o1', 'd1');

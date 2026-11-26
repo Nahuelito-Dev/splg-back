@@ -24,6 +24,7 @@ describe('RepurchaseCron', () => {
   let forecast: {
     ejecutar: jest.Mock;
     vencer: jest.Mock;
+    enviarAvisos: jest.Mock;
     cerrarLasDeUnaDistribuidoraInactiva: jest.Mock;
   };
   let estimator: { parametros: jest.Mock };
@@ -36,6 +37,7 @@ describe('RepurchaseCron', () => {
     forecast = {
       ejecutar: jest.fn().mockResolvedValue({}),
       vencer: jest.fn().mockResolvedValue(2),
+      enviarAvisos: jest.fn().mockResolvedValue(1),
       cerrarLasDeUnaDistribuidoraInactiva: jest.fn().mockResolvedValue(1),
     };
     estimator = {
@@ -125,6 +127,22 @@ describe('RepurchaseCron', () => {
     expect(forecast.vencer).toHaveBeenCalledTimes(2);
     expect(forecast.vencer).toHaveBeenCalledWith(expect.any(Date), 'd1');
     expect(forecast.vencer).toHaveBeenCalledWith(expect.any(Date), 'd2');
+  });
+
+  it('el barrido avisa de las invitaciones que llegaron a su hora, después de vencer', async () => {
+    await cron.vencer();
+    expect(forecast.enviarAvisos).toHaveBeenCalledTimes(2);
+    expect(forecast.enviarAvisos).toHaveBeenCalledWith(expect.any(Date), 'd1');
+    expect(forecast.enviarAvisos).toHaveBeenCalledWith(expect.any(Date), 'd2');
+    expect(forecast.vencer.mock.invocationCallOrder[0]).toBeLessThan(
+      forecast.enviarAvisos.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('con la anticipación apagada tampoco se avisa', async () => {
+    estimator.parametros.mockResolvedValue({ enabled: false, runHour: 9 });
+    await cron.vencer();
+    expect(forecast.enviarAvisos).not.toHaveBeenCalled();
   });
 
   it('una distribuidora con la anticipación apagada no corre ni se barre', async () => {

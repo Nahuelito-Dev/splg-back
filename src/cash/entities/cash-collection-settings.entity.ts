@@ -15,10 +15,9 @@ import { CashBox } from './cash-box.entity';
 
 /**
  * A qué caja entra lo que se cobra por las ventas sin pasar por la mano del
- * chofer: los pagos aprobados de Mercado Pago (una billetera) y las
- * transferencias confirmadas (un banco). Una fila por distribuidora; sin fila o
- * con la columna en null, ese medio no asienta nada y el cobro queda «sin
- * asentar». Las cajas se validan por clase (un trigger de la base) y por
+ * chofer: los pagos aprobados de Mercado Pago (una billetera). Una fila por
+ * distribuidora; sin fila o con la columna en null, no se asienta nada y el cobro queda «sin
+ * asentar». La caja se valida por clase (un trigger de la base) y por
  * distribuidora (clave foránea compuesta).
  */
 @ForeignKey(
@@ -55,8 +54,16 @@ export class CashCollectionSettings {
   @Column({ name: 'mercadopago_cash_box_id', type: 'uuid', nullable: true })
   mercadoPagoCashBoxId!: string | null;
 
-  /** Banco (`bank`) al que entran las transferencias confirmadas. */
-  @Column({ name: 'transfer_cash_box_id', type: 'uuid', nullable: true })
+  /**
+   * Sin uso desde que se retiró la transferencia; se conserva por borrado
+   * lógico. No sale en ninguna respuesta ni se escribe desde la API.
+   */
+  @Column({
+    name: 'transfer_cash_box_id',
+    type: 'uuid',
+    nullable: true,
+    select: false,
+  })
   transferCashBoxId!: string | null;
 
   /**

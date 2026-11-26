@@ -8,6 +8,11 @@ import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { SOLO_LECTURA_KEY } from '../../audit/solo-lectura.decorator';
 import { resolverAlcance } from '../alcance/resolver-alcance';
+import {
+  esConsultaGraphql,
+  esGraphql,
+  requestDelContexto,
+} from '../contexto/request-del-contexto';
 import { RoleType } from '../constants/role-type.enum';
 import {
   soloLecturaDeSoporte,
@@ -37,7 +42,9 @@ export const METODOS_DE_LECTURA: ReadonlySet<string> = new Set([
  * pide ese alcance en la sesión (si no, 403 `SUPPORT_SCOPE_REQUIRED`).
  *
  * Sólo lectura: con sesión pasan `GET`, `HEAD`, `OPTIONS` y los `POST` marcados
- * `@SoloLectura()`; cualquier otra cosa es 403 `SUPPORT_READ_ONLY`. La segunda
+ * `@SoloLectura()`; cualquier otra cosa es 403 `SUPPORT_READ_ONLY`. En GraphQL
+ * decide la operación y no el método: una `query` es lectura aunque viaje por
+ * `POST`; cualquier otra operación, no. La segunda
  * capa (la transacción de la base en sólo lectura) la pone `ActorEnLaBase`.
  *
  * Empresa propia de la plataforma: `AuthGuard` cambia el rol efectivo del
@@ -51,8 +58,8 @@ export class AlcanceGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(ctx: ExecutionContext): boolean {
-    if (ctx.getType() !== 'http') return true;
-    const request = ctx.switchToHttp().getRequest<Request>();
+    if (ctx.getType() !== 'http' && !esGraphql(ctx)) return true;
+    const request = requestDelContexto(ctx);
     if (request.user?.role !== RoleType.SUPER_ADMIN) return true;
 
     const objetivos: [object, object] = [ctx.getHandler(), ctx.getClass()];
@@ -78,7 +85,11 @@ export class AlcanceGuard implements CanActivate {
       );
       throw soporteSinAlcance(requerido);
     }
-    if (METODOS_DE_LECTURA.has(request.method)) return true;
+    if (esGraphql(ctx)) {
+      if (esConsultaGraphql(ctx)) return true;
+    } else if (METODOS_DE_LECTURA.has(request.method)) {
+      return true;
+    }
     const soloLectura = this.reflector.getAllAndOverride<boolean | undefined>(
       SOLO_LECTURA_KEY,
       objetivos as Array<() => void>,

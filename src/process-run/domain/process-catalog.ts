@@ -42,6 +42,7 @@ export enum ProcessName {
   ROUTE_PLANNING_PROPOSE = 'route_planning_propose',
   ROUTE_PLANNING_CLOSE_DAYS = 'route_planning_close_days',
   ROUTE_SHEET_WATCH = 'route_sheet_watch',
+  ROUTE_SERVICE_TIME_LEARN = 'route_service_time_learn',
   SUPPORT_SESSION_EXPIRY = 'support_session_expiry',
   SUPPORT_HOUSEKEEPING = 'support_housekeeping',
   ASSISTANT_AI_SWEEP = 'assistant_ai_sweep',
@@ -164,6 +165,11 @@ export const CATALOGO: Readonly<Record<ProcessName, ProcessCatalogEntry>> = {
     title: 'Hoja de ruta: seguimiento de las hojas en curso',
     periodSeconds: MIN,
     recordEverySeconds: 5 * MIN,
+  },
+  [ProcessName.ROUTE_SERVICE_TIME_LEARN]: {
+    module: 'M4',
+    title: 'Hoja de ruta: tiempo de atención aprendido',
+    periodSeconds: DIA,
   },
   [ProcessName.ROUTE_BATCH_EXPIRY]: {
     module: 'M4',

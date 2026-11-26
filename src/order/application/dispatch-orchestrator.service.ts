@@ -31,19 +31,26 @@ import {
   situacionDelChofer,
   type SituacionDeChofer,
 } from '../domain/chofer-por-terminar';
+import { errorMessage } from '../../common/errors/error-message';
 import { diaArgentino } from '../../common/utils/dias-argentina';
+import { RouteMatrixPort } from '../../routes/route-matrix.port';
+import { OfferEstimateSource } from '../entities/dispatch-offer.entity';
+import type { OfferEstimate } from '../domain/ports/dispatch-offer.repository.port';
+import { ordenarPorLlegada } from '../domain/orden-por-llegada';
 
 /** Por qué un pedido pendiente se quedó sin candidatos (payload de `order:no-drivers`). */
 export type MotivoSinChoferes =
   | 'no_drivers_in_range'
   | 'all_drivers_exhausted'
-  | 'no_delivery_point';
+  | 'no_delivery_point'
+  | 'no_stock';
 
 const MOTIVO_SIN_CHOFERES: Readonly<Record<MotivoSinChoferes, string>> = {
   no_drivers_in_range: 'no hay choferes disponibles cerca para ofrecérselo.',
   all_drivers_exhausted:
     'los choferes cercanos ya lo rechazaron o no respondieron.',
   no_delivery_point: 'no tiene un punto de entrega con ubicación.',
+  no_stock: 'ningún chofer cercano lleva en su vehículo las garrafas que pide.',
 };
 
 /**
@@ -53,6 +60,12 @@ const MOTIVO_SIN_CHOFERES: Readonly<Record<MotivoSinChoferes, string>> = {
  * Vive y muere con cada llamada; nunca se comparte entre intentos, porque el
  * estado de la flota puede cambiar entre una oferta y la siguiente.
  */
+/** Lo que el filtro por stock necesita saber del pedido y dónde anota a quién descartó. */
+interface PedidoParaStock {
+  renglones: ReadonlyArray<{ gasCylinderId: string; quantity: number }>;
+  descartados: Set<string>;
+}
+
 interface CacheDeInhabilitacion {
   evaluados: Set<string>;
   inhabilitados: Set<string>;
@@ -125,6 +138,8 @@ export class DispatchOrchestratorService {
     private readonly expressDegrade: ExpressDegradeService,
     // Bandeja de avisos de los admins (no sabe cómo se entrega).
     private readonly events: EventEmitter2,
+    // M1c: minutos por calle de cada chofer al cliente (cae a línea recta si OSRM no responde).
+    private readonly matrix: RouteMatrixPort,
   ) {}
 
   /**
@@ -162,6 +177,8 @@ export class DispatchOrchestratorService {
     if (await this.offers.isInPlannedRouteSheet(order.orderId)) return null;
     // Salió de una hoja en la calle y espera al admin: no vuelve solo al despacho.
     if (await this.offers.isAwaitingReschedule(order.orderId)) return null;
+    // Entrega fallida (C5): espera el día y la franja de su nueva visita, o al admin.
+    if (await this.offers.isAwaitingRevisit(order.orderId)) return null;
     // Con M4 encendido, un programado espera a la agrupación hasta
     // `batchingHoldMinutes` antes de su franja; pasado el margen lo toma M1.
     if (await this.offers.isHeldForBatching(order.orderId)) return null;
@@ -185,8 +202,12 @@ export class DispatchOrchestratorService {
     }
 
     // Se leen en cada oferta: un cambio de configuración rige para la próxima.
-    const { radiusStepsKm, offerTtlSeconds, finishingRadiusMeters } =
-      await this.settings.obtener(order.distributorId);
+    const {
+      radiusStepsKm,
+      offerTtlSeconds,
+      finishingRadiusMeters,
+      osrmCandidateCount,
+    } = await this.settings.obtener(order.distributorId);
 
     const { blocked, reofferable } = await this.offers.findDriverOfferState(
       order.orderId,
@@ -204,21 +225,26 @@ export class DispatchOrchestratorService {
       order.distributorId,
       radiusStepsKm,
       finishingRadiusMeters,
+      fresco.items,
+      osrmCandidateCount,
     );
-    const candidate =
-      nuevos.candidate ??
-      (reofferable.length > 0
-        ? (
-            await this.findNearestAvailable(
-              destino.lat,
-              destino.lng,
-              new Set(blocked),
-              order.distributorId,
-              radiusStepsKm,
-              finishingRadiusMeters,
-            )
-          ).candidate
-        : null);
+    const reintento =
+      nuevos.candidate === null && reofferable.length > 0
+        ? await this.findNearestAvailable(
+            destino.lat,
+            destino.lng,
+            new Set(blocked),
+            order.distributorId,
+            radiusStepsKm,
+            finishingRadiusMeters,
+            fresco.items,
+            osrmCandidateCount,
+          )
+        : null;
+    const candidate = nuevos.candidate ?? reintento?.candidate ?? null;
+    const estimate = nuevos.candidate
+      ? nuevos.estimate
+      : (reintento?.estimate ?? null);
 
     if (!candidate) {
       this.logger.debug(
@@ -228,7 +254,9 @@ export class DispatchOrchestratorService {
         order,
         nuevos.elegiblesEnRango > 0
           ? 'all_drivers_exhausted'
-          : 'no_drivers_in_range',
+          : nuevos.descartadosPorStock > 0
+            ? 'no_stock'
+            : 'no_drivers_in_range',
       );
       return null;
     }
@@ -239,6 +267,7 @@ export class DispatchOrchestratorService {
       candidate,
       expiresAt,
       order.distributorId,
+      estimate,
     );
     // Un chofer nuevo reabre el pedido: el próximo agotamiento vuelve a avisar.
     // Una re-oferta a quien ya venció es el mismo agotamiento y no lo reinicia
@@ -263,10 +292,14 @@ export class DispatchOrchestratorService {
       candidate,
       order.orderId,
       efectivoDelPedido(fresco),
+      fresco.distributorId,
     );
 
     this.logger.log(
-      `Pedido ${order.orderId} ofrecido a chofer ${candidate} (vence ${expiresAt.toISOString()})`,
+      `Pedido ${order.orderId} ofrecido a chofer ${candidate} (vence ${expiresAt.toISOString()}` +
+        (estimate
+          ? `; llega en ${estimate.minutes} min, estimado con ${estimate.source})`
+          : ')'),
     );
     return candidate;
   }
@@ -344,6 +377,7 @@ export class DispatchOrchestratorService {
       candidate,
       fresco.orderId,
       efectivoDelPedido(fresco),
+      fresco.distributorId,
     );
 
     this.logger.log(
@@ -646,7 +680,16 @@ export class DispatchOrchestratorService {
     distributorId: string | null | undefined,
     radiusStepsKm: readonly number[],
     finishingRadiusMeters: number,
-  ): Promise<{ candidate: string | null; elegiblesEnRango: number }> {
+    renglones: ReadonlyArray<{ gasCylinderId: string; quantity: number }> = [],
+    osrmCandidateCount = 8,
+  ): Promise<{
+    candidate: string | null;
+    estimate: OfferEstimate | null;
+    elegiblesEnRango: number;
+    descartadosPorStock: number;
+  }> {
+    const descartados = new Set<string>();
+    const pedido: PedidoParaStock = { renglones, descartados };
     const cacheDeFlota: CacheDeInhabilitacion = {
       evaluados: new Set(),
       inhabilitados: new Set(),
@@ -660,12 +703,98 @@ export class DispatchOrchestratorService {
         distributorId,
         cacheDeFlota,
         finishingRadiusMeters,
+        pedido,
       );
       eligible.forEach((id) => enRango.add(id));
-      const next = eligible.find((id) => !exclude.has(id));
-      if (next) return { candidate: next, elegiblesEnRango: enRango.size };
+      const disponibles = eligible.filter((id) => !exclude.has(id));
+      if (disponibles.length > 0) {
+        const { orden, estimaciones } = await this.ordenarPorLlegada(
+          disponibles,
+          { lat, lng },
+          osrmCandidateCount,
+        );
+        const next = orden[0];
+        return {
+          candidate: next,
+          estimate: estimaciones.get(next) ?? null,
+          elegiblesEnRango: enRango.size,
+          descartadosPorStock: descartados.size,
+        };
+      }
     }
-    return { candidate: null, elegiblesEnRango: enRango.size };
+    return {
+      candidate: null,
+      estimate: null,
+      elegiblesEnRango: enRango.size,
+      descartadosPorStock: descartados.size,
+    };
+  }
+
+  /**
+   * Reordena los candidatos de un paso de radio por lo que tardan en llegar por
+   * calle: mide a los primeros `cantidad` que tienen posición reciente (un solo
+   * pedido de N orígenes al destino) y los pone por minutos; el resto queda
+   * después, en el orden del radar. Nunca frena la oferta: si el puerto falla,
+   * o no hay posiciones recientes, el orden es el del radar y no hay estimación.
+   */
+  private async ordenarPorLlegada(
+    enOrdenDeRadar: string[],
+    destino: { lat: number; lng: number },
+    cantidad: number,
+  ): Promise<{ orden: string[]; estimaciones: Map<string, OfferEstimate> }> {
+    const estimaciones = new Map<string, OfferEstimate>();
+    try {
+      const conPosicion: Array<{ id: string; lat: number; lng: number }> = [];
+      for (
+        let desde = 0;
+        desde < enOrdenDeRadar.length && conPosicion.length < cantidad;
+        desde += cantidad
+      ) {
+        const lote = enOrdenDeRadar.slice(desde, desde + cantidad);
+        const posiciones = await Promise.all(
+          lote.map((id) => this.dispatch.lastKnownPosition(id)),
+        );
+        lote.forEach((id, i) => {
+          const p = posiciones[i];
+          if (
+            p &&
+            posicionReciente(p.at, Date.now()) &&
+            conPosicion.length < cantidad
+          ) {
+            conPosicion.push({ id, lat: p.lat, lng: p.lng });
+          }
+        });
+      }
+      if (conPosicion.length === 0) {
+        return { orden: enOrdenDeRadar, estimaciones };
+      }
+      const tiempos = await this.matrix.durationsTo(conPosicion, destino);
+      const minutos = new Map<string, number>();
+      conPosicion.forEach((c, i) => {
+        const m = tiempos.minutes[i];
+        if (!Number.isFinite(m)) return;
+        minutos.set(c.id, m);
+        estimaciones.set(c.id, {
+          minutes: Math.round(m * 10) / 10,
+          source:
+            (tiempos.sources?.[i] ?? tiempos.source) === 'osrm'
+              ? OfferEstimateSource.OSRM
+              : OfferEstimateSource.HAVERSINE,
+        });
+      });
+      this.logger.debug(
+        `Orden por llegada de ${conPosicion.length} choferes con ${tiempos.source}`,
+      );
+      return {
+        orden: ordenarPorLlegada(enOrdenDeRadar, minutos),
+        estimaciones,
+      };
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo ordenar por llegada, sigue el orden del radar: ${errorMessage(error)}`,
+      );
+      return { orden: enOrdenDeRadar, estimaciones: new Map() };
+    }
   }
 
   /**
@@ -691,6 +820,7 @@ export class DispatchOrchestratorService {
     distributorId: string | null | undefined,
     cache: CacheDeInhabilitacion,
     finishingRadiusMeters = 0,
+    pedido?: PedidoParaStock,
   ): Promise<string[]> {
     if (driverIds.length === 0) return driverIds;
     const habilitados = await this.deliveries.choferesElegibles(
@@ -720,7 +850,10 @@ export class DispatchOrchestratorService {
       cache.inhabilitados.size === 0
         ? elegibles
         : elegibles.filter((id) => !cache.inhabilitados.has(id));
-    return this.conCargaSiSeExige(sinBloqueo, distributorId);
+    const conCarga = await this.conCargaSiSeExige(sinBloqueo, distributorId);
+    return pedido
+      ? this.conStockSiSeExige(conCarga, distributorId, pedido)
+      : conCarga;
   }
 
   /**
@@ -779,6 +912,28 @@ export class DispatchOrchestratorService {
       );
     }
     return resultado;
+  }
+
+  /**
+   * Con la carga abierta exigida, el chofer cuyo vehículo no lleva las garrafas
+   * llenas del pedido (por tipo y cantidad) no recibe la oferta. Anota en
+   * `pedido.descartados` a quién sacó, para el motivo `no_stock`.
+   */
+  private async conStockSiSeExige(
+    driverIds: string[],
+    distributorId: string | null | undefined,
+    pedido: PedidoParaStock,
+  ): Promise<string[]> {
+    if (!distributorId || driverIds.length === 0) return driverIds;
+    if (pedido.renglones.length === 0) return driverIds;
+    const alcanzan = await this.truckLoadGate.choferesConStockPara(
+      distributorId,
+      driverIds,
+      pedido.renglones,
+    );
+    for (const id of driverIds)
+      if (!alcanzan.has(id)) pedido.descartados.add(id);
+    return driverIds.filter((id) => alcanzan.has(id));
   }
 
   /**

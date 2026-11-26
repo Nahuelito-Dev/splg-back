@@ -11,6 +11,7 @@ import {
 import { CylinderRecoveryCase } from './cylinder-recovery-case.entity';
 import { ProposalStatus } from '../../common/enums/proposal-status.enum';
 import { Order } from '../../order/entities/order.entity';
+import { RouteBatch } from '../../order/entities/route-batch.entity';
 
 export enum RecoveryNoticeKind {
   REMINDER = 'reminder',
@@ -27,7 +28,7 @@ export enum RecoveryNoticeKind {
  */
 @Check(
   'CHK_recovery_notice_oferta',
-  `(("kind" = 'pickup_offer') = ("order_id" IS NOT NULL)) AND (("kind" = 'pickup_offer') = ("status" IS NOT NULL)) AND ("status" NOT IN ('accepted', 'rejected') OR "responded_at" IS NOT NULL) AND ("status" <> 'pending' OR "responded_at" IS NULL) AND ("expires_at" >= "sent_at") AND ("step" BETWEEN 1 AND 3)`,
+  `(("kind" = 'pickup_offer') = ("order_id" IS NOT NULL)) AND (("kind" = 'pickup_offer') = ("status" IS NOT NULL)) AND ("status" NOT IN ('accepted', 'rejected') OR "responded_at" IS NOT NULL) AND ("status" <> 'pending' OR "responded_at" IS NULL) AND ("expires_at" >= "sent_at") AND ("step" BETWEEN 1 AND 3) AND ("route_batch_id" IS NULL OR "kind" = 'pickup_offer')`,
 )
 @Index('UQ_recovery_notice_aviso_por_escalon', ['caseId', 'step'], {
   unique: true,
@@ -86,6 +87,19 @@ export class CylinderRecoveryNotice {
   @Index('IDX_recovery_notice_pedido')
   @Column({ name: 'order_id', type: 'uuid', nullable: true })
   orderId!: string | null;
+
+  /**
+   * La hoja de ruta de la que se aprovechó el viaje (retiro oportunista): el
+   * pedido de la oferta es de una parada vecina, no del propio cliente. `null`
+   * en la oferta común (la entrega programada del mismo cliente).
+   */
+  @ManyToOne(() => RouteBatch, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'route_batch_id' })
+  routeBatch?: RouteBatch;
+
+  @Index('IDX_recovery_notice_hoja')
+  @Column({ name: 'route_batch_id', type: 'uuid', nullable: true })
+  routeBatchId!: string | null;
 
   @CreateDateColumn({ name: 'sent_at', type: 'timestamptz' })
   sentAt!: Date;

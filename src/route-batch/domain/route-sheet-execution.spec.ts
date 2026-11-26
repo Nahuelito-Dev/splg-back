@@ -6,6 +6,7 @@ import {
   franjaAbierta,
   hojaTerminada,
   diaDeReprogramacion,
+  diasDeReprogramacion,
   diaHabilSiguiente,
   esperaVencida,
   insertarEnCola,
@@ -442,6 +443,40 @@ describe('reintentos y espera en la puerta (rediseño del 14/11)', () => {
     expect(esperaVencida(0, 9 * 60_000, 10)).toBe(false);
     expect(esperaVencida(0, 10 * 60_000, 10)).toBe(true);
     expect(esperaVencida(null, 99 * 60_000, 10)).toBe(false);
+  });
+});
+
+describe('diasDeReprogramacion (C5: dónde buscar cupo)', () => {
+  const AHORA = Date.parse('2026-11-16T15:00:00Z');
+
+  it('todos los días que sirven, en orden, salteando los que no (el primero es el de diaDeReprogramacion)', () => {
+    const planes = new Map([
+      ['2026-11-17', { status: 'proposed', cutoffMs: AHORA - 1 }],
+      ['2026-11-19', { status: 'open', cutoffMs: AHORA + 1 }],
+    ]);
+    const dias = diasDeReprogramacion(
+      '2026-11-16',
+      planes,
+      AHORA,
+      CALENDARIO_POR_OMISION,
+      5,
+    );
+    expect(dias).toEqual([
+      '2026-11-18',
+      '2026-11-19',
+      '2026-11-20',
+      '2026-11-21',
+    ]);
+    expect(diaDeReprogramacion('2026-11-16', planes, AHORA)).toBe(dias[0]);
+    expect(
+      diasDeReprogramacion(
+        '2026-11-16',
+        new Map([['2026-11-17', { status: 'closed', cutoffMs: 0 }]]),
+        AHORA,
+        CALENDARIO_POR_OMISION,
+        1,
+      ),
+    ).toEqual([]);
   });
 });
 

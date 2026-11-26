@@ -2,7 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { RoleType } from '../../common/constants/role-type.enum';
 import { errorMessage } from '../../common/errors/error-message';
-import { OrderStatus } from '../../order/entities/order.entity';
+import {
+  AssignmentMethod,
+  OrderStatus,
+} from '../../order/entities/order.entity';
 import { RouteStopRemovedReason } from '../../order/entities/route-batch-stop.entity';
 import { OrderService } from '../../order/order.service';
 import { motivoNoPlanificable } from '../domain/route-sheet-rules';
@@ -63,7 +66,7 @@ export class RouteSheetInProgressEditingService {
         body.orderId,
         sheet.deliveryId as string,
         distributorId,
-        { soloSiLibre: true },
+        { soloSiLibre: true, metodo: AssignmentMethod.ROUTE_SHEET },
       );
       const chofer = await this.hoja.choferDe(sheet);
       let calculo: CalculoEnCurso;

@@ -133,8 +133,8 @@ export class ReportsController {
     description:
       'Días en hora argentina; `to` es inclusivo; por fecha de entrega. Cifras que NO suman a las ventas: ' +
       'efectivo entregado pendiente de confirmar por el chofer (`pendingCash`), impagos sin resolver (`unpaid`, por lo que falta cobrar: el total menos la seña ya paga) ' +
-      'y pérdidas (`writtenOff`); y transferencias entregadas que un admin todavía no confirmó (`pendingTransfer`) ' +
-      'o marcó como no recibidas (`notReceivedTransfer`).',
+      'y pérdidas (`writtenOff`); y, sólo de pedidos viejos, transferencias que quedaron sin confirmar (`pendingTransfer`) ' +
+      'o marcadas como no recibidas (`notReceivedTransfer`).',
   })
   @ApiOkResponse({ type: CobrosDeEfectivoDto })
   @ApiBadRequestResponse({

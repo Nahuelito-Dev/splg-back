@@ -216,6 +216,7 @@ export class RouteSheetStartService {
       assignedOrders: asignados.length,
       droppedOrderIds: caidos,
     });
+    this.notifier.hojaEnCurso(distributorId, id);
     this.logger.log(
       `Hoja ${id}: viaje iniciado con ${asignados.length} pedido(s), ${caidos.length} fuera, ${notifiedCustomers} cliente(s) avisado(s)`,
     );

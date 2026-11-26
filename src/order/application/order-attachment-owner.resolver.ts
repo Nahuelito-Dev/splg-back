@@ -7,10 +7,8 @@ import { AttachmentOwnerResolver } from '../../attachment/ports/attachment-owner
 import { Order } from '../entities/order.entity';
 
 /**
- * Dueño `order` de los adjuntos (el comprobante de la transferencia y lo que el
- * admin agregue al pedido). Un chofer no accede: sin `isOwnedByUser`, el
- * servicio de adjuntos le responde 403. El cliente sube su comprobante por
- * `POST /v2/orders/:id/transfer-receipt`, no por el endpoint genérico.
+ * Dueño `order` de los adjuntos (lo que el admin agregue al pedido). Un chofer
+ * no accede: sin `isOwnedByUser`, el servicio de adjuntos le responde 403.
  */
 @Injectable()
 export class OrderAttachmentOwnerResolver

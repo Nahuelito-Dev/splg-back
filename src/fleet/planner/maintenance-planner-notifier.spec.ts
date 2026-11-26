@@ -50,6 +50,7 @@ describe('MaintenancePlannerNotifier', () => {
   const delivery = (over: Partial<Delivery> = {}) =>
     ({
       userId: 'u1',
+      distributorId: 'd1',
       notificationToken: 'tok',
       user: { email: 'a@b.com' },
       ...over,
@@ -90,6 +91,11 @@ describe('MaintenancePlannerNotifier', () => {
       expect.objectContaining({
         data: { type: 'MAINTENANCE_PROPOSAL', proposalId: 'p1' },
       }),
+      {
+        type: 'MAINTENANCE_PROPOSAL',
+        distributorId: 'd1',
+        recipientUserId: 'u1',
+      },
     );
     expect(email.send).toHaveBeenCalledWith(
       expect.objectContaining({ to: 'a@b.com' }),
@@ -150,7 +156,11 @@ describe('MaintenancePlannerNotifier', () => {
       'maintenance:window-confirmed',
       expect.objectContaining({ caseId: 'c1' }),
     );
-    expect(fcm.sendToToken).toHaveBeenCalled();
+    expect(fcm.sendToToken).toHaveBeenCalledWith('tok', expect.anything(), {
+      type: 'MAINTENANCE_CONFIRMED',
+      distributorId: 'd1',
+      recipientUserId: 'u1',
+    });
   });
 
   it('no avisa una confirmación sin ventana', async () => {

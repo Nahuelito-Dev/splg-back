@@ -1,11 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsBoolean,
-  IsOptional,
-  IsUUID,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
+import { IsOptional, IsUUID, MaxLength, MinLength } from 'class-validator';
 import { TextoNoVacio } from '../../common/decorators/texto-no-vacio.decorator';
 import {
   MOTIVO_ENTREGA_MANUAL_MAX as MOTIVO_MAX,
@@ -47,15 +41,4 @@ export class RegisterCashDto extends MotivoDeCobroDto {
   @IsOptional()
   @IsUUID()
   cashBoxId?: string;
-}
-
-/** Body de `PATCH /orders/:id/payment/confirm-transfer`. */
-export class ConfirmTransferDto extends MotivoDeCobroDto {
-  @ApiProperty({
-    example: true,
-    description:
-      '`true`: la transferencia llegó (el pago pasa a `paid` y el pedido cuenta como venta). `false`: no llegó (queda `failed`).',
-  })
-  @IsBoolean()
-  received!: boolean;
 }

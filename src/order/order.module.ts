@@ -61,8 +61,6 @@ import { ReservationService } from './application/reservation.service';
 import { PagoNotificadoListener } from './application/pago-notificado.listener';
 import { AttachmentModule } from '../attachment/attachment.module';
 import { OrderAttachmentOwnerResolver } from './application/order-attachment-owner.resolver';
-import { OrderTransferReceiptService } from './application/order-transfer-receipt.service';
-import { OrderTransferReceiptController } from './order-transfer-receipt.controller';
 import { CashModule } from '../cash/cash.module';
 import { CylinderModule } from '../cylinder/cylinder.module';
 import { CoverageZoneModule } from '../coverage-zone/coverage-zone.module';
@@ -88,6 +86,9 @@ import { OrderAddressChange } from './entities/order-address-change.entity';
 import { CustomerContainerModule } from '../customer-container/customer-container.module';
 import { DeclareEmptiesUseCase } from './application/declare-empties.use-case';
 import { VencimientoSinChoferService } from './application/vencimiento-sin-chofer.service';
+import { OsrmTableMatrixAdapter } from '../routes/osrm-table.adapter';
+import { RouteMatrixPort } from '../routes/route-matrix.port';
+import { ROUTES_FETCH } from '../routes/routes.service';
 @Module({
   imports: [
     RoutePlanningHoldModule, // el despacho no ofrece lo retenido por una hoja de ruta (F34)
@@ -117,7 +118,7 @@ import { VencimientoSinChoferService } from './application/vencimiento-sin-chofe
     FleetModule, // bloqueo de flota (CU-136 a CU-138): el despacho no ofrece ni asigna a un chofer inhabilitado
     StockModule, // al entregar, descuenta el físico del camión o del depósito (StockDeliveryPort)
     CashModule, // el cobro del admin entra a una caja por el libro (CashLedgerService)
-    AttachmentModule, // dueño `order` de los adjuntos: comprobante de la transferencia
+    AttachmentModule, // dueño `order` de los adjuntos
     TruckLoadModule, // D5: con control de carga activo, el despacho exige carga abierta (TruckLoadGatePort)
     CustomerContainerModule,
   ],
@@ -125,7 +126,6 @@ import { VencimientoSinChoferService } from './application/vencimiento-sin-chofe
   controllers: [
     ExpressOrderController,
     OrderController,
-    OrderTransferReceiptController,
     ReservationV2Controller,
     DeliveryCodeV2Controller,
     DeliveryCodeV3Controller,
@@ -137,9 +137,16 @@ import { VencimientoSinChoferService } from './application/vencimiento-sin-chofe
     // Confirma el pedido cuando payments publica un pago notificado.
     PagoNotificadoListener,
     OrderService,
+    // Minutos por calle de los choferes al cliente (M1c). RoutesModule importa este
+    // módulo, así que acá se arma el adaptador en vez de importarlo de vuelta.
+    OsrmTableMatrixAdapter,
+    { provide: RouteMatrixPort, useExisting: OsrmTableMatrixAdapter },
+    {
+      provide: ROUTES_FETCH,
+      useValue: (url: string, init?: RequestInit) => fetch(url, init),
+    },
     OrderFraudHoldService,
     OrderAttachmentOwnerResolver,
-    OrderTransferReceiptService,
     DispatchService,
     VencimientoSinChoferService,
     DispatchMetricsService,
@@ -196,6 +203,7 @@ import { VencimientoSinChoferService } from './application/vencimiento-sin-chofe
     QuoteOrderUseCase,
     CashCollectionUseCase,
     DispatchOrchestratorService,
+    ReleaseOrderUseCase, // la entrega fallida libera al chofer por el camino único (C5)
   ],
 })
 export class OrderModule {}

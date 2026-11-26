@@ -1,6 +1,7 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { Cylinder, CylinderState } from './entities/cylinder.entity';
 import { CylinderService } from './cylinder.service';
+import type { EnvaseVista } from './domain/ports/cylinder-query.port';
 import {
   DestinoDeFoto,
   EnlaceDeFoto,
@@ -25,10 +26,10 @@ export class CylinderPhotoService {
   ) {}
 
   /** Completa la URL firmada del envase y la de su producto, si lo trae. */
-  async firmar(cylinders: Cylinder | readonly Cylinder[]): Promise<void> {
-    const lista: readonly Cylinder[] = Array.isArray(cylinders)
-      ? (cylinders as readonly Cylinder[])
-      : [cylinders as Cylinder];
+  async firmar(cylinders: EnvaseVista | readonly EnvaseVista[]): Promise<void> {
+    const lista: readonly EnvaseVista[] = Array.isArray(cylinders)
+      ? (cylinders as readonly EnvaseVista[])
+      : [cylinders as EnvaseVista];
     await this.fotos.firmar(lista, (c) => c.photoKey);
     const productos = lista.flatMap((c) =>
       c.gasCylinder ? [c.gasCylinder] : [],

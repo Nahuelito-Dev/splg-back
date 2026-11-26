@@ -1,10 +1,12 @@
-import { Cylinder } from './entities/cylinder.entity';
-import { CylinderMovement } from './entities/cylinder-movement.entity';
+import type {
+  EnvaseVista,
+  MovimientoVista,
+  RevisionVista,
+} from './domain/ports/cylinder-query.port';
 import {
   CylinderMovementResponseDto,
   CylinderResponseDto,
 } from './dto/cylinder-response.dto';
-import { CylinderInspection } from './entities/cylinder-inspection.entity';
 import {
   CylinderInspectionResponseDto,
   CylinderVencimientoDto,
@@ -18,7 +20,7 @@ import type {
 } from './cylinder-vigencia.service';
 
 export class CylinderMapper {
-  static toDto(c: Cylinder): CylinderResponseDto {
+  static toDto(c: EnvaseVista): CylinderResponseDto {
     const dto = new CylinderResponseDto();
     dto.cylinder_id = c.cylinderId;
     dto.distributor_id = c.distributorId;
@@ -53,7 +55,7 @@ export class CylinderMapper {
     return dto;
   }
 
-  static movimientoToDto(m: CylinderMovement): CylinderMovementResponseDto {
+  static movimientoToDto(m: MovimientoVista): CylinderMovementResponseDto {
     const dto = new CylinderMovementResponseDto();
     dto.movement_id = m.movementId;
     dto.cylinder_id = m.cylinderId;
@@ -67,7 +69,7 @@ export class CylinderMapper {
     return dto;
   }
 
-  static inspectionToDto(i: CylinderInspection): CylinderInspectionResponseDto {
+  static inspectionToDto(i: RevisionVista): CylinderInspectionResponseDto {
     const dto = new CylinderInspectionResponseDto();
     dto.inspectionId = i.inspectionId;
     dto.cylinderId = i.cylinderId;

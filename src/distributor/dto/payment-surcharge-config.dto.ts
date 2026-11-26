@@ -1,6 +1,5 @@
-import { ApiHideProperty, ApiProperty } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import { IsNumber, Max, Min } from 'class-validator';
-import { RechazarRecargoDeTransferenciaEnDto } from '../../order/domain/medio-de-pago-aceptado';
 import {
   SURCHARGE_PERCENTAGE_MAX,
   SURCHARGE_PERCENTAGE_MIN,
@@ -11,14 +10,9 @@ const RANGO = `${SURCHARGE_PERCENTAGE_MIN} a ${SURCHARGE_PERCENTAGE_MAX} %, hast
 /**
  * Cuerpo de `PUT /v2/payment-surcharges`: reemplaza la configuración, así que
  * `mercadoPagoPercentage` y `cashPercentage` son obligatorios (omitir uno o
- * mandar `null` es 400). `transferPercentage` ya no se admite: mandarlo es 400.
+ * mandar `null` es 400).
  */
 export class PaymentSurchargeConfigDto {
-  /** Fuera del contrato de entrada: si llega, 400 `PAYMENT_METHOD_NOT_ACCEPTED`. */
-  @ApiHideProperty()
-  @RechazarRecargoDeTransferenciaEnDto()
-  transferPercentage?: number;
-
   @ApiProperty({
     description: `Recargo por Mercado Pago, en % (${RANGO}). Obligatorio. Valor por omisión del sistema: 10`,
     example: 10,
@@ -40,13 +34,6 @@ export class PaymentSurchargeConfigDto {
 
 /** Respuesta de `GET`/`PUT /v2/payment-surcharges`. */
 export class PaymentSurchargeConfigResponseDto {
-  @ApiProperty({
-    example: 10,
-    deprecated: true,
-    description:
-      'Sin uso: la transferencia ya no se acepta. Se conserva lo guardado y los pedidos viejos que la tienen',
-  })
-  transferPercentage!: number;
   @ApiProperty({ example: 10 }) mercadoPagoPercentage!: number;
   @ApiProperty({ example: 0 }) cashPercentage!: number;
 

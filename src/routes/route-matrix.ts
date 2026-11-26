@@ -3,7 +3,7 @@ import {
   VELOCIDAD_MEDIA_KMH,
 } from '../route-batch/domain/route-planning';
 import { PuntoDeRuta } from './polyline';
-import { RouteMatrix } from './route-matrix.port';
+import { DurationsToDestination, RouteMatrix } from './route-matrix.port';
 import { distanciaEnMetros } from './routes.service';
 
 /**
@@ -35,4 +35,15 @@ export function haversineMatrix(points: readonly PuntoDeRuta[]): RouteMatrix {
     }
   }
   return { km, minutes, source: 'haversine' };
+}
+
+/** Respaldo de N orígenes a un destino: la línea recta de cada uno. */
+export function haversineDurationsTo(
+  origins: readonly PuntoDeRuta[],
+  destination: PuntoDeRuta,
+): DurationsToDestination {
+  return {
+    minutes: origins.map((o) => haversinePair(o, destination).minutes),
+    source: 'haversine',
+  };
 }

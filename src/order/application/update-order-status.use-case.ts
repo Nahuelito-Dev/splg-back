@@ -16,6 +16,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource, EntityManager, In, QueryRunner } from 'typeorm';
 
 import {
+  AssignmentMethod,
   Order,
   OrderDeliveryMode,
   OrderStatus,
@@ -933,6 +934,7 @@ export class UpdateOrderStatusUseCase {
           // ConfirmDeliveryV3UseCase). Ya queda listo para cuando el pedido
           // pase a ON_THE_WAY.
           order.deliveryCode = generateDeliveryCode();
+          order.assignmentMethod = AssignmentMethod.AUTOMATIC;
 
           // La oferta de despacho se cierra como ACCEPTED después del commit
           // (el offer.driver_id es el user_id, el mismo que usa el GEO/WS).
@@ -1110,6 +1112,7 @@ export class UpdateOrderStatusUseCase {
           monto,
           salida: claveDeSalida(order.deliveryId, filas[0]?.intentos),
         },
+        order.distributorId,
       );
     } catch (error) {
       this.logger.warn(
@@ -1126,6 +1129,9 @@ export class UpdateOrderStatusUseCase {
       await this.notificationService.sendOrderConfirmation(
         order.customerId,
         order.orderId,
+        undefined,
+        undefined,
+        order.distributorId,
       );
     } catch (error) {
       // Errores de notificación no rompen la actualización del pedido.

@@ -6,6 +6,7 @@ import {
   CompraEntregadaRef,
   OrderLookupService,
 } from '../order/lookup/order-lookup.service';
+import { RepurchaseOffsetService } from './repurchase-offset.service';
 import { RepurchaseEstimateSource } from './domain/estimacion-de-recompra';
 import {
   ParametrosDeRecompra,
@@ -60,9 +61,11 @@ describe('RepurchaseEstimatorService', () => {
   let processConfig: { obtener: jest.Mock };
   let pedidos: { comprasEntregadas: jest.Mock };
   let customers: { fichasDeRecompra: jest.Mock };
+  let offsets: { deClientes: jest.Mock };
   let service: RepurchaseEstimatorService;
 
   beforeEach(() => {
+    offsets = { deClientes: jest.fn().mockResolvedValue(new Map()) };
     processConfig = { obtener: jest.fn() };
     pedidos = { comprasEntregadas: jest.fn().mockResolvedValue([]) };
     customers = { fichasDeRecompra: jest.fn().mockResolvedValue([]) };
@@ -70,6 +73,7 @@ describe('RepurchaseEstimatorService', () => {
       processConfig as unknown as ProcessConfigService,
       pedidos as unknown as OrderLookupService,
       customers as unknown as CustomersService,
+      offsets as unknown as RepurchaseOffsetService,
     );
   });
 
@@ -153,6 +157,41 @@ describe('RepurchaseEstimatorService', () => {
         'mismo-dia-b',
         'tarde',
       ]);
+    });
+  });
+
+  describe('ajuste por cliente (M3a)', () => {
+    const declarado = (userId: string) =>
+      ficha(userId, { avgMonthlyConsumptionKg: 30 });
+
+    it('con consumo declarado, corre la fecha los días de su ajuste', async () => {
+      pedidos.comprasEntregadas.mockResolvedValue([compra('u1', 2)]);
+      customers.fichasDeRecompra.mockResolvedValue([declarado('u1')]);
+      const [sin] = await service.estimar('d1', AHORA, PARAMS);
+      offsets.deClientes.mockResolvedValue(new Map([['u1', 4]]));
+      const [con] = await service.estimar('d1', AHORA, PARAMS);
+      expect(sin.offsetDays).toBe(0);
+      expect(con.offsetDays).toBe(4);
+      expect(
+        con.estimate.estimatedAt.getTime() - sin.estimate.estimatedAt.getTime(),
+      ).toBe(4 * DIA);
+      expect(offsets.deClientes).toHaveBeenCalledWith('d1', ['u1']);
+    });
+
+    it('con historia suficiente la estimación no cambia', async () => {
+      pedidos.comprasEntregadas.mockResolvedValue([
+        compra('u1', 19),
+        compra('u1', 15),
+        compra('u1', 11),
+        compra('u1', 7),
+        compra('u1', 3),
+      ]);
+      customers.fichasDeRecompra.mockResolvedValue([ficha('u1')]);
+      const [sin] = await service.estimar('d1', AHORA, PARAMS);
+      offsets.deClientes.mockResolvedValue(new Map([['u1', 9]]));
+      const [con] = await service.estimar('d1', AHORA, PARAMS);
+      expect(con.offsetDays).toBe(0);
+      expect(con.estimate.estimatedAt).toEqual(sin.estimate.estimatedAt);
     });
   });
 

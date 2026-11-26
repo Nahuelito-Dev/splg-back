@@ -851,6 +851,7 @@ export class CreateOrderUseCase {
         orderId,
         dto.notificationToken,
         desgloseDelPedido(order),
+        order.distributorId,
       );
     } catch (error) {
       // Best-effort: errores de notificación no rompen la creación del pedido.

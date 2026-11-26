@@ -4,9 +4,12 @@ import {
   Injectable,
   NestInterceptor,
 } from '@nestjs/common';
-import type { Request } from 'express';
 import { Observable } from 'rxjs';
 import { auditContext } from './audit-context';
+import {
+  esGraphql,
+  requestDelContexto,
+} from '../../common/contexto/request-del-contexto';
 
 /**
  * Abre el contexto de auditoría de datos para el handler. Corre después de los
@@ -17,8 +20,12 @@ import { auditContext } from './audit-context';
 @Injectable()
 export class AuditContextInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    if (context.getType() !== 'http') return next.handle();
-    const request = context.switchToHttp().getRequest<Request>();
+    // GraphQL también: el modo soporte abre en sólo lectura toda transacción
+    // del request (segunda capa), sea REST o un resolver.
+    if (context.getType() !== 'http' && !esGraphql(context)) {
+      return next.handle();
+    }
+    const request = requestDelContexto(context);
     const ip: unknown = request.ip;
     const store = {
       userId: request.user?.user_id ?? null,

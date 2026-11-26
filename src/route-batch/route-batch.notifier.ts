@@ -49,15 +49,23 @@ export class RouteBatchNotifier {
     if (!delivery.notificationToken) return;
     const token = delivery.notificationToken;
     try {
-      await this.fcm.sendToToken(token, {
-        notification: {
-          title: 'Recorrido para vos',
-          body: `${oferta.stopCount} entregas agrupadas (${oferta.totalWeightKg} kg). Abrí la app para aceptarlo.`,
+      await this.fcm.sendToToken(
+        token,
+        {
+          notification: {
+            title: 'Recorrido para vos',
+            body: `${oferta.stopCount} entregas agrupadas (${oferta.totalWeightKg} kg). Abrí la app para aceptarlo.`,
+          },
+          data: { type: 'ROUTE_BATCH_OFFER', batchId: oferta.batchId },
+          android: { priority: 'high' },
+          apns: { headers: { 'apns-priority': '10' } },
         },
-        data: { type: 'ROUTE_BATCH_OFFER', batchId: oferta.batchId },
-        android: { priority: 'high' },
-        apns: { headers: { 'apns-priority': '10' } },
-      });
+        {
+          type: 'ROUTE_BATCH_OFFER',
+          distributorId: delivery.distributorId,
+          recipientUserId: delivery.userId,
+        },
+      );
     } catch (error) {
       this.logger.warn(
         `No se pudo enviar el push del lote ${oferta.batchId}: ${errorMessage(error)}`,

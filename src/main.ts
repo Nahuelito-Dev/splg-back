@@ -10,12 +10,13 @@ import { montarDocumentacion } from './common/config/documentacion';
 import { crearValidationPipe } from './common/validation/validation-pipe';
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { montarCabecerasDeSeguridad } from './common/config/cabeceras-de-seguridad';
 import { origenesPermitidos } from './common/config/cors-origins';
 import { RedisIoAdapter } from './adapters/redis-io.adapter';
 import { LoggerConTraza } from './common/traza/logger-con-traza';
 
 import morgan from 'morgan';
-import { cuerpoParaLog } from './common/utils/cuerpo-para-log';
+import { cuerpoParaLog, urlParaLog } from './common/utils/cuerpo-para-log';
 import type { Request, Response } from 'express';
 
 async function bootstrap() {
@@ -67,6 +68,9 @@ async function bootstrap() {
   // demás pueda leer req.requestId / req.startTime.
   app.use(requestIdMiddleware);
 
+  // Cabeceras de seguridad (helmet), antes de cualquier ruta.
+  montarCabecerasDeSeguridad(app);
+
   // Exception filter global: loguea toda excepción no manejada con su
   // request-id y delega en el formateo default de Nest (mismo shape de
   // respuesta de siempre). Se instancia así (no como APP_FILTER) porque
@@ -116,6 +120,9 @@ async function bootstrap() {
   });
 
   morgan.token<Request, Response>('body', (req) => cuerpoParaLog(req.body));
+  morgan.token<Request, Response>('url-segura', (req) =>
+    urlParaLog(req.originalUrl ?? req.url),
+  );
 
   morgan.token('date', () => {
     return new Date().toLocaleString('es-AR', {
@@ -130,7 +137,7 @@ async function bootstrap() {
 
   app.use(
     morgan(
-      ':date [:reqId] :method :url :status :res[content-length] - :response-time ms :body',
+      ':date [:reqId] :method :url-segura :status :res[content-length] - :response-time ms :body',
     ),
   );
 

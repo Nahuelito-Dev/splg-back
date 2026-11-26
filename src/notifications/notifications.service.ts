@@ -51,7 +51,9 @@ export class NotificationsService {
         },
       };
 
-      const response = await this.fcm.sendToToken(token, message);
+      const response = await this.fcm.sendToToken(token, message, {
+        type: 'TEST',
+      });
       this.logger.log(`Test notification sent: ${response}`);
       return { success: true, messageId: response };
     } catch (error) {
@@ -86,7 +88,13 @@ export class NotificationsService {
     if (!cliente.esCliente) {
       throw new NotFoundException('Cliente no encontrado');
     }
-    return this.sendOrderConfirmation(customerId, orderId, token);
+    return this.sendOrderConfirmation(
+      customerId,
+      orderId,
+      token,
+      undefined,
+      distributorId,
+    );
   }
 
   async sendOrderConfirmation(
@@ -94,6 +102,7 @@ export class NotificationsService {
     orderId: string,
     token?: string,
     efectivo?: DesgloseDelEfectivo | null,
+    distributorId?: string | null,
   ): Promise<ResultadoDeEnvioDto> {
     try {
       const cliente =
@@ -128,7 +137,12 @@ export class NotificationsService {
         },
       };
 
-      const response = await this.fcm.sendToToken(notificationToken, message);
+      const response = await this.fcm.sendToToken(notificationToken, message, {
+        type: 'ORDER_CONFIRMATION',
+        orderId,
+        recipientUserId: customerId,
+        distributorId,
+      });
       this.logger.log(`Order confirmation sent for order: ${orderId}`);
       return { success: true, messageId: response };
     } catch (error) {
@@ -172,7 +186,12 @@ export class NotificationsService {
         },
       };
 
-      const response = await this.fcm.sendToToken(token, message);
+      const response = await this.fcm.sendToToken(token, message, {
+        type: 'ORDER_STATUS_UPDATE',
+        orderId: order.orderId,
+        recipientUserId: customer.userId,
+        distributorId: order.distributorId,
+      });
       this.logger.log(`Order status update sent for order: ${order.orderId}`);
       return { success: true, messageId: response };
     } catch (error) {
@@ -204,29 +223,39 @@ export class NotificationsService {
     driverUserId: string,
     orderId: string,
     cashToCollect?: number | null,
+    distributorId?: string | null,
   ): Promise<void> {
     try {
       const token =
         await this.deliveryService.findNotificationToken(driverUserId);
       if (!token) return;
 
-      await this.fcm.sendToToken(token, {
-        notification: {
-          title: '¡Nuevo pedido disponible!',
-          body:
-            'Tenés una oferta de entrega. Abrí la app para aceptarla.' +
-            (cashToCollect
-              ? ` Se cobra en efectivo: ${montoEnPesos(cashToCollect)}.`
-              : ''),
+      await this.fcm.sendToToken(
+        token,
+        {
+          notification: {
+            title: '¡Nuevo pedido disponible!',
+            body:
+              'Tenés una oferta de entrega. Abrí la app para aceptarla.' +
+              (cashToCollect
+                ? ` Se cobra en efectivo: ${montoEnPesos(cashToCollect)}.`
+                : ''),
+          },
+          data: {
+            event: 'NEW_ORDER',
+            orderId,
+            ...(cashToCollect ? { cashToCollect: String(cashToCollect) } : {}),
+          },
+          android: { priority: 'high' },
+          apns: { headers: { 'apns-priority': '10' } },
         },
-        data: {
-          event: 'NEW_ORDER',
+        {
+          type: 'NEW_ORDER',
           orderId,
-          ...(cashToCollect ? { cashToCollect: String(cashToCollect) } : {}),
+          recipientUserId: driverUserId,
+          distributorId,
         },
-        android: { priority: 'high' },
-        apns: { headers: { 'apns-priority': '10' } },
-      });
+      );
       this.logger.log(
         `Push de oferta enviado al chofer ${driverUserId} (pedido ${orderId})`,
       );
@@ -252,21 +281,31 @@ export class NotificationsService {
     customerUserId: string,
     orderId: string,
     driverName: string,
+    distributorId?: string | null,
   ): Promise<'sent' | 'no_token' | 'failed'> {
     try {
       const { token } =
         await this.customersService.findNotificationToken(customerUserId);
       if (!token) return 'no_token';
 
-      const messageId = await this.fcm.sendToToken(token, {
-        notification: {
-          title: '¡Tu pedido llegó!',
-          body: `${driverName} está en la puerta.`,
+      const messageId = await this.fcm.sendToToken(
+        token,
+        {
+          notification: {
+            title: '¡Tu pedido llegó!',
+            body: `${driverName} está en la puerta.`,
+          },
+          data: { event: 'ORDER_ARRIVED', orderId },
+          android: { priority: 'high' },
+          apns: { headers: { 'apns-priority': '10' } },
         },
-        data: { event: 'ORDER_ARRIVED', orderId },
-        android: { priority: 'high' },
-        apns: { headers: { 'apns-priority': '10' } },
-      });
+        {
+          type: 'ORDER_ARRIVED',
+          orderId,
+          recipientUserId: customerUserId,
+          distributorId,
+        },
+      );
       if (!messageId) {
         this.logger.warn(
           `Push de llegada al cliente ${customerUserId} sin confirmar (pedido ${orderId})`,
@@ -325,6 +364,7 @@ export class NotificationsService {
     customerUserId: string,
     orderId: string,
     efectivo: EfectivoDeSalida,
+    distributorId?: string | null,
   ): Promise<'sent' | 'duplicate' | 'no_token' | 'failed'> {
     const { enviar, clave } = await this.reservarAvisoDeEfectivo(
       orderId,
@@ -338,15 +378,24 @@ export class NotificationsService {
       if (!token) {
         resultado = 'no_token';
       } else {
-        const messageId = await this.fcm.sendToToken(token, {
-          notification: {
-            title: 'Tené listo el efectivo',
-            body: textoDelEfectivoAlSalir(efectivo.monto),
+        const messageId = await this.fcm.sendToToken(
+          token,
+          {
+            notification: {
+              title: 'Tené listo el efectivo',
+              body: textoDelEfectivoAlSalir(efectivo.monto),
+            },
+            data: { event: 'CASH_READY', orderId },
+            android: { priority: 'high' },
+            apns: { headers: { 'apns-priority': '10' } },
           },
-          data: { event: 'CASH_READY', orderId },
-          android: { priority: 'high' },
-          apns: { headers: { 'apns-priority': '10' } },
-        });
+          {
+            type: 'CASH_READY',
+            orderId,
+            recipientUserId: customerUserId,
+            distributorId,
+          },
+        );
         resultado = messageId ? 'sent' : 'failed';
       }
     } catch (error) {
@@ -366,6 +415,7 @@ export class NotificationsService {
     customerUserId: string,
     orderId: string,
     esSena = false,
+    distributorId?: string | null,
   ): Promise<void> {
     try {
       const { token } =
@@ -373,21 +423,30 @@ export class NotificationsService {
       if (!token) return;
 
       const corto = orderId.substring(0, 8);
-      await this.fcm.sendToToken(token, {
-        notification: esSena
-          ? {
-              title: 'Seña recibida',
-              body: `Recibimos la seña de tu reserva #${corto}.`,
-            }
-          : {
-              title: 'Pago aprobado',
-              body: `Recibimos el pago de tu pedido #${corto}.`,
-            },
-        data: {
-          event: esSena ? 'DEPOSIT_APPROVED' : 'PAYMENT_APPROVED',
-          orderId,
+      await this.fcm.sendToToken(
+        token,
+        {
+          notification: esSena
+            ? {
+                title: 'Seña recibida',
+                body: `Recibimos la seña de tu reserva #${corto}.`,
+              }
+            : {
+                title: 'Pago aprobado',
+                body: `Recibimos el pago de tu pedido #${corto}.`,
+              },
+          data: {
+            event: esSena ? 'DEPOSIT_APPROVED' : 'PAYMENT_APPROVED',
+            orderId,
+          },
         },
-      });
+        {
+          type: esSena ? 'DEPOSIT_APPROVED' : 'PAYMENT_APPROVED',
+          orderId,
+          recipientUserId: customerUserId,
+          distributorId,
+        },
+      );
       this.logger.log(
         `Push de pago aprobado enviado al cliente ${customerUserId} (pedido ${orderId})`,
       );
@@ -408,6 +467,7 @@ export class NotificationsService {
     orderId: string,
     aviso: { title: string; body: string; event: string },
     efectivo?: EfectivoDeSalida,
+    distributorId?: string | null,
   ): Promise<void> {
     // Con efectivo a cobrar, el mismo push suma «tené listos $X» (un solo
     // aviso por parada); si ese aviso ya salió antes, sale sin el texto.
@@ -419,16 +479,25 @@ export class NotificationsService {
       const { token } =
         await this.customersService.findNotificationToken(customerUserId);
       if (!token) return;
-      const messageId = await this.fcm.sendToToken(token, {
-        notification: {
-          title: aviso.title,
-          body:
-            reserva.enviar && efectivo
-              ? `${aviso.body} ${textoDelEfectivoAlSalir(efectivo.monto)}`
-              : aviso.body,
+      const messageId = await this.fcm.sendToToken(
+        token,
+        {
+          notification: {
+            title: aviso.title,
+            body:
+              reserva.enviar && efectivo
+                ? `${aviso.body} ${textoDelEfectivoAlSalir(efectivo.monto)}`
+                : aviso.body,
+          },
+          data: { event: aviso.event, orderId },
         },
-        data: { event: aviso.event, orderId },
-      });
+        {
+          type: aviso.event,
+          orderId,
+          recipientUserId: customerUserId,
+          distributorId,
+        },
+      );
       salio = messageId !== '';
     } catch (error) {
       this.logger.warn(

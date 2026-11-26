@@ -9,6 +9,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
+import { GqlArgumentsHost, type GqlContextType } from '@nestjs/graphql';
 import {
   BadRequestDomainError,
   ConflictDomainError,
@@ -17,6 +18,7 @@ import {
   NotFoundDomainError,
 } from '../errors/domain.error';
 import { conCodigo } from '../errors/con-codigo';
+import { urlParaLog } from '../utils/cuerpo-para-log';
 import { soloLecturaDeSoporte } from '../errors/soporte';
 import {
   codigoSqlDelError,
@@ -34,6 +36,7 @@ import {
   reportarErrorDeRequest,
 } from '../sentry/reportar-a-sentry';
 import type { Request } from 'express';
+import type { ContextoGraphql } from '../contexto/request-del-contexto';
 
 /** `read_only_sql_transaction`: una escritura en una transacción de sólo lectura. */
 const TRANSACCION_DE_SOLO_LECTURA = '25006';
@@ -65,12 +68,16 @@ function conCodigoSiTiene<T extends HttpException>(
  * NO loguea el body/headers del request (podrían traer contraseñas, tokens,
  * datos de pago): solo método, path, status, request-id y el mensaje de la
  * excepción.
+ *
+ * En un resolver de GraphQL no hay respuesta HTTP que escribir: se devuelve la
+ * excepción ya traducida y Apollo la arma como error de GraphQL (ver
+ * `formatearErrorGraphql`), con el mismo texto y `code` que en REST.
  */
 @Catch()
 export class GlobalExceptionFilter extends BaseExceptionFilter {
   private readonly logger = new Logger('ExceptionFilter');
 
-  catch(exception: unknown, host: ArgumentsHost): void {
+  catch(exception: unknown, host: ArgumentsHost): HttpException | undefined {
     // Errores de DOMINIO (state machines, stock — dominio puro, sin
     // @nestjs/common, ver `common/errors/domain.error.ts`, P2-9): se convierten
     // acá a la MISMA HttpException que el código lanzaba antes de extraerlos a
@@ -81,13 +88,16 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     const original = exception;
     exception = this.mapDomainError(exception);
 
-    const ctx = host.switchToHttp();
-    const request = ctx.getRequest<Request | undefined>();
+    const graphql = host.getType<GqlContextType>() === 'graphql';
+    const request = graphql
+      ? GqlArgumentsHost.create(host).getContext<ContextoGraphql | undefined>()
+          ?.req
+      : host.switchToHttp().getRequest<Request | undefined>();
     const header = request?.headers?.['x-request-id'];
     const requestId =
       request?.requestId ?? (typeof header === 'string' ? header : '-');
     const method = request?.method ?? '-';
-    const path = request?.originalUrl ?? request?.url ?? '-';
+    const path = urlParaLog(request?.originalUrl ?? request?.url);
     const duration = request?.startTime
       ? Date.now() - request.startTime
       : undefined;
@@ -96,8 +106,13 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     // http-errors) no se loguea como 5xx. El mensaje y el stack son los originales.
     const traducida = traducirExcepcion(exception);
     const status = traducida.getStatus();
-    const message =
+    const urlCruda = request?.originalUrl ?? request?.url;
+    const textoDelError =
       exception instanceof Error ? exception.message : 'Internal server error';
+    // El 404 de Nest («Cannot GET /ruta?token=...») trae la URL cruda en el texto.
+    const message = urlCruda
+      ? textoDelError.split(urlCruda).join(path)
+      : textoDelError;
 
     const line = `[${requestId}] ${method} ${path} ${status} ${duration ?? '-'}ms — ${message}${detalle}`;
 
@@ -115,7 +130,9 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     // A Sentry sólo los 5xx, con el error original (no la traducción).
     if (esErrorParaSentry(status)) reportarErrorDeRequest(original, request);
 
+    if (graphql) return traducida;
     super.catch(traducida, host);
+    return undefined;
   }
 
   /**

@@ -8,10 +8,6 @@ import {
   Index,
   Check,
 } from 'typeorm';
-import {
-  ALIAS_BANCARIO_SQL,
-  cbuValidoSql,
-} from '../../common/utils/datos-bancarios';
 
 export enum DistributorStatus {
   ACTIVE = 'active',
@@ -29,15 +25,6 @@ export enum DistributorStatus {
  */
 @Check('CHK_distributor_cuit', `"tax_id" IS NULL OR "tax_id" ~ '^[0-9]{11}$'`)
 @Check('CHK_distributor_slug', `"slug" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`)
-@Check('CHK_distributor_cbu', cbuValidoSql('"bank_cbu"'))
-@Check(
-  'CHK_distributor_alias',
-  `"bank_alias" IS NULL OR "bank_alias" ~ '${ALIAS_BANCARIO_SQL}'`,
-)
-@Check(
-  'CHK_distributor_titular',
-  `"bank_holder" IS NULL OR char_length(btrim("bank_holder")) >= 2`,
-)
 @Entity('distributor')
 export class Distributor {
   @PrimaryGeneratedColumn('uuid', { name: 'distributor_id' })
@@ -74,16 +61,34 @@ export class Distributor {
   @Column({ type: 'varchar', nullable: true })
   phone!: string | null;
 
-  /** CBU (22 dígitos) para cobrar por transferencia. */
-  @Column({ name: 'bank_cbu', type: 'varchar', length: 22, nullable: true })
+  /** Sin uso desde que se retiró la transferencia; se conserva por borrado lógico. */
+  @Column({
+    name: 'bank_cbu',
+    type: 'varchar',
+    length: 22,
+    nullable: true,
+    select: false,
+  })
   bankCbu!: string | null;
 
-  /** Alias bancario (6 a 20: letras, números, punto y guion). */
-  @Column({ name: 'bank_alias', type: 'varchar', length: 20, nullable: true })
+  /** Sin uso desde que se retiró la transferencia; se conserva por borrado lógico. */
+  @Column({
+    name: 'bank_alias',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+    select: false,
+  })
   bankAlias!: string | null;
 
-  /** Titular de la cuenta. */
-  @Column({ name: 'bank_holder', type: 'varchar', length: 120, nullable: true })
+  /** Sin uso desde que se retiró la transferencia; se conserva por borrado lógico. */
+  @Column({
+    name: 'bank_holder',
+    type: 'varchar',
+    length: 120,
+    nullable: true,
+    select: false,
+  })
   bankHolder!: string | null;
 
   @Column({

@@ -52,6 +52,9 @@ export const TABLAS_EXCLUIDAS: ReadonlySet<string> = new Set([
   // que vale es el pedido que sale de ahí.
   'cart',
   'cart_item',
+  // Registro de avisos enviados (push y correo): una fila por envío, alto volumen y
+  // sólo de agregar; es en sí el registro del hecho y no tiene ediciones que auditar.
+  'notification_log',
   // Lectura por persona de las conversaciones (mensajería, §6.4): cambia con
   // cada lectura, igual que la lectura de los avisos.
   'conversation_read_state',

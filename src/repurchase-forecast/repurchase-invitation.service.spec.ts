@@ -102,6 +102,8 @@ describe('RepurchaseInvitationService', () => {
       estimateSource: RepurchaseEstimateSource.HISTORY,
       suggestedItems: [{ gasCylinderId: 'g', quantity: 1 }],
       expiresAt: AHORA,
+      offsetDays: 0,
+      notifyAt: AHORA,
     };
 
     it('guarda la invitación', async () => {
@@ -259,6 +261,70 @@ describe('RepurchaseInvitationService', () => {
 
       await expect(intento).rejects.toThrow(ConflictException);
       await expect(intento).rejects.toThrow(texto);
+    });
+  });
+
+  describe('aviso en la franja (M3b)', () => {
+    it('reclamarAviso: una sentencia condicionada a abierta, sin avisar, con la hora cumplida y vigente', async () => {
+      const { qb, llamadas } = fakeQb({ execute: { affected: 1 } });
+      repo.createQueryBuilder.mockReturnValue(qb);
+      expect(await service.reclamarAviso('i1', AHORA)).toBe(true);
+      expect(llamadas).toContainEqual(['set', [{ notifiedAt: AHORA }]]);
+      expect(llamadas).toContainEqual([
+        'andWhere',
+        ['status = :abierta', { abierta: Estado.PENDING }],
+      ]);
+      expect(llamadas).toContainEqual(['andWhere', ['notified_at IS NULL']]);
+      expect(llamadas).toContainEqual([
+        'andWhere',
+        ['notify_at <= :ahora AND expires_at > :ahora', { ahora: AHORA }],
+      ]);
+    });
+
+    it('reclamarAviso: si otra ya la reclamó (o no está en hora) devuelve false', async () => {
+      const { qb } = fakeQb({ execute: { affected: 0 } });
+      repo.createQueryBuilder.mockReturnValue(qb);
+      expect(await service.reclamarAviso('i1', AHORA)).toBe(false);
+    });
+
+    it('paraAvisar: abiertas, sin avisar, en hora y vigentes', async () => {
+      repo.find.mockResolvedValue([invitacion()]);
+      await service.paraAvisar(AHORA, 'd1');
+      const [consulta] = repo.find.mock.calls[0] as [
+        { where: Record<string, unknown> },
+      ];
+      expect(consulta.where).toMatchObject({
+        status: Estado.PENDING,
+        distributorId: 'd1',
+      });
+      expect(Object.keys(consulta.where)).toEqual(
+        expect.arrayContaining(['notifiedAt', 'notifyAt', 'expiresAt']),
+      );
+    });
+
+    it('erroresDelCliente: error de cada invitación medida contra su fecha base', async () => {
+      const dia = 86_400_000;
+      repo.query.mockResolvedValue([
+        // Predicha +3 días con un ajuste de +2: la base era +1; compró en +4: error 3.
+        {
+          predicha: new Date(AHORA.getTime() + 3 * dia),
+          offset_days: 2,
+          real: new Date(AHORA.getTime() + 4 * dia),
+        },
+        // Sin compra posterior: no cuenta.
+        { predicha: AHORA, offset_days: 0, real: null },
+        // Sin ajuste: compró 2 días antes.
+        {
+          predicha: new Date(AHORA.getTime() + 5 * dia),
+          offset_days: 0,
+          real: new Date(AHORA.getTime() + 3 * dia),
+        },
+      ]);
+      expect(await service.erroresDelCliente('d1', 'u1')).toEqual([3, -2]);
+      const [sql, params] = repo.query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('inv."distributor_id" = $1');
+      expect(sql).toContain('inv."user_id" = $2');
+      expect(params.slice(0, 2)).toEqual(['d1', 'u1']);
     });
   });
 

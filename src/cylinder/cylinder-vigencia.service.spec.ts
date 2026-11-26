@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { CylinderVigenciaService } from './cylinder-vigencia.service';
+import { armarEnvases } from './cylinder-test-kit';
 import { Cylinder, CylinderState } from './entities/cylinder.entity';
 import {
   CylinderInspection,
@@ -86,13 +87,15 @@ describe('CylinderVigenciaService', () => {
       skip: jest.fn().mockReturnThis(),
       getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
     };
+    const save = jest.fn((e: unknown) => {
+      saved.push(e);
+      return Promise.resolve(e);
+    });
     const manager = {
       createQueryBuilder: jest.fn(() => lockQb),
       create: jest.fn((_: unknown, e: unknown) => e),
-      save: jest.fn((e: unknown) => {
-        saved.push(e);
-        return Promise.resolve(e);
-      }),
+      save,
+      getRepository: jest.fn(() => ({ create: (e: unknown) => e, save })),
     };
     cylinders = {
       findOne: jest.fn(),
@@ -104,10 +107,17 @@ describe('CylinderVigenciaService', () => {
     inspections = { find: jest.fn().mockResolvedValue([]) };
     cylinders.findOne.mockResolvedValue(makeCylinder());
 
-    service = new CylinderVigenciaService(
-      cylinders as unknown as Repository<Cylinder>,
-      inspections as unknown as Repository<CylinderInspection>,
-    );
+    // El servicio con sus casos de uso y sus adaptadores TypeORM reales.
+    ({ vigencia: service } = armarEnvases({
+      cylinders: cylinders as unknown as Repository<Cylinder>,
+      movements: {} as never,
+      inspections: inspections as unknown as Repository<CylinderInspection>,
+      orders: {} as never,
+      gasCylinders: {} as never,
+      eventos: {} as never,
+      deliveries: {} as never,
+      cuentaDeEnvases: {} as never,
+    }));
   });
 
   describe('registerInspection (CU-132)', () => {

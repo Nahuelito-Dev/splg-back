@@ -581,6 +581,22 @@
       "orderColumn": null
     },
     {
+      "table": "customer_recovery_score",
+      "entity": "CustomerRecoveryScore",
+      "pk": [
+        "score_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "cylinder",
       "entity": "Cylinder",
       "pk": [
@@ -1254,6 +1270,22 @@
       "orderColumn": null
     },
     {
+      "table": "order_failed_visit",
+      "entity": "OrderFailedVisit",
+      "pk": [
+        "failed_visit_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "order_item",
       "entity": "OrderItem",
       "pk": [
@@ -1447,6 +1479,23 @@
       "orderColumn": null
     },
     {
+      "table": "repurchase_offset",
+      "entity": "RepurchaseOffset",
+      "pk": [
+        "user_id",
+        "distributor_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "role",
       "entity": "Role",
       "pk": [
@@ -1517,6 +1566,22 @@
         "holiday_id"
       ],
       "deleteColumn": "deletedAt",
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "route_service_time_stat",
+      "entity": "RouteServiceTimeStat",
+      "pk": [
+        "stat_id"
+      ],
+      "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
       "parentTable": null,
@@ -4674,6 +4739,70 @@
       "position": 4
     },
     {
+      "table": "customer_recovery_score",
+      "column": "score_id",
+      "property": "scoreId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "customer_recovery_score",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "customer_recovery_score",
+      "column": "customer_user_id",
+      "property": "customerUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "customer_recovery_score",
+      "column": "delayed_cases",
+      "property": "delayedCases",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "customer_recovery_score",
+      "column": "orders_total",
+      "property": "ordersTotal",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "customer_recovery_score",
+      "column": "score",
+      "property": "score",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "customer_recovery_score",
+      "column": "band",
+      "property": "band",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "customer_recovery_score",
+      "column": "updated_at",
+      "property": "updatedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 7
+    },
+    {
       "table": "cylinder",
       "column": "cylinder_id",
       "property": "cylinderId",
@@ -4979,11 +5108,19 @@
     },
     {
       "table": "cylinder_recovery_notice",
+      "column": "route_batch_id",
+      "property": "routeBatchId",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "cylinder_recovery_notice",
       "column": "responded_at",
       "property": "respondedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 6
+      "position": 7
     },
     {
       "table": "cylinder_recovery_notice",
@@ -4991,7 +5128,7 @@
       "property": "responseNote",
       "secret": false,
       "kind": "text",
-      "position": 7
+      "position": 8
     },
     {
       "table": "cylinder_recovery_notice",
@@ -4999,7 +5136,7 @@
       "property": "expiresAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 8
+      "position": 9
     },
     {
       "table": "delivery",
@@ -9035,11 +9172,43 @@
     },
     {
       "table": "order",
+      "column": "failed_visit_count",
+      "property": "failedVisitCount",
+      "secret": false,
+      "kind": "text",
+      "position": 41
+    },
+    {
+      "table": "order",
+      "column": "revisit_status",
+      "property": "revisitStatus",
+      "secret": false,
+      "kind": "text",
+      "position": 42
+    },
+    {
+      "table": "order",
+      "column": "assignment_method",
+      "property": "assignmentMethod",
+      "secret": false,
+      "kind": "text",
+      "position": 43
+    },
+    {
+      "table": "order",
+      "column": "last_failed_visit_at",
+      "property": "lastFailedVisitAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 44
+    },
+    {
+      "table": "order",
       "column": "delivery_mode",
       "property": "deliveryMode",
       "secret": false,
       "kind": "text",
-      "position": 41
+      "position": 45
     },
     {
       "table": "order",
@@ -9047,7 +9216,7 @@
       "property": "expressSurchargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 42
+      "position": 46
     },
     {
       "table": "order",
@@ -9055,7 +9224,7 @@
       "property": "containerChargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 43
+      "position": 47
     },
     {
       "table": "order",
@@ -9063,7 +9232,7 @@
       "property": "expressDegradedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 44
+      "position": 48
     },
     {
       "table": "order",
@@ -9071,7 +9240,7 @@
       "property": "coverageZoneId",
       "secret": false,
       "kind": "text",
-      "position": 45
+      "position": 49
     },
     {
       "table": "order",
@@ -9079,7 +9248,7 @@
       "property": "zoneName",
       "secret": false,
       "kind": "text",
-      "position": 46
+      "position": 50
     },
     {
       "table": "order",
@@ -9087,7 +9256,7 @@
       "property": "zoneSurchargeType",
       "secret": false,
       "kind": "text",
-      "position": 47
+      "position": 51
     },
     {
       "table": "order",
@@ -9095,7 +9264,7 @@
       "property": "zoneSurchargeValue",
       "secret": false,
       "kind": "text",
-      "position": 48
+      "position": 52
     },
     {
       "table": "order",
@@ -9103,7 +9272,7 @@
       "property": "zoneSurchargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 49
+      "position": 53
     },
     {
       "table": "order",
@@ -9111,7 +9280,7 @@
       "property": "paymentSurchargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 50
+      "position": 54
     },
     {
       "table": "order",
@@ -9119,7 +9288,7 @@
       "property": "paymentSurchargePercentage",
       "secret": false,
       "kind": "text",
-      "position": 51
+      "position": 55
     },
     {
       "table": "order",
@@ -9127,7 +9296,7 @@
       "property": "subtotalItems",
       "secret": false,
       "kind": "text",
-      "position": 52
+      "position": 56
     },
     {
       "table": "order",
@@ -9135,7 +9304,7 @@
       "property": "vehicleCarId",
       "secret": false,
       "kind": "text",
-      "position": 53
+      "position": 57
     },
     {
       "table": "order",
@@ -9143,7 +9312,7 @@
       "property": "vehiclePatent",
       "secret": false,
       "kind": "text",
-      "position": 54
+      "position": 58
     },
     {
       "table": "order",
@@ -9151,7 +9320,7 @@
       "property": "vehicleBrand",
       "secret": false,
       "kind": "text",
-      "position": 55
+      "position": 59
     },
     {
       "table": "order",
@@ -9159,7 +9328,7 @@
       "property": "vehicleModel",
       "secret": false,
       "kind": "text",
-      "position": 56
+      "position": 60
     },
     {
       "table": "order_address_change",
@@ -9208,6 +9377,198 @@
       "secret": false,
       "kind": "text",
       "position": 5
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "failed_visit_id",
+      "property": "failedVisitId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "order_id",
+      "property": "orderId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "visit_number",
+      "property": "visitNumber",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "delivery_kind",
+      "property": "deliveryKind",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "reason",
+      "property": "reason",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "note",
+      "property": "note",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "point",
+      "property": "point",
+      "secret": false,
+      "kind": "geo",
+      "position": 7
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "accuracy_m",
+      "property": "accuracyM",
+      "secret": false,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "distance_m",
+      "property": "distanceM",
+      "secret": false,
+      "kind": "text",
+      "position": 9
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "out_of_range",
+      "property": "outOfRange",
+      "secret": false,
+      "kind": "text",
+      "position": 10
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "reported_by_user_id",
+      "property": "reportedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 11
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "reported_by_role",
+      "property": "reportedByRole",
+      "secret": false,
+      "kind": "text",
+      "position": 12
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "delivery_id",
+      "property": "deliveryId",
+      "secret": false,
+      "kind": "text",
+      "position": 13
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "failed_at",
+      "property": "failedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 14
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "outcome",
+      "property": "outcome",
+      "secret": false,
+      "kind": "text",
+      "position": 15
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "agreed_with_customer",
+      "property": "agreedWithCustomer",
+      "secret": false,
+      "kind": "text",
+      "position": 16
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "proposed_date",
+      "property": "proposedDate",
+      "secret": false,
+      "kind": "text",
+      "position": 17
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "proposed_time_slot_id",
+      "property": "proposedTimeSlotId",
+      "secret": false,
+      "kind": "text",
+      "position": 18
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "resolution",
+      "property": "resolution",
+      "secret": false,
+      "kind": "text",
+      "position": 19
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "resolved_at",
+      "property": "resolvedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 20
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "resolved_by_user_id",
+      "property": "resolvedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 21
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "final_date",
+      "property": "finalDate",
+      "secret": false,
+      "kind": "text",
+      "position": 22
+    },
+    {
+      "table": "order_failed_visit",
+      "column": "final_time_slot_id",
+      "property": "finalTimeSlotId",
+      "secret": false,
+      "kind": "text",
+      "position": 23
     },
     {
       "table": "order_item",
@@ -10339,11 +10700,35 @@
     },
     {
       "table": "repurchase_invitation",
+      "column": "offset_days",
+      "property": "offsetDays",
+      "secret": false,
+      "kind": "text",
+      "position": 10
+    },
+    {
+      "table": "repurchase_invitation",
+      "column": "notify_at",
+      "property": "notifyAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 11
+    },
+    {
+      "table": "repurchase_invitation",
+      "column": "notified_at",
+      "property": "notifiedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 12
+    },
+    {
+      "table": "repurchase_invitation",
       "column": "suggested_items",
       "property": "suggestedItems",
       "secret": false,
       "kind": "json",
-      "position": 10
+      "position": 13
     },
     {
       "table": "repurchase_invitation",
@@ -10351,7 +10736,7 @@
       "property": "status",
       "secret": false,
       "kind": "text",
-      "position": 11
+      "position": 14
     },
     {
       "table": "repurchase_invitation",
@@ -10359,7 +10744,7 @@
       "property": "expiresAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 12
+      "position": 15
     },
     {
       "table": "repurchase_invitation",
@@ -10367,7 +10752,7 @@
       "property": "respondedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 13
+      "position": 16
     },
     {
       "table": "repurchase_invitation",
@@ -10375,7 +10760,47 @@
       "property": "orderId",
       "secret": false,
       "kind": "text",
-      "position": 14
+      "position": 17
+    },
+    {
+      "table": "repurchase_offset",
+      "column": "user_id",
+      "property": "userId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "repurchase_offset",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "repurchase_offset",
+      "column": "offset_days",
+      "property": "offsetDays",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "repurchase_offset",
+      "column": "sample_size",
+      "property": "sampleSize",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "repurchase_offset",
+      "column": "computed_at",
+      "property": "computedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 4
     },
     {
       "table": "role",
@@ -10896,6 +11321,62 @@
       "secret": false,
       "kind": "timestamp",
       "position": 4
+    },
+    {
+      "table": "route_service_time_stat",
+      "column": "stat_id",
+      "property": "statId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "route_service_time_stat",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "route_service_time_stat",
+      "column": "samples",
+      "property": "samples",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "route_service_time_stat",
+      "column": "median_min",
+      "property": "medianMin",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "route_service_time_stat",
+      "column": "p90_min",
+      "property": "p90Min",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "route_service_time_stat",
+      "column": "window_days",
+      "property": "windowDays",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "route_service_time_stat",
+      "column": "computed_at",
+      "property": "computedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 6
     },
     {
       "table": "staff_role",

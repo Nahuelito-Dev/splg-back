@@ -62,17 +62,3 @@ export const RechazarTransferenciaEnDto = () =>
     );
     return value;
   });
-
-/**
- * Validación de entrada del recargo de transferencia: la configuración ya no la
- * admite, así que mandarla (con cualquier valor) es 400 con el mismo código.
- */
-export const RechazarRecargoDeTransferenciaEnDto = () =>
-  Transform(() => {
-    throw conCodigo(
-      BadRequestException,
-      400,
-      MENSAJE_MEDIO_DE_PAGO_NO_ACEPTADO,
-      CODIGOS_DE_ERROR.PAYMENT_METHOD_NOT_ACCEPTED,
-    );
-  });

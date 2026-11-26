@@ -8,7 +8,6 @@ import type { DataSource } from 'typeorm';
 import { CashCollectionUseCase } from './cash-collection.use-case';
 import type { CashCategoryService } from '../../cash/application/cash-category.service';
 import type { CashLedgerService } from '../../cash/application/cash-ledger.service';
-import type { SalesCashService } from '../../cash/application/sales-cash.service';
 import {
   CashDirection,
   CashMethod,
@@ -39,8 +38,6 @@ describe('CashCollectionUseCase', () => {
   let exists: jest.Mock;
   let registrar: jest.Mock;
   let deSistema: jest.Mock;
-  let asentarTransferencia: jest.Mock;
-  let avisarSinAsentar: jest.Mock;
 
   const pedido = (over: Partial<Order> = {}): Order =>
     ({
@@ -74,8 +71,6 @@ describe('CashCollectionUseCase', () => {
     );
     registrar = jest.fn().mockResolvedValue({ movementId: 'mov-1' });
     deSistema = jest.fn().mockResolvedValue({ categoryId: 'cat-1' });
-    asentarTransferencia = jest.fn().mockResolvedValue('asentado');
-    avisarSinAsentar = jest.fn();
     dentro = jest.fn().mockResolvedValue('extra');
     save = jest.fn((o: Order) => Promise.resolve(o));
     getOne = jest.fn();
@@ -106,10 +101,6 @@ describe('CashCollectionUseCase', () => {
       dataSource,
       { registrar } as unknown as CashLedgerService,
       { deSistema } as unknown as CashCategoryService,
-      {
-        asentarTransferencia,
-        avisarSinAsentar,
-      } as unknown as SalesCashService,
     );
   });
 
@@ -480,7 +471,7 @@ describe('CashCollectionUseCase', () => {
       await expect(
         uc.registerCashByAdmin('ord-1', ADMIN, 'motivo largo'),
       ).rejects.toThrow(BadRequestException);
-      con(pedido({ paymentMethod: PaymentMethod.TRANSFER }));
+      con(pedido({ paymentMethod: PaymentMethod.MERCADOPAGO }));
       await expect(
         uc.registerCashByAdmin('ord-1', ADMIN, 'motivo largo'),
       ).rejects.toThrow(BadRequestException);
@@ -569,172 +560,89 @@ describe('CashCollectionUseCase', () => {
     });
   });
 
-  describe('confirmTransfer', () => {
-    const transferencia = (over: Partial<Order> = {}) =>
+  describe('pedidos viejos por transferencia (sólo para resolverlos)', () => {
+    const vieja = (over: Partial<Order> = {}) =>
       pedido({ paymentMethod: PaymentMethod.TRANSFER, ...over });
 
-    it('received: true pasa a PAID, cuenta como cobrado y deja motivo e historial', async () => {
-      con(transferencia());
-      const r = await uc.confirmTransfer(
+    it('register-cash: el admin cierra el cobro pendiente sin asentar en caja', async () => {
+      con(vieja());
+      const r = await uc.registerCashByAdmin(
         'ord-1',
         ADMIN,
-        true,
-        'Figura en el banco',
+        'Transferencia anterior verificada en el banco',
         'd1',
-      );
-      expect(r.changed).toBe(true);
-      expect(r.order).toMatchObject({
-        paymentStatus: PaymentStatus.PAID,
-        paymentConfirmedBy: ADMIN,
-        paymentResolutionNote: 'Figura en el banco',
-      });
-      expect(insert).toHaveBeenCalledTimes(1);
-    });
-
-    describe('ingreso a la caja de transferencias', () => {
-      it('confirmar que llegó asienta el saldo a cobrar del pedido, con el admin como autor', async () => {
-        con(transferencia());
-        await uc.confirmTransfer(
-          'ord-1',
-          ADMIN,
-          true,
-          'Figura en el banco',
-          'd1',
-        );
-
-        expect(asentarTransferencia).toHaveBeenCalledTimes(1);
-        expect(asentarTransferencia).toHaveBeenCalledWith(expect.anything(), {
-          distributorId: 'd1',
-          orderId: 'ord-1',
-          amount: 4500,
-          userId: ADMIN,
-        });
-        expect(avisarSinAsentar).toHaveBeenCalledWith(
-          'd1',
-          'asentado',
-          'ord-1',
-        );
-      });
-
-      it('descuenta la seña ya paga de una reserva', async () => {
-        con(transferencia({ depositPaid: true, depositAmount: 1000 }));
-        await uc.confirmTransfer(
-          'ord-1',
-          ADMIN,
-          true,
-          'Figura en el banco',
-          'd1',
-        );
-
-        expect(asentarTransferencia).toHaveBeenCalledWith(
-          expect.anything(),
-          expect.objectContaining({ amount: 3500 }),
-        );
-      });
-
-      it('marcarla como no recibida no mueve la caja', async () => {
-        con(transferencia());
-        await uc.confirmTransfer(
-          'ord-1',
-          ADMIN,
-          false,
-          'No figura en el banco',
-        );
-
-        expect(asentarTransferencia).not.toHaveBeenCalled();
-        expect(avisarSinAsentar).not.toHaveBeenCalled();
-      });
-
-      it('repetir la confirmación no asienta otra vez', async () => {
-        con(transferencia({ paymentStatus: PaymentStatus.PAID }));
-        await uc.confirmTransfer('ord-1', ADMIN, true, 'motivo largo');
-
-        expect(asentarTransferencia).not.toHaveBeenCalled();
-      });
-
-      it('sin caja configurada la confirmación sigue y se avisa a la bandeja', async () => {
-        asentarTransferencia.mockResolvedValue('sin_caja');
-        con(transferencia());
-        const r = await uc.confirmTransfer(
-          'ord-1',
-          ADMIN,
-          true,
-          'Figura en el banco',
-          'd1',
-        );
-
-        expect(r.order.paymentStatus).toBe(PaymentStatus.PAID);
-        expect(avisarSinAsentar).toHaveBeenCalledWith(
-          'd1',
-          'sin_caja',
-          'ord-1',
-        );
-      });
-    });
-
-    it('received: false pasa a FAILED sin llenar paymentConfirmed*', async () => {
-      con(transferencia());
-      const r = await uc.confirmTransfer(
-        'ord-1',
-        ADMIN,
-        false,
-        'No figura en el banco',
-      );
-      expect(r.order.paymentStatus).toBe(PaymentStatus.FAILED);
-      expect(r.order.paymentConfirmedBy).toBeNull();
-      expect(r.order.paymentResolvedBy).toBe(ADMIN);
-    });
-
-    it('un pedido marcado "no recibida" puede confirmarse después, con motivo', async () => {
-      con(transferencia({ paymentStatus: PaymentStatus.FAILED }));
-      const r = await uc.confirmTransfer(
-        'ord-1',
-        ADMIN,
-        true,
-        'Llegó el lunes',
       );
       expect(r.changed).toBe(true);
       expect(r.order.paymentStatus).toBe(PaymentStatus.PAID);
       expect(r.order.paymentConfirmedBy).toBe(ADMIN);
+      expect(registrar).not.toHaveBeenCalled();
     });
 
-    it('"no recibida" sólo se marca sobre un pedido entregado', async () => {
-      con(transferencia({ status: OrderStatus.ON_THE_WAY }));
+    it('register-cash con caja de efectivo: 400 (el dinero entró al banco)', async () => {
+      con(vieja());
       await expect(
-        uc.confirmTransfer('ord-1', ADMIN, false, 'No figura en el banco'),
-      ).rejects.toThrow(ConflictException);
+        uc.registerCashByAdmin('ord-1', ADMIN, 'motivo largo', 'd1', 'caja-1'),
+      ).rejects.toThrow(BadRequestException);
       expect(save).not.toHaveBeenCalled();
     });
 
-    it('una transferencia confirmada no pasa a "no recibida" (409)', async () => {
-      con(transferencia({ paymentStatus: PaymentStatus.PAID }));
+    it('register-cash exige que esté entregado', async () => {
+      con(vieja({ status: OrderStatus.ON_THE_WAY }));
       await expect(
-        uc.confirmTransfer('ord-1', ADMIN, false, 'ahora dicen que no'),
-      ).rejects.toThrow(ConflictException);
-    });
-
-    it('es idempotente con la misma decisión y 409 con la contraria', async () => {
-      con(transferencia({ paymentStatus: PaymentStatus.PAID }));
-      expect(
-        (await uc.confirmTransfer('ord-1', ADMIN, true, 'motivo largo'))
-          .changed,
-      ).toBe(false);
-      await expect(
-        uc.confirmTransfer('ord-1', ADMIN, false, 'motivo largo'),
-      ).rejects.toThrow(ConflictException);
-      expect(save).not.toHaveBeenCalled();
-    });
-
-    it('un pedido que no es transferencia o está cancelado: 400', async () => {
-      con(pedido());
-      await expect(
-        uc.confirmTransfer('ord-1', ADMIN, true, 'motivo largo'),
-      ).rejects.toThrow(BadRequestException);
-      con(transferencia({ status: OrderStatus.CANCELLED }));
-      await expect(
-        uc.confirmTransfer('ord-1', ADMIN, true, 'motivo largo'),
+        uc.registerCashByAdmin('ord-1', ADMIN, 'motivo largo'),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('register-unpaid: el admin la informa impago', async () => {
+      con(vieja());
+      const r = await uc.registerUnpaidByAdmin(
+        'ord-1',
+        ADMIN,
+        'No llegó la transferencia',
+        dentro,
+        'd1',
+      );
+      expect(r.changed).toBe(true);
+      expect(r.order.paymentStatus).toBe(PaymentStatus.UNPAID);
+    });
+
+    it('resolve-unpaid: cobrada después o pérdida, sin caja', async () => {
+      con(vieja({ paymentStatus: PaymentStatus.UNPAID }));
+      const r = await uc.resolveUnpaid(
+        'ord-1',
+        ADMIN,
+        'paid',
+        'Se acreditó después',
+        'd1',
+      );
+      expect(r.order.paymentStatus).toBe(PaymentStatus.PAID);
+      expect(registrar).not.toHaveBeenCalled();
+      con(vieja({ paymentStatus: PaymentStatus.UNPAID }));
+      const p = await uc.resolveUnpaid(
+        'ord-1',
+        ADMIN,
+        'written_off',
+        'No se acreditó',
+        'd1',
+      );
+      expect(p.order.paymentStatus).toBe(PaymentStatus.WRITTEN_OFF);
+    });
+
+    it('el chofer no cobra ni informa impago de una transferencia: 400', async () => {
+      con(vieja());
+      await expect(uc.confirmReceived('ord-1', CHOFER)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(uc.markUnpaid('ord-1', CHOFER, dentro)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  it('la confirmación de transferencias ya no existe', () => {
+    expect(
+      (uc as unknown as Record<string, unknown>).confirmTransfer,
+    ).toBeUndefined();
   });
 
   describe('cobro del admin a caja', () => {

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Observable, tap } from 'rxjs';
 import type { Request, Response } from 'express';
+import { urlParaLog } from '../utils/cuerpo-para-log';
 
 /**
  * Logging estructurado de requests HTTP (observabilidad, C4).
@@ -36,7 +37,7 @@ export class LoggingInterceptor implements NestInterceptor {
     const requestId =
       request.requestId ?? (typeof header === 'string' ? header : '-');
     const method = request.method;
-    const path = request.originalUrl ?? request.url;
+    const path = urlParaLog(request.originalUrl ?? request.url);
 
     return next.handle().pipe(
       tap(() => {

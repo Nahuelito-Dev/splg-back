@@ -1,4 +1,5 @@
 import { DispatchOfferStatus } from '../entities/dispatch-offer.entity';
+import { AssignmentMethod } from '../entities/order.entity';
 
 /** Una oferta del período, tal como la lee la consulta. */
 export interface OfertaMedida {
@@ -8,6 +9,10 @@ export interface OfertaMedida {
   status: DispatchOfferStatus | `${DispatchOfferStatus}`;
   offeredAt: Date;
   respondedAt: Date | null;
+  /** Minutos estimados al cliente al ofrecer (ausente o null: sin estimación). */
+  estimatedMinutes?: number | null;
+  /** Con qué se estimó: por calle (`osrm`) o en línea recta (`haversine`). */
+  estimateSource?: 'osrm' | 'haversine' | null;
 }
 
 /** Un pedido con oferta en el período, con el desenlace de su espera. */
@@ -19,6 +24,8 @@ export interface PedidoMedido {
 }
 
 export interface EntradaDeMetricas {
+  /** Método de asignación de cada pedido asignado en el período (`null`: sin dato). */
+  metodosDeAsignacion: Array<AssignmentMethod | null>;
   ofertas: OfertaMedida[];
   pedidos: PedidoMedido[];
   /** Pedidos que el sistema canceló porque ningún chofer los tomó. */
@@ -40,7 +47,19 @@ export interface ChoferEnElTop {
   medianaRespuestaSegundos: number | null;
 }
 
+export interface AsignacionPorMetodo {
+  method: AssignmentMethod;
+  cantidad: number;
+  /** Sobre los pedidos asignados que tienen método, 0 a 100; null si no hay ninguno. */
+  porcentaje: number | null;
+}
+
 export interface MetricasDeDespacho {
+  /** Pedidos asignados en el período (aceptados por un chofer o asignados a mano). */
+  pedidosAsignados: number;
+  /** De ellos, los anteriores al registro del método: no se inventa. */
+  asignadosSinMetodo: number;
+  asignacionPorMetodo: AsignacionPorMetodo[];
   pedidosDespachados: number;
   ofertasPorPedido: number | null;
   /** Sobre las ofertas ya resueltas (aceptada, rechazada o vencida), 0 a 100. */
@@ -50,6 +69,12 @@ export interface MetricasDeDespacho {
   respuestaDelChofer: TiempoEnSegundos;
   hastaAsignar: TiempoEnSegundos;
   pedidosSinChofer: number;
+  /** Ofertas (no retiradas) que guardaron un tiempo estimado: la base de las dos cifras siguientes. */
+  ofertasConEstimacion: number;
+  /** De ellas, las que se ordenaron con OSRM y no con la línea recta, 0 a 100. */
+  porcentajeOrdenadasPorOsrm: number | null;
+  /** Promedio de los minutos estimados al cliente al ofrecer. */
+  minutosEstimadosPromedio: number | null;
   topChoferes: ChoferEnElTop[];
 }
 
@@ -145,11 +170,35 @@ export function calcularMetricasDeDespacho(
     )
     .slice(0, TAMANO_DEL_TOP);
 
+  const conEstimacion = ofertas.filter(
+    (o) =>
+      typeof o.estimatedMinutes === 'number' &&
+      Number.isFinite(o.estimatedMinutes) &&
+      !!o.estimateSource,
+  );
+
   const esperas = entrada.pedidos
     .filter((p) => p.aceptadoEn !== null)
     .map((p) => segundosEntre(p.esperaDesde, p.aceptadoEn as Date));
 
+  const conMetodo = entrada.metodosDeAsignacion.filter(
+    (m): m is AssignmentMethod => m !== null,
+  );
+  const asignacionPorMetodo = Object.values(AssignmentMethod).map(
+    (method): AsignacionPorMetodo => {
+      const cantidad = conMetodo.filter((m) => m === method).length;
+      return {
+        method,
+        cantidad,
+        porcentaje: porcentaje(cantidad, conMetodo.length),
+      };
+    },
+  );
+
   return {
+    pedidosAsignados: entrada.metodosDeAsignacion.length,
+    asignadosSinMetodo: entrada.metodosDeAsignacion.length - conMetodo.length,
+    asignacionPorMetodo,
     pedidosDespachados: pedidos.size,
     ofertasPorPedido:
       pedidos.size === 0 ? null : redondear(ofertas.length / pedidos.size),
@@ -176,6 +225,20 @@ export function calcularMetricasDeDespacho(
     ),
     hastaAsignar: tiempo(esperas),
     pedidosSinChofer: entrada.sinChofer,
+    ofertasConEstimacion: conEstimacion.length,
+    porcentajeOrdenadasPorOsrm: porcentaje(
+      conEstimacion.filter((o) => o.estimateSource === 'osrm').length,
+      conEstimacion.length,
+    ),
+    minutosEstimadosPromedio:
+      conEstimacion.length === 0
+        ? null
+        : redondear(
+            conEstimacion.reduce(
+              (t, o) => t + (o.estimatedMinutes as number),
+              0,
+            ) / conEstimacion.length,
+          ),
     topChoferes,
   };
 }

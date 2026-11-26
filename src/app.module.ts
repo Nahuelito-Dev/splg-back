@@ -51,6 +51,7 @@ import { CylinderModule } from './cylinder/cylinder.module';
 import { CylinderRecoveryModule } from './cylinder/recovery/cylinder-recovery.module';
 import { FleetModule } from './fleet/fleet.module';
 import { RouteBatchModule } from './route-batch/route-batch.module';
+import { FailedVisitModule } from './failed-visit/failed-visit.module';
 import { FleetExpenseModule } from './fleet-expense/fleet-expense.module';
 import { InsuranceModule } from './insurance/insurance.module';
 import { CartModule } from './cart/cart.module';
@@ -89,6 +90,7 @@ import { ImportModule } from './import/import.module';
 import { ClaimsModule } from './claims/claims.module';
 import { AdminNotificationsModule } from './admin-notifications/admin-notifications.module';
 import { ProcessRunModule } from './process-run/process-run.module';
+import { NotificationLogModule } from './notification-log/notification-log.module';
 import { TimeSlotModule } from './time-slot/time-slot.module';
 import { PdfModule } from './pdf/pdf.module';
 import { ReportsModule } from './reports/reports.module';
@@ -101,6 +103,7 @@ import { PeoplePhotosModule } from './people-photos/people-photos.module';
 import { DocumentReaderModule } from './document-reader/document-reader.module';
 import { DocumentReadingModule } from './document-reading/document-reading.module';
 import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
+import { GraphqlApiModule } from './graphql/graphql-api.module';
 
 @Module({
   imports: [
@@ -265,6 +268,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     ClaimsModule,
     AdminNotificationsModule,
     ProcessRunModule,
+    NotificationLogModule,
     TimeSlotModule,
     ReportsModule,
     PdfModule,
@@ -279,6 +283,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     CylinderRecoveryModule,
     FleetModule,
     RouteBatchModule,
+    FailedVisitModule, // entrega fallida y nueva visita (C5)
     FleetExpenseModule,
     InsuranceModule,
     CartModule,
@@ -313,6 +318,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     AssistantModule,
     AsistenteIaModule,
     AssistantLabModule,
+    GraphqlApiModule,
   ],
   providers: [
     // Guards globales. El ORDEN importa: ThrottlerGuard corta temprano (barato,

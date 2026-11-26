@@ -33,7 +33,7 @@ export class ReservationV2Controller {
   @ApiOperation({
     summary: 'Confirmar la seña de una reserva y asentarla en una caja',
     description:
-      'Como `PATCH /orders/:id/confirm-deposit` (v1), y la seña entra a una caja en la misma transacción: por transferencia, a la caja de transferencias de `/v2/cash-settings` (sin caja configurada la confirmación sigue y queda «sin asentar», con aviso a la bandeja); en efectivo, a la caja de efectivo `cashBoxId`, obligatoria si hay alguna caja de efectivo activa. Repetirlo no asienta otra vez. La seña por Mercado Pago la confirma la pasarela.',
+      'Como `PATCH /orders/:id/confirm-deposit` (v1), y la seña entra a la caja de efectivo `cashBoxId` en la misma transacción (obligatoria si hay alguna caja de efectivo activa). Una seña anterior por transferencia o a cuenta corriente se confirma sin asentarla en caja (indicar `cashBoxId` es 400). Repetirlo no asienta otra vez. La seña por Mercado Pago la confirma la pasarela.',
   })
   @ApiParam({ name: 'id', description: 'Order UUID (reserva)' })
   @ApiOkResponse({ type: OrderResponseDto, description: 'Seña confirmada' })

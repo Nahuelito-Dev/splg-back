@@ -1,6 +1,7 @@
 import { RoutePlanAutoConfirmService } from './application/route-plan-auto-confirm.service';
 import { RoutePlanProposalService } from './application/route-plan-proposal.service';
 import { RouteSheetWatchService } from './application/route-sheet-watch.service';
+import { ServiceTimeService } from './application/service-time.service';
 import { RoutePlanService } from './application/route-plan.service';
 import { RoutePlanningCron } from './route-planning.cron';
 import { RedisService } from '../redis/redis.service';
@@ -32,6 +33,7 @@ describe('RoutePlanningCron', () => {
     auto = nuevoAuto(),
     sinHoja: ReadonlySet<string> = new Set(),
   ) {
+    const calcular = jest.fn().mockResolvedValue({});
     const plans = {
       paraProponer: jest.fn().mockResolvedValue(para),
       cerrarDiasVencidos: jest.fn().mockResolvedValue(2),
@@ -47,8 +49,9 @@ describe('RoutePlanningCron', () => {
         habilitado: (id, modulo) =>
           !(modulo === 'route_planning' && sinHoja.has(id)),
       }).empresas,
+      { calcular } as unknown as ServiceTimeService,
     );
-    return { cron, plans, auto };
+    return { cron, plans, auto, calcular };
   }
 
   it('propone mañana en cada distribuidora que le toca', async () => {
@@ -119,6 +122,7 @@ describe('RoutePlanningCron', () => {
       { vigilar } as unknown as RouteSheetWatchService,
       nuevoAuto() as unknown as RoutePlanAutoConfirmService,
       {} as never,
+      {} as unknown as ServiceTimeService,
     );
     await expect(cron.seguir()).resolves.toMatchObject({ reconciled: 1 });
     expect(vigilar).toHaveBeenCalledTimes(1);
@@ -143,6 +147,7 @@ describe('RoutePlanningCron', () => {
       { vigilar: jest.fn() } as unknown as RouteSheetWatchService,
       auto as unknown as RoutePlanAutoConfirmService,
       {} as never,
+      {} as unknown as ServiceTimeService,
     );
     await expect(cron.proponer()).resolves.toBeUndefined();
     expect(auto.confirmarLasVencidas).not.toHaveBeenCalled();
@@ -219,5 +224,30 @@ describe('RoutePlanningCron', () => {
     );
     await expect(cron.proponer()).resolves.toMatchObject({ proposed: 1 });
     expect(proponer).toHaveBeenCalledTimes(1);
+  });
+
+  it('aprende el tiempo de atención sólo de las distribuidoras con la hoja de ruta habilitada', async () => {
+    const calcular = jest.fn().mockResolvedValue({});
+    const cron = new RoutePlanningCron(
+      {} as unknown as RoutePlanService,
+      {} as unknown as RoutePlanProposalService,
+      conCerrojo as unknown as RedisService,
+      {} as unknown as RouteSheetWatchService,
+      {} as unknown as RoutePlanAutoConfirmService,
+      empresasDePrueba({
+        distribuidoras: {
+          findAll: () =>
+            Promise.resolve([{ distributorId: 'd1' }, { distributorId: 'd2' }]),
+        },
+        habilitado: (id, modulo) =>
+          !(modulo === 'route_planning' && id === 'd2'),
+      }).empresas,
+      { calcular } as unknown as ServiceTimeService,
+    );
+    await expect(cron.aprenderTiempoDeAtencion()).resolves.toEqual({
+      companies: 1,
+    });
+    expect(calcular).toHaveBeenCalledTimes(1);
+    expect(calcular).toHaveBeenCalledWith('d1');
   });
 });

@@ -82,7 +82,6 @@ describe('GasCylinderService', () => {
     eventos = { emitAsync: jest.fn().mockResolvedValue([]) };
     recargos = {
       obtener: jest.fn().mockResolvedValue({
-        transferPercentage: 10,
         mercadoPagoPercentage: 10,
         cashPercentage: 0,
       }),
@@ -410,7 +409,6 @@ describe('GasCylinderService', () => {
 
     it('nunca ofrece la transferencia, aunque la distribuidora tenga un recargo viejo guardado', async () => {
       recargos.obtener.mockResolvedValue({
-        transferPercentage: 7.5,
         mercadoPagoPercentage: 12,
         cashPercentage: 2,
       });
@@ -459,7 +457,6 @@ describe('GasCylinderService', () => {
   describe('medios de pago del catálogo', () => {
     it('informan el recargo vigente de la distribuidora, no un valor fijo', async () => {
       recargos.obtener.mockResolvedValue({
-        transferPercentage: 7.5,
         mercadoPagoPercentage: 12,
         cashPercentage: 2,
       });

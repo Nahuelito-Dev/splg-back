@@ -1,6 +1,9 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import type { Request } from 'express';
+import {
+  esGraphql,
+  requestDelContexto,
+} from '../../common/contexto/request-del-contexto';
 import type { ModuloKey } from '../modules/catalogo-de-modulos';
 import { AccesoDeLaEmpresa } from './acceso-de-la-empresa.service';
 import { moduloDeshabilitado } from './errores';
@@ -22,13 +25,13 @@ export class ModuloGuard implements CanActivate {
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
-    if (ctx.getType() !== 'http') return true;
+    if (ctx.getType() !== 'http' && !esGraphql(ctx)) return true;
     const modulo = this.reflector.getAllAndOverride<ModuloKey | undefined>(
       REQUIERE_MODULO_KEY,
       [ctx.getHandler(), ctx.getClass()],
     );
     if (!modulo) return true;
-    const request = ctx.switchToHttp().getRequest<Request>();
+    const request = requestDelContexto(ctx);
     const distributorId = request.distributorId;
     if (!distributorId) return true;
     if (await this.acceso.habilitado(distributorId, modulo)) return true;

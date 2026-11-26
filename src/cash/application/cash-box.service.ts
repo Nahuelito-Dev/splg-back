@@ -128,12 +128,12 @@ export class CashBoxService {
       if (dto.isActive === false && caja.isActive) {
         const [usada]: Array<{ n: string }> = await manager.query(
           `SELECT count(*) AS n FROM "cash_collection_settings"
-           WHERE "distributor_id" = $1 AND ("mercadopago_cash_box_id" = $2 OR "transfer_cash_box_id" = $2)`,
+           WHERE "distributor_id" = $1 AND "mercadopago_cash_box_id" = $2`,
           [distributorId, id],
         );
         if (Number(usada?.n ?? 0) > 0) {
           throw new ConflictException(
-            'La caja está configurada como caja de cobro de Mercado Pago o de transferencias: cambiala primero en «Cajas de cobro» antes de desactivarla',
+            'La caja está configurada como caja de cobro de Mercado Pago: cambiala primero en «Cajas de cobro» antes de desactivarla',
           );
         }
       }

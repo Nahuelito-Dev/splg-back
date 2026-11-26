@@ -21,6 +21,13 @@ export const PARAMETROS = {
   escalationAmountThreshold: 50000,
   pickupOfferTtlHours: 72,
   pickupWindowDays: 7,
+  toleranceLowRiskPercent: 120,
+  toleranceMediumRiskPercent: 100,
+  toleranceHighRiskPercent: 70,
+  stepLowRiskPercent: 100,
+  stepMediumRiskPercent: 100,
+  stepHighRiskPercent: 70,
+  opportunisticPickupRadiusMeters: 300,
   runHour: 10,
   enabled: 1,
 };

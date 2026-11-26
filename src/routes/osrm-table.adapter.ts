@@ -3,8 +3,17 @@ import { ConfigService } from '@nestjs/config';
 import { errorMessage } from '../common/errors/error-message';
 import { urlDeOsrm } from './osrm-url';
 import { PuntoDeRuta } from './polyline';
-import { RouteMatrix, RouteMatrixPort } from './route-matrix.port';
-import { haversineMatrix, haversinePair } from './route-matrix';
+import {
+  DurationsToDestination,
+  MatrixProvider,
+  RouteMatrix,
+  RouteMatrixPort,
+} from './route-matrix.port';
+import {
+  haversineDurationsTo,
+  haversineMatrix,
+  haversinePair,
+} from './route-matrix';
 import { ROUTES_FETCH } from './routes.service';
 import type { FetchFn } from './routes.service';
 
@@ -14,6 +23,8 @@ export const OSRM_MAX_COORDENADAS = 100;
 export const TIMEOUT_MS = 8000;
 /** Tiempo máximo de toda la matriz, con todos sus bloques. */
 export const PLAZO_TOTAL_MS = 15000;
+/** Plazo del despacho: ofrecer un pedido no puede esperar más que esto a OSRM; después, línea recta. */
+export const PLAZO_DESPACHO_MS = 2500;
 
 interface OsrmTable {
   code?: string;
@@ -64,6 +75,57 @@ export class OsrmTableMatrixAdapter extends RouteMatrixPort {
         `OSRM /table falló, matriz en línea recta: ${errorMessage(error)}`,
       );
       return haversineMatrix(points);
+    }
+  }
+
+  /**
+   * N orígenes a un destino en un solo pedido a `/table` (`sources` = los
+   * orígenes, `destinations` = el último punto). Un origen sin camino se
+   * completa con su línea recta; cualquier otra falla, o más de
+   * `OSRM_MAX_COORDENADAS` puntos, devuelve todo en línea recta.
+   */
+  async durationsTo(
+    origins: readonly PuntoDeRuta[],
+    destination: PuntoDeRuta,
+  ): Promise<DurationsToDestination> {
+    if (origins.length === 0) return { minutes: [], source: 'haversine' };
+    const base = urlDeOsrm(this.config);
+    if (!base) {
+      this.logger.warn('Sin OSRM configurado: tiempos en línea recta');
+      return haversineDurationsTo(origins, destination);
+    }
+    if (origins.length + 1 > OSRM_MAX_COORDENADAS) {
+      this.logger.warn('Demasiados orígenes para /table: línea recta');
+      return haversineDurationsTo(origins, destination);
+    }
+    try {
+      const puntos = [...origins, destination];
+      const tabla = await this.pedir(
+        base,
+        puntos,
+        rango(0, origins.length),
+        [origins.length],
+        Date.now() + PLAZO_DESPACHO_MS,
+      );
+      const sources: MatrixProvider[] = [];
+      const minutes = origins.map((origen, i) => {
+        const seg = tabla.durations?.[i]?.[0];
+        if (seg === null) {
+          sources.push('haversine');
+          return haversinePair(origen, destination).minutes;
+        }
+        if (typeof seg !== 'number') {
+          throw new Error(`respuesta incompleta del origen ${i}`);
+        }
+        sources.push('osrm');
+        return seg / 60;
+      });
+      return { minutes, source: 'osrm', sources };
+    } catch (error) {
+      this.logger.warn(
+        `OSRM /table falló, tiempos en línea recta: ${errorMessage(error)}`,
+      );
+      return haversineDurationsTo(origins, destination);
     }
   }
 

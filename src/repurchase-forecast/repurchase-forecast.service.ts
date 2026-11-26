@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { OrderLookupService } from '../order/lookup/order-lookup.service';
+import { momentoDelAviso } from './domain/ajuste-por-cliente';
 import { dentroDeLaVentana } from './domain/estimacion-de-recompra';
 import {
   RepurchaseEstimateSource,
@@ -88,6 +89,37 @@ export class RepurchaseForecastService {
       await this.notifier.cerrada(invitacion, 'expired');
     }
     return vencidas.length;
+  }
+
+  /**
+   * El barrido del aviso: avisa a los clientes cuya invitación abierta ya
+   * llegó a su hora (`notifyAt`) y todavía no se avisó. Cada una se reclama con
+   * una sentencia condicionada, así que correr el barrido dos veces (o a la par
+   * de la corrida) no manda dos avisos. Devuelve cuántos avisó.
+   */
+  async enviarAvisos(ahora: Date, distributorId?: string): Promise<number> {
+    let avisadas = 0;
+    for (const invitacion of await this.invitaciones.paraAvisar(
+      ahora,
+      distributorId,
+    )) {
+      if (await this.avisar(invitacion, ahora)) avisadas += 1;
+    }
+    return avisadas;
+  }
+
+  /** Avisa de la invitación si le toca y nadie lo hizo antes; `false` si no. */
+  private async avisar(
+    invitacion: RepurchaseInvitation,
+    ahora: Date,
+  ): Promise<boolean> {
+    if (
+      !(await this.invitaciones.reclamarAviso(invitacion.invitationId, ahora))
+    ) {
+      return false;
+    }
+    await this.notifier.invitar(invitacion);
+    return true;
   }
 
   /**
@@ -194,7 +226,8 @@ export class RepurchaseForecastService {
         continue;
       }
       resultado.invited += 1;
-      await this.notifier.invitar(invitacion);
+      // Si su hora ya llegó se le avisa en el acto; si no, lo hace el barrido.
+      await this.avisar(invitacion, ahora);
     }
     this.logger.log(
       `Recompra ${distributorId}${dryRun ? ' (simulada)' : ''}: ${resultado.evaluated} evaluado(s), ${resultado.invited} invitación(es), ${resultado.expired} vencida(s)`,
@@ -267,11 +300,15 @@ export class RepurchaseForecastService {
       items: SuggestedItem[];
       addressId: string;
       timeSlotId: string | null;
+      timeSlotStart: string | null;
       paymentMethod: RepurchaseInvitation['paymentMethod'];
     },
     params: ParametrosDeRecompra,
     ahora: Date,
   ): Promise<RepurchaseInvitation | null> {
+    const expiresAt = new Date(
+      ahora.getTime() + params.invitationTtlHours * MS_POR_HORA,
+    );
     return this.invitaciones.abrir({
       distributorId,
       userId: cliente.userId,
@@ -283,9 +320,9 @@ export class RepurchaseForecastService {
       estimateOrdersUsed: cliente.estimate.ordersUsed,
       estimateSource: cliente.estimate.source,
       suggestedItems: sugerencia.items,
-      expiresAt: new Date(
-        ahora.getTime() + params.invitationTtlHours * MS_POR_HORA,
-      ),
+      expiresAt,
+      offsetDays: cliente.offsetDays,
+      notifyAt: momentoDelAviso(ahora, expiresAt, sugerencia.timeSlotStart),
     });
   }
 }

@@ -4,9 +4,9 @@ import {
   ExecutionContext,
   InternalServerErrorException,
 } from '@nestjs/common';
-import type { Request } from 'express';
 import { CODIGOS_DE_ERROR, conCodigo } from '../errors/con-codigo';
 import { RoleType } from '../constants/role-type.enum';
+import { requestDelContexto } from '../contexto/request-del-contexto';
 
 /** Respuesta 400 cuando una escritura exige distribuidora y no hay. */
 export const MENSAJE_FALTA_DISTRIBUIDORA =
@@ -49,7 +49,7 @@ export const CurrentDistributor = createParamDecorator(
     opts: { required?: boolean | 'staff' } | undefined,
     ctx: ExecutionContext,
   ) => {
-    const request = ctx.switchToHttp().getRequest<Request>();
+    const request = requestDelContexto(ctx);
 
     // `distributorId` puede no existir en la request si el guard no corrió.
     if (!('distributorId' in request)) {

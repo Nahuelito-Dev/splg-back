@@ -145,6 +145,7 @@ describe('OrderService · aviso de llegada', () => {
       CLIENTE,
       PEDIDO,
       'Ana Gómez',
+      'd1',
     );
   });
 
@@ -187,6 +188,7 @@ describe('OrderService · aviso de llegada', () => {
       CLIENTE,
       PEDIDO,
       'El repartidor',
+      'd1',
     );
   });
 

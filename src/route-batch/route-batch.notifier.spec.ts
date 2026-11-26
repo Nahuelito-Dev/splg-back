@@ -19,7 +19,11 @@ describe('RouteBatchNotifier', () => {
   let events: { emit: jest.Mock };
   let notifier: RouteBatchNotifier;
   const delivery = (token: string | undefined) =>
-    ({ userId: 'u1', notificationToken: token }) as Delivery;
+    ({
+      userId: 'u1',
+      distributorId: 'd1',
+      notificationToken: token,
+    }) as Delivery;
 
   beforeEach(() => {
     drivers = { notifyRouteBatch: jest.fn() };
@@ -57,6 +61,11 @@ describe('RouteBatchNotifier', () => {
       expect.objectContaining({
         data: { type: 'ROUTE_BATCH_OFFER', batchId: 'b1' },
       }),
+      {
+        type: 'ROUTE_BATCH_OFFER',
+        distributorId: 'd1',
+        recipientUserId: 'u1',
+      },
     );
   });
 

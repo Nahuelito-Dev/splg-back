@@ -19,6 +19,14 @@ import {
   CylinderRecoveryNotice,
   RecoveryNoticeKind,
 } from '../entities/cylinder-recovery-notice.entity';
+import { CustomerRecoveryScore } from '../entities/customer-recovery-score.entity';
+import {
+  ajustarPorBanda,
+  bandaDelPuntaje,
+  PUNTAJE_NEUTRO,
+  puntajeDelCliente,
+  RecoveryRiskBand,
+} from './domain/riesgo-de-recupero';
 import {
   avisoDelEscalon,
   destinoAlAgotarse,
@@ -42,6 +50,26 @@ import {
 } from './cylinder-recovery-account.service';
 
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
+
+/** El riesgo de un cliente para devolver sus envases a tiempo. */
+export interface RiesgoDelCliente {
+  score: number;
+  band: RecoveryRiskBand;
+  delayedCases: number;
+  ordersTotal: number;
+  /** Sin casos todavía: puntaje neutro y banda media. */
+  neutral: boolean;
+  updatedAt: Date | null;
+}
+
+const RIESGO_NEUTRO: RiesgoDelCliente = {
+  score: PUNTAJE_NEUTRO,
+  band: RecoveryRiskBand.MEDIUM,
+  delayedCases: 0,
+  ordersTotal: 0,
+  neutral: true,
+  updatedAt: null,
+};
 
 /** Un envase en poder de un cliente, con el dato de cuándo se lo entregaron. */
 export interface EnvaseRetenido {
@@ -106,6 +134,8 @@ export class CylinderRecoveryService {
     private readonly orders: OrderLookupService,
     private readonly notifier: CylinderRecoveryNotifier,
     private readonly cuenta: CylinderRecoveryAccountService,
+    @InjectRepository(CustomerRecoveryScore)
+    private readonly scores: Repository<CustomerRecoveryScore>,
   ) {}
 
   // ───────────────────────── parámetros ─────────────────────────
@@ -199,6 +229,7 @@ export class CylinderRecoveryService {
     afuera: EnvaseRetenido[],
     p: ParametrosDeRecupero,
     ahora: Date,
+    bandas: ReadonlyMap<string, RecoveryRiskBand> = new Map(),
   ): {
     retenidos: Array<
       EnvaseRetenido & { customerId: string; deliveredAt: Date }
@@ -214,7 +245,13 @@ export class CylinderRecoveryService {
         revisionManual.push({ ...e, motivo: 'sin_cliente' });
       } else if (!e.deliveredAt) {
         revisionManual.push({ ...e, motivo: 'sin_entrega_registrada' });
-      } else if (superaLaTolerancia(e.deliveredAt, ahora, p.toleranceDays)) {
+      } else if (
+        superaLaTolerancia(
+          e.deliveredAt,
+          ahora,
+          ajustarPorBanda(p, bandas.get(e.customerId)).toleranceDays,
+        )
+      ) {
         retenidos.push({
           ...e,
           customerId: e.customerId,
@@ -273,7 +310,14 @@ export class CylinderRecoveryService {
         ahora,
       );
     }
-    const { retenidos, revisionManual } = this.clasificar(afuera, p, ahora);
+    await this.recalcularPuntajes(distributorId, ahora);
+    const bandas = await this.bandasDe(distributorId);
+    const { retenidos, revisionManual } = this.clasificar(
+      afuera,
+      p,
+      ahora,
+      bandas,
+    );
     resultado.revisionManual = revisionManual.length;
     for (const r of revisionManual) {
       this.logger.warn(
@@ -301,7 +345,7 @@ export class CylinderRecoveryService {
     const porCliente = new Map<string, AvisoParaElCliente[]>();
     for (const { caseId } of vivos) {
       try {
-        const r = await this.procesarCaso(caseId, p, ahora);
+        const r = await this.procesarCaso(caseId, p, ahora, bandas);
         if (!r) continue;
         resultado.avisos += r.avisos.filter(
           (a) => a.aviso.kind !== RecoveryNoticeKind.PICKUP_OFFER,
@@ -429,6 +473,136 @@ export class CylinderRecoveryService {
     }
   }
 
+  // ───────────────────────── puntaje de riesgo (M5a) ─────────────────────────
+
+  /**
+   * Recalcula el puntaje de cada cliente con casos en la distribuidora: casos
+   * demorados históricos (los que cerró la cuenta de envases no cuentan, el
+   * cliente no se demoró) sobre pedidos entregados, suavizado hacia el neutro.
+   * Sólo escribe las filas que cambiaron. Un fallo se registra y la corrida
+   * sigue con los puntajes que ya había. Devuelve cuántas filas escribió.
+   */
+  async recalcularPuntajes(
+    distributorId: string,
+    ahora: Date,
+  ): Promise<number> {
+    try {
+      const filas: Array<{
+        customerId: string;
+        delayed: number;
+        orders: number;
+      }> = await this.cases.manager.query(
+        `SELECT k.user_id AS "customerId", COUNT(*)::int AS "delayed",
+                (SELECT COUNT(*)::int FROM "order" o
+                  WHERE o.customer_id = k.user_id AND o.distributor_id = $1
+                    AND o.status::text = 'delivered') AS "orders"
+           FROM cylinder_recovery_case k
+          WHERE k.distributor_id = $1
+            AND (k.resolution_note IS DISTINCT FROM $2)
+          GROUP BY k.user_id`,
+        [distributorId, NOTA_CUBIERTO_POR_LA_CUENTA],
+      );
+      if (filas.length === 0) return 0;
+      const calculados = filas.map((f) => {
+        const score = puntajeDelCliente(f.delayed, f.orders);
+        return { ...f, score, band: bandaDelPuntaje(score) };
+      });
+      const escritas: unknown[] = await this.cases.manager.query(
+        `INSERT INTO customer_recovery_score AS s
+                (distributor_id, customer_user_id, delayed_cases, orders_total, score, band, updated_at)
+         SELECT $1::uuid, t.u, t.d, t.o, t.s, t.b::recovery_risk_band_enum, $7::timestamptz
+           FROM unnest($2::uuid[], $3::int[], $4::int[], $5::numeric[], $6::text[]) AS t(u, d, o, s, b)
+         ON CONFLICT (distributor_id, customer_user_id) DO UPDATE
+            SET delayed_cases = EXCLUDED.delayed_cases, orders_total = EXCLUDED.orders_total,
+                score = EXCLUDED.score, band = EXCLUDED.band, updated_at = EXCLUDED.updated_at
+          WHERE (s.delayed_cases, s.orders_total, s.score, s.band)
+                IS DISTINCT FROM (EXCLUDED.delayed_cases, EXCLUDED.orders_total, EXCLUDED.score, EXCLUDED.band)
+      RETURNING 1`,
+        [
+          distributorId,
+          calculados.map((c) => c.customerId),
+          calculados.map((c) => c.delayed),
+          calculados.map((c) => c.orders),
+          calculados.map((c) => c.score),
+          calculados.map((c) => c.band),
+          ahora.toISOString(),
+        ],
+      );
+      return escritas.length;
+    } catch (error) {
+      this.logger.error(
+        `Recupero ${distributorId}: no se pudo recalcular el puntaje de riesgo: ${errorMessage(error)}`,
+      );
+      return 0;
+    }
+  }
+
+  /** La banda de cada cliente con puntaje; el que no figura es neutro (banda media). */
+  async bandasDe(
+    distributorId: string,
+  ): Promise<Map<string, RecoveryRiskBand>> {
+    const filas = await this.scores.find({
+      where: { distributorId },
+      select: { customerUserId: true, band: true },
+    });
+    return new Map(filas.map((f) => [f.customerUserId, f.band]));
+  }
+
+  /** El puntaje de un cliente; sin casos todavía es el neutro, con banda media. */
+  async puntajeDe(
+    distributorId: string,
+    customerUserId: string,
+  ): Promise<RiesgoDelCliente> {
+    const riesgos = await this.riesgosDe(distributorId, [customerUserId]);
+    return riesgos.get(customerUserId) ?? { ...RIESGO_NEUTRO };
+  }
+
+  /** El riesgo de cada uno de esos clientes (sin fila: neutro). */
+  async riesgosDe(
+    distributorId: string,
+    customerUserIds: string[],
+  ): Promise<Map<string, RiesgoDelCliente>> {
+    const ids = [...new Set(customerUserIds)];
+    const filas = ids.length
+      ? await this.scores.find({
+          where: { distributorId, customerUserId: In(ids) },
+        })
+      : [];
+    const porCliente = new Map(filas.map((f) => [f.customerUserId, f]));
+    return new Map(
+      ids.map((id) => {
+        const f = porCliente.get(id);
+        return [
+          id,
+          f
+            ? {
+                score: f.score,
+                band: f.band,
+                delayedCases: f.delayedCases,
+                ordersTotal: f.ordersTotal,
+                neutral: false,
+                updatedAt: f.updatedAt,
+              }
+            : { ...RIESGO_NEUTRO },
+        ];
+      }),
+    );
+  }
+
+  /** El número de cada hoja de ruta (`null` si todavía no tiene). */
+  async numerosDeHojas(
+    distributorId: string,
+    batchIds: string[],
+  ): Promise<Map<string, number | null>> {
+    if (batchIds.length === 0) return new Map();
+    const filas: Array<{ batchId: string; number: number | null }> =
+      await this.cases.manager.query(
+        `SELECT batch_id AS "batchId", "number" FROM route_batch WHERE batch_id = ANY($1::uuid[]) AND distributor_id = $2`,
+        [batchIds, distributorId],
+      );
+    return new Map(filas.map((f) => [f.batchId, f.number]));
+  }
+
   // ───────────────────────── un caso (pasos 4 a 10) ─────────────────────────
 
   /**
@@ -442,6 +616,7 @@ export class CylinderRecoveryService {
     caseId: string,
     p: ParametrosDeRecupero,
     ahora: Date,
+    bandas: ReadonlyMap<string, RecoveryRiskBand> = new Map(),
   ): Promise<ResultadoDelCaso | null> {
     return this.cases.manager.transaction(async (manager) => {
       const caso = await manager
@@ -515,7 +690,10 @@ export class CylinderRecoveryService {
       const paso = siguientePaso(caso, avisoEnviado, ahora);
       if (paso.accion === 'avisar' || paso.accion === 'subir') {
         caso.step = paso.step;
-        caso.stepDueAt = vencimientoDelEscalon(ahora, p);
+        caso.stepDueAt = vencimientoDelEscalon(
+          ahora,
+          ajustarPorBanda(p, bandas.get(caso.userId)),
+        );
         await manager.save(caso);
         const aviso = await manager.save(
           manager.create(CylinderRecoveryNotice, {

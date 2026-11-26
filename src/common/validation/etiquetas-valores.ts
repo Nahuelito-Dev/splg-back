@@ -28,6 +28,9 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   'scope:staff_reply': 'Respuesta rápida de la empresa',
   'channel:staff_customer': 'Con clientes',
   'channel:staff_driver': 'Con choferes',
+  // Registro de avisos enviados.
+  'channel:push': 'Notificación en el celular',
+  'channel:email': 'Correo',
   'mentioned:me': 'Me mencionaron',
   'mentioned:unread': 'Menciones sin leer',
   // Botones de acción del chat para el cliente (4e).
@@ -65,6 +68,10 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   'reason:wrong_address': 'La dirección no es correcta',
   'reason:no_access': 'No se pudo llegar al domicilio',
   'reason:other': 'Otro motivo',
+  // Entrega fallida y nueva visita (C5).
+  'reason:address_closed': 'El domicilio estaba cerrado',
+  'status:awaiting_admin': 'Espera la decisión del administrador',
+  'status:all': 'Todos',
   'role:delivery': 'Chofer',
   // La cuenta corriente es femenina: «una cuenta activa / bloqueada / cerrada».
   'accountStatus:active': 'Activa',
@@ -324,6 +331,10 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   psychophysical: 'Examen psicofísico',
   route_planning_close_days: 'Cierre de los días de la hoja de ruta',
   route_sheet_watch: 'Seguimiento de las hojas de ruta en curso',
+  route_service_time_learn:
+    'Cálculo del tiempo de atención por parada de la hoja de ruta',
+  'serviceMinutesMode:fixed': 'Fijo',
+  'serviceMinutesMode:learned': 'Aprendido',
   route_planning_propose:
     'Propuesta y confirmación automática de la hoja de ruta del día siguiente',
   purchase_receipt: 'Recepción de compra',

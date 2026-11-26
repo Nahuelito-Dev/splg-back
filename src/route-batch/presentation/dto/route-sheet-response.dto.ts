@@ -443,3 +443,57 @@ export class LoadSuggestionDto {
   @ApiProperty({ type: [LoadSuggestionItemDto] })
   items!: LoadSuggestionItemDto[];
 }
+
+/** El tiempo de atención por parada: el aprendido frente al vigente (M4). */
+export class ServiceTimeDto {
+  @ApiProperty({
+    enum: ['fixed', 'learned'],
+    description: 'El modo elegido por el administrador',
+  })
+  mode!: 'fixed' | 'learned';
+  @ApiProperty({
+    example: 10,
+    description: '«Minutos por parada» que configuró el administrador',
+  })
+  fixedMinutes!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 8,
+    description:
+      'La mediana aprendida en minutos enteros (1 a 60); `null` si no hay entregas suficientes',
+  })
+  suggestedMinutes!: number | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 14.5,
+    description: 'El percentil 90 de lo que tardaron, en minutos',
+  })
+  p90Minutes!: number | null;
+  @ApiProperty({
+    example: 10,
+    description:
+      'Con cuántos minutos se planifica hoy: el fijo, o el sugerido si el modo es `learned` y hay muestra',
+  })
+  effectiveMinutes!: number;
+  @ApiProperty({
+    example: 42,
+    description: 'Entregas válidas de la ventana',
+  })
+  samples!: number;
+  @ApiProperty({
+    example: 20,
+    description: 'Entregas mínimas para que se use el tiempo aprendido',
+  })
+  minSamples!: number;
+  @ApiProperty({ example: 30, description: 'Días de historia que se miran' })
+  windowDays!: number;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: 'Cuándo se calculó por última vez; `null` si todavía no',
+  })
+  computedAt!: string | null;
+}

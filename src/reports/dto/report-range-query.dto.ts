@@ -5,6 +5,7 @@ import {
   IsDateString,
   IsEnum,
   IsOptional,
+  IsUUID,
   Matches,
 } from 'class-validator';
 
@@ -46,6 +47,17 @@ export class ReportRangeQueryDto {
   })
   @IsDateString({ strict: true }, { message: 'to no es una fecha válida' })
   to?: string;
+}
+
+/** Rango del informe de utilización, opcionalmente acotado a un vehículo. */
+export class VehicleUtilizationQueryDto extends ReportRangeQueryDto {
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Vehículo a informar. Si no viene, se informan todos.',
+  })
+  @IsOptional()
+  @IsUUID()
+  vehicleId?: string;
 }
 
 /** Rango con agrupamiento, para la evolución de ventas. */

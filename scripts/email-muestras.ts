@@ -11,6 +11,7 @@
 import 'dotenv/config';
 import { ConfigService } from '@nestjs/config';
 import { ResendEmailAdapter } from '../src/email/infrastructure/resend-email.adapter';
+import { NotificationLogRecorder } from '../src/notification-log/notification-log.recorder';
 import { destinoDeRedireccion } from '../src/email/redireccion-de-desarrollo';
 import { muestrasDeCorreo } from '../src/email/vista-previa/muestras-de-correo';
 
@@ -35,7 +36,14 @@ async function main(): Promise<number> {
     );
   }
 
-  const adaptador = new ResendEmailAdapter(new ConfigService(process.env));
+  // Las muestras no son avisos del sistema: no se registran.
+  const sinRegistro = {
+    conRegistro: <T>(_aviso: unknown, enviar: () => Promise<T>) => enviar(),
+  } as unknown as NotificationLogRecorder;
+  const adaptador = new ResendEmailAdapter(
+    new ConfigService(process.env),
+    sinRegistro,
+  );
   const muestras = muestrasDeCorreo({ env: process.env });
   let fallidas = 0;
   for (const [i, m] of muestras.entries()) {

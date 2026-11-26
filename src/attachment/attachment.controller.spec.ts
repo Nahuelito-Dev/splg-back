@@ -39,6 +39,20 @@ describe('AttachmentController · dueños que sólo entran por su endpoint', () 
     expect(upload).not.toHaveBeenCalled();
   });
 
+  it('a un pedido no se le suben adjuntos nuevos (los comprobantes viejos sólo se leen)', async () => {
+    await expect(
+      controller.upload(
+        AttachmentOwnerType.ORDER,
+        'o1',
+        {},
+        undefined,
+        'd1',
+        user,
+      ),
+    ).rejects.toThrow(/ya no admiten adjuntos nuevos/);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
   it('el resto de los dueños sigue subiendo', async () => {
     upload.mockResolvedValue({
       attachmentId: 'a1',

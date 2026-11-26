@@ -201,22 +201,20 @@ describe('Matriz HTTP T4: configuración (e2e)', () => {
     }),
     putSurcharge('guarda y relee', 'adminA', 200, {
       body: {
-        transferPercentage: 2,
         mercadoPagoPercentage: 3,
         cashPercentage: 0,
       },
       verificar: async (_b, c) =>
         expect(
           (await llamar(c, 'get', '/v2/payment-surcharges', 'adminA')).body,
-        ).toMatchObject({ transferPercentage: 2, mercadoPagoPercentage: 3 }),
+        ).toMatchObject({ mercadoPagoPercentage: 3 }),
     }),
     putSurcharge('requerido', 'adminA', 400, {
-      body: { transferPercentage: 1, cashPercentage: 0 },
+      body: { cashPercentage: 0 },
     }),
     putSurcharge('rango', 'adminA', 400, {
       body: {
-        transferPercentage: 31,
-        mercadoPagoPercentage: 1,
+        mercadoPagoPercentage: 31,
         cashPercentage: 0,
       },
     }),

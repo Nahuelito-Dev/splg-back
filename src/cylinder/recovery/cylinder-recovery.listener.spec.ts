@@ -1,4 +1,4 @@
-import { EnvaseDevueltoEvent } from '../events/envase-devuelto.event';
+import { EnvaseDevueltoEvent } from '../domain/events/envase-devuelto.event';
 import { CylinderRecoveryListener } from './cylinder-recovery.listener';
 import { CylinderRecoveryService } from './cylinder-recovery.service';
 

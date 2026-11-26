@@ -6,8 +6,8 @@ describe('PaymentSurchargeConfigController', () => {
 
   beforeEach(() => {
     recargos = {
-      vigentes: jest.fn().mockResolvedValue({ transferPercentage: 10 }),
-      guardar: jest.fn().mockResolvedValue({ transferPercentage: 7.5 }),
+      vigentes: jest.fn().mockResolvedValue({ mercadoPagoPercentage: 10 }),
+      guardar: jest.fn().mockResolvedValue({ mercadoPagoPercentage: 7.5 }),
     };
     controller = new PaymentSurchargeConfigController(recargos as never);
   });

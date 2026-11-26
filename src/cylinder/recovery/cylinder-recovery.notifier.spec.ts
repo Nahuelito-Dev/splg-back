@@ -62,6 +62,17 @@ describe('CylinderRecoveryNotifier', () => {
       });
       expect(t.body).toContain('2026-11-03');
     });
+
+    it('la oferta que aprovecha la hoja dice que pasamos cerca y que no tiene cargo', () => {
+      const t = textoDelAviso(unCaso(), unaOferta(), {
+        ...ctx,
+        retiroAprovechandoLaHoja: true,
+      });
+      expect(t.title).toBe('¿Devolvés el envase hoy?');
+      expect(t.body).toContain('Hoy pasamos cerca');
+      expect(t.body).toContain('sin cargo');
+      expect(t.body).toContain('SN-001');
+    });
   });
 
   describe('porSocket', () => {
@@ -94,14 +105,25 @@ describe('CylinderRecoveryNotifier', () => {
       ctx: { ...ctx, serial },
     });
 
-    it('con un solo aviso manda su texto', async () => {
-      await notifier.alClienteAgrupado('cust-1', [item('c1', 'SN-1')]);
+    it('con un solo aviso manda su texto, con la empresa y el cliente explícitos', async () => {
+      await notifier.alClienteAgrupado('cust-1', [
+        {
+          ...item('c1', 'SN-1'),
+          caso: unCaso({ caseId: 'c1', distributorId: 'dist-9' }),
+        },
+      ]);
       expect(fcm.sendToToken).toHaveBeenCalledTimes(1);
-      const [token, mensaje] = fcm.sendToToken.mock.calls[0] as [
+      const [token, mensaje, contexto] = fcm.sendToToken.mock.calls[0] as [
         string,
         { data: Record<string, string>; notification: { body: string } },
+        unknown,
       ];
       expect(token).toBe('tok-1');
+      expect(contexto).toEqual({
+        type: 'CYLINDER_RECOVERY',
+        distributorId: 'dist-9',
+        recipientUserId: 'cust-1',
+      });
       expect(mensaje.data.type).toBe('CYLINDER_RECOVERY');
       expect(mensaje.notification.body).toContain('SN-1');
     });

@@ -4,14 +4,18 @@ import {
   rangoDeDiasArgentinos,
 } from '../common/utils/dias-argentina';
 
+export interface RangoDelInforme {
+  startDate: Date;
+  endDate: Date;
+  from: string;
+  to: string;
+}
+
 /**
  * `startDate` inclusive y `endDate` EXCLUSIVO: `[inicio de from, inicio del
  * día siguiente a to)` en hora argentina.
  */
-export function rangoDelInforme(
-  from?: string,
-  to?: string,
-): { startDate: Date; endDate: Date; from: string; to: string } {
+export function rangoDelInforme(from?: string, to?: string): RangoDelInforme {
   // Sin from/to: hoy en hora argentina. Con uno solo, el rango es ese día.
   const hoy = diaArgentino();
   const desde = from ?? to ?? hoy;

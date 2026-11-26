@@ -128,6 +128,7 @@ describe('NotificationsService', () => {
         expect.objectContaining({
           data: { event: 'CASH_READY', orderId: 'order-1' },
         }),
+        { type: 'CASH_READY', orderId: 'order-1', recipientUserId: 'c1' },
       );
     });
 
@@ -259,6 +260,7 @@ describe('NotificationsService', () => {
         expect.objectContaining({
           data: { event: 'NEW_ORDER', orderId: 'order-99' },
         }),
+        { type: 'NEW_ORDER', orderId: 'order-99', recipientUserId: 'driver-1' },
       );
     });
 
@@ -281,6 +283,7 @@ describe('NotificationsService', () => {
             ) as string,
           }) as unknown,
         }),
+        { type: 'NEW_ORDER', orderId: 'order-99', recipientUserId: 'driver-1' },
       );
     });
 
@@ -321,6 +324,11 @@ describe('NotificationsService', () => {
             type: 'ORDER_CONFIRMATION',
           }) as unknown,
         }),
+        {
+          type: 'ORDER_CONFIRMATION',
+          orderId: 'order-abcdef123',
+          recipientUserId: 'customer-1',
+        },
       );
       expect(result).toEqual({ success: true, messageId: 'msg-1' });
     });
@@ -409,6 +417,7 @@ describe('NotificationsService', () => {
             body: 'Ana está en la puerta.',
           }) as unknown,
         }),
+        { type: 'ORDER_ARRIVED', orderId: 'o1', recipientUserId: 'c1' },
       );
     });
 
@@ -463,6 +472,11 @@ describe('NotificationsService', () => {
           }) as unknown,
           data: { event: 'PAYMENT_APPROVED', orderId: 'order-abcdef123' },
         }),
+        {
+          type: 'PAYMENT_APPROVED',
+          orderId: 'order-abcdef123',
+          recipientUserId: 'customer-1',
+        },
       );
     });
 
@@ -480,6 +494,11 @@ describe('NotificationsService', () => {
           }) as unknown,
           data: { event: 'DEPOSIT_APPROVED', orderId: 'order-abcdef123' },
         }),
+        {
+          type: 'DEPOSIT_APPROVED',
+          orderId: 'order-abcdef123',
+          recipientUserId: 'customer-1',
+        },
       );
     });
 
@@ -499,6 +518,71 @@ describe('NotificationsService', () => {
       await expect(
         service.sendPaymentApprovedPush('customer-1', 'o1'),
       ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('distribuidora explícita en el registro de avisos', () => {
+    const contextoEnviado = () =>
+      (
+        sendToToken.mock.calls[0] as [
+          unknown,
+          unknown,
+          { distributorId?: string },
+        ]
+      )[2];
+
+    beforeEach(() => {
+      customers.findNotificationToken.mockResolvedValue({
+        esCliente: true,
+        token: 'tok',
+      });
+      deliveries.findNotificationToken.mockResolvedValue('tok-chofer');
+    });
+
+    it.each([
+      [
+        'confirmación',
+        () =>
+          service.sendOrderConfirmation('c1', 'o1', undefined, null, 'dist-1'),
+      ],
+      [
+        'oferta al chofer',
+        () => service.sendOfferPushToDriver('d1', 'o1', null, 'dist-1'),
+      ],
+      [
+        'llegada',
+        () => service.sendArrivalPushToCustomer('c1', 'o1', 'Ana', 'dist-1'),
+      ],
+      [
+        'efectivo',
+        () => service.sendCashReadyPush('c1', 'o1', salida(5000), 'dist-1'),
+      ],
+      [
+        'pago aprobado',
+        () => service.sendPaymentApprovedPush('c1', 'o1', false, 'dist-1'),
+      ],
+      [
+        'genérico',
+        () =>
+          service.sendOrderNoticePush(
+            'c1',
+            'o1',
+            { title: 't', body: 'b', event: 'E' },
+            undefined,
+            'dist-1',
+          ),
+      ],
+    ])('el push de %s pasa la distribuidora del flujo', async (_n, enviar) => {
+      await enviar();
+      expect(contextoEnviado().distributorId).toBe('dist-1');
+    });
+
+    it('el cambio de estado toma la distribuidora del pedido', async () => {
+      await service.sendOrderStatusUpdate(
+        { userId: 'c1', customer: { notificationToken: 'tok' } } as never,
+        { orderId: 'o1', status: 'accepted', distributorId: 'dist-9' } as never,
+      );
+      expect(contextoEnviado().distributorId).toBe('dist-9');
     });
   });
 

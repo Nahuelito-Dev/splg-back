@@ -172,6 +172,7 @@ describe('AdminNotificationsListener', () => {
       text: expect.stringContaining(
         'Ver en el panel: https://panel.test/orders/o-1',
       ) as string,
+      registro: { type: 'ADMIN_NOTIFICATION', distributorId: 'd1' },
     });
     expect(bandeja.marcarCorreoEnviado).toHaveBeenCalledTimes(1);
   });

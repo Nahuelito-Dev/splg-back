@@ -102,6 +102,9 @@ export class DispatchSettingsService {
         ...(settings.arrivalRadiusMeters != null
           ? { arrivalRadiusMeters: settings.arrivalRadiusMeters }
           : {}),
+        ...(settings.osrmCandidateCount != null
+          ? { osrmCandidateCount: settings.osrmCandidateCount }
+          : {}),
       },
       actorUserId,
     );
@@ -116,6 +119,7 @@ export class DispatchSettingsService {
       finishingRadiusMeters: settings.finishingRadiusMeters,
       noDriverExpiryMinutes: settings.noDriverExpiryMinutes,
       arrivalRadiusMeters: settings.arrivalRadiusMeters,
+      osrmCandidateCount: settings.osrmCandidateCount,
     };
   }
 }

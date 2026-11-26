@@ -5,9 +5,9 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import type { Request } from 'express';
 import { RoleType } from '../../common/constants/role-type.enum';
 import { PERMISO_KEY } from '../../common/decorators/permiso.decorator';
+import { requestDelContexto } from '../../common/contexto/request-del-contexto';
 import { CODIGOS_DE_ERROR, conCodigo } from '../../common/errors/con-codigo';
 import {
   etiquetaDelPermiso,
@@ -40,7 +40,7 @@ export class PermissionGuard implements CanActivate {
     );
     if (!requeridos || requeridos.length === 0) return true;
 
-    const { user } = ctx.switchToHttp().getRequest<Request>();
+    const { user } = requestDelContexto(ctx);
     if (!user?.role) {
       throw new ForbiddenException('Usuario no autenticado o sin rol');
     }

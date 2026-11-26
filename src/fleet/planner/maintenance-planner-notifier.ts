@@ -99,13 +99,21 @@ export class MaintenancePlannerNotifier {
     if (delivery.notificationToken) {
       const token = delivery.notificationToken;
       await this.seguro('push', () =>
-        this.fcm.sendToToken(token, {
-          notification: { title: titulo, body: detalle },
-          data: {
-            type: 'MAINTENANCE_PROPOSAL',
-            proposalId: proposal.proposalId,
+        this.fcm.sendToToken(
+          token,
+          {
+            notification: { title: titulo, body: detalle },
+            data: {
+              type: 'MAINTENANCE_PROPOSAL',
+              proposalId: proposal.proposalId,
+            },
           },
-        }),
+          {
+            type: 'MAINTENANCE_PROPOSAL',
+            distributorId: delivery.distributorId,
+            recipientUserId: delivery.userId,
+          },
+        ),
       );
     }
     // El correo al chofer es opcional por distribuidora (`driverEmail`): nunca por omisión.
@@ -130,6 +138,11 @@ export class MaintenancePlannerNotifier {
           subject: correo.asunto,
           html: correo.html,
           text: correo.text,
+          registro: {
+            type: 'MAINTENANCE_PROPOSAL',
+            distributorId: delivery.distributorId,
+            recipientUserId: delivery.userId,
+          },
         });
       });
     }
@@ -174,13 +187,21 @@ export class MaintenancePlannerNotifier {
     if (delivery.notificationToken) {
       const token = delivery.notificationToken;
       await this.seguro('push', () =>
-        this.fcm.sendToToken(token, {
-          notification: {
-            title: `Taller confirmado para ${ctx.patent}`,
-            body: `${ctx.planName}: ${cuando(caso.chosenStart as Date)}`,
+        this.fcm.sendToToken(
+          token,
+          {
+            notification: {
+              title: `Taller confirmado para ${ctx.patent}`,
+              body: `${ctx.planName}: ${cuando(caso.chosenStart as Date)}`,
+            },
+            data: { type: 'MAINTENANCE_CONFIRMED', caseId: caso.caseId },
           },
-          data: { type: 'MAINTENANCE_CONFIRMED', caseId: caso.caseId },
-        }),
+          {
+            type: 'MAINTENANCE_CONFIRMED',
+            distributorId: delivery.distributorId,
+            recipientUserId: delivery.userId,
+          },
+        ),
       );
     }
   }

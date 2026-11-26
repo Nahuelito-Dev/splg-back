@@ -27,7 +27,6 @@ describe('CashCollectionSettingsController', () => {
       obtener: jest.fn().mockResolvedValue({
         config: {
           mercadoPagoCashBoxId: 'wallet-1',
-          transferCashBoxId: null,
           updatedAt: new Date('2026-10-30T12:00:00Z'),
         },
         nombres: new Map([['wallet-1', 'Mercado Pago']]),
@@ -76,8 +75,6 @@ describe('CashCollectionSettingsController', () => {
     expect(r).toEqual({
       mercadoPagoCashBoxId: 'wallet-1',
       mercadoPagoCashBoxName: 'Mercado Pago',
-      transferCashBoxId: null,
-      transferCashBoxName: null,
       updatedAt: new Date('2026-10-30T12:00:00Z'),
     });
   });
@@ -87,8 +84,6 @@ describe('CashCollectionSettingsController', () => {
     expect(await controller.ver('dist-1')).toEqual({
       mercadoPagoCashBoxId: null,
       mercadoPagoCashBoxName: null,
-      transferCashBoxId: null,
-      transferCashBoxName: null,
       updatedAt: null,
     });
   });
@@ -137,14 +132,13 @@ describe('CashCollectionSettingsController', () => {
       expect(
         await errores(UpdateCashCollectionSettingsDto, {
           mercadoPagoCashBoxId: null,
-          transferCashBoxId: '0b9f2c0e-7f41-4b8f-8f0e-1d2b3c4d5e6f',
         }),
       ).toEqual([]);
       expect(
         await errores(UpdateCashCollectionSettingsDto, {
-          transferCashBoxId: 'banco',
+          mercadoPagoCashBoxId: 'billetera',
         }),
-      ).toEqual(['transferCashBoxId']);
+      ).toEqual(['mercadoPagoCashBoxId']);
     });
 
     it('settle-pending exige la fecha desde la que se asienta', async () => {

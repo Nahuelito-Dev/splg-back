@@ -14,6 +14,7 @@ import {
   ValidationOptions,
 } from 'class-validator';
 import { CashMethod } from '../../cash/domain/cash.enums';
+import { RechazarTransferenciaEnDto } from '../../order/domain/medio-de-pago-aceptado';
 import { Importe } from '../../common/decorators/importe.decorator';
 import { TextoNoVacio } from '../../common/decorators/texto-no-vacio.decorator';
 import { PaginationDto } from '../../common/dtos/pagination.dto';
@@ -164,7 +165,13 @@ export class RegisterPaymentDto {
   @Importe()
   amount!: number;
 
-  @ApiProperty({ enum: CashMethod, example: CashMethod.TRANSFER })
+  @ApiProperty({
+    description:
+      'Medio con que paga el cliente. La transferencia ya no se acepta: 400 `PAYMENT_METHOD_NOT_ACCEPTED`',
+    enum: Object.values(CashMethod).filter((m) => m !== CashMethod.TRANSFER),
+    example: CashMethod.CASH,
+  })
+  @RechazarTransferenciaEnDto()
   @IsEnum(CashMethod)
   method!: CashMethod;
 

@@ -3,7 +3,7 @@ import {
   assertTransition,
   CYLINDER_TRANSITIONS,
 } from './cylinder-state.machine';
-import { CylinderState } from '../entities/cylinder.entity';
+import { CylinderState } from './cylinder-state';
 import { InvalidCylinderTransitionError } from './errors/invalid-cylinder-transition.error';
 
 /**
