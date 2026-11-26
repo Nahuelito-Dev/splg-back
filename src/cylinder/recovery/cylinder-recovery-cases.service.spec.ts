@@ -42,6 +42,7 @@ describe('CylinderRecoveryCasesService', () => {
     manager: {
       transaction: jest.Mock;
       getRepository: jest.Mock;
+      query: jest.Mock;
     };
   };
   let noticesRepo: {
@@ -56,6 +57,9 @@ describe('CylinderRecoveryCasesService', () => {
     envasesAReclamar: jest.Mock;
     clasificar: jest.Mock;
     cerrarPorDevolucion: jest.Mock;
+    numerosDeHojas: jest.Mock;
+    riesgosDe: jest.Mock;
+    puntajeDe: jest.Mock;
   };
   let cuenta: { compraPorDeposito: jest.Mock };
   let cylinders: {
@@ -102,6 +106,7 @@ describe('CylinderRecoveryCasesService', () => {
       manager: {
         transaction: jest.fn((fn: (m: unknown) => unknown) => fn(db.manager)),
         getRepository: jest.fn(),
+        query: jest.fn(),
       },
     } as unknown as typeof casesRepo;
     noticesRepo = {
@@ -124,6 +129,9 @@ describe('CylinderRecoveryCasesService', () => {
         .fn()
         .mockReturnValue({ retenidos: [], revisionManual: [] }),
       cerrarPorDevolucion: jest.fn().mockResolvedValue(true),
+      numerosDeHojas: jest.fn().mockResolvedValue(new Map()),
+      riesgosDe: jest.fn().mockResolvedValue(new Map()),
+      puntajeDe: jest.fn(),
     };
     cylinders = {
       getHistory: jest.fn().mockResolvedValue([]),
@@ -729,11 +737,122 @@ describe('CylinderRecoveryCasesService', () => {
       ).rejects.toThrow(/ya no admite el retiro/);
     });
 
+    it('una oferta aprovechando la hoja se acepta aunque el pedido sea de la parada vecina', async () => {
+      db.avisos[1].routeBatchId = 'hoja-1';
+      orders.findManyForRecovery.mockResolvedValue(
+        new Map([['ord-1', unPedido({ customerId: 'vecino' })]]),
+      );
+      engine.numerosDeHojas.mockResolvedValue(new Map([['hoja-1', 7]]));
+      const r = await service.aceptarRetiro('case-1', 'cust-1', DIST, AHORA);
+      expect(db.avisos[1].status).toBe(ProposalStatus.ACCEPTED);
+      expect(r.pickup).toEqual(
+        expect.objectContaining({ opportunistic: true, routeSheetNumber: 7 }),
+      );
+      expect(r.risk).toBeUndefined();
+    });
+
+    it('la oferta aprovechando la hoja tampoco se acepta si el pedido vecino ya salió o terminó', async () => {
+      db.avisos[1].routeBatchId = 'hoja-1';
+      orders.findManyForRecovery.mockResolvedValue(
+        new Map([
+          [
+            'ord-1',
+            unPedido({ customerId: 'vecino', status: OrderStatus.DELIVERED }),
+          ],
+        ]),
+      );
+      await expect(
+        service.aceptarRetiro('case-1', 'cust-1', DIST, AHORA),
+      ).rejects.toThrow(/ya no admite el retiro/);
+    });
+
     it('rechazar no mira el pedido', async () => {
       orders.findManyForRecovery.mockResolvedValue(new Map());
       await expect(
         service.rechazarRetiro('case-1', 'cust-1', DIST, AHORA),
       ).resolves.toBeDefined();
+    });
+  });
+
+  describe('puntaje de riesgo del cliente (M5a, v3)', () => {
+    it('devuelve el puntaje con los plazos de su banda', async () => {
+      casesRepo.manager.query.mockResolvedValue([{ '?column?': 1 }]);
+      engine.puntajeDe.mockResolvedValue({
+        score: 0.4,
+        band: 'high',
+        delayedCases: 3,
+        ordersTotal: 6,
+        neutral: false,
+        updatedAt: AHORA,
+      });
+      const r = await service.puntajeDelCliente('cust-1', DIST);
+      // 30 días × 70 % = 21 y 7 días × 70 % = 5 (piso de 1 día)
+      expect(r).toEqual(
+        expect.objectContaining({
+          customerId: 'cust-1',
+          band: 'high',
+          toleranceDays: 21,
+          escalationStepDays: 5,
+        }),
+      );
+      // Cliente que compró (aunque la empresa no lo haya dado de alta) también es suyo.
+      const [sql] = casesRepo.manager.query.mock.calls[0] as [string];
+      expect(sql).toContain('"order" pertenencia');
+      expect(sql).toContain('removed_at IS NOT NULL');
+      expect(sql).not.toContain(':distributorId');
+      expect(casesRepo.manager.query).toHaveBeenCalledWith(
+        expect.stringContaining('customer_distributor'),
+        ['cust-1', DIST],
+      );
+    });
+
+    it('un cliente sin casos es neutro: banda media y plazos sin ajustar', async () => {
+      casesRepo.manager.query.mockResolvedValue([{}]);
+      engine.puntajeDe.mockResolvedValue({
+        score: 0.15,
+        band: 'medium',
+        delayedCases: 0,
+        ordersTotal: 0,
+        neutral: true,
+        updatedAt: null,
+      });
+      const r = await service.puntajeDelCliente('cust-1', DIST);
+      expect(r).toEqual(
+        expect.objectContaining({
+          neutral: true,
+          toleranceDays: 30,
+          escalationStepDays: 7,
+        }),
+      );
+    });
+
+    it('un cliente que no es de la distribuidora es 404', async () => {
+      casesRepo.manager.query.mockResolvedValue([]);
+      await expect(
+        service.puntajeDelCliente('otro', DIST),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(engine.puntajeDe).not.toHaveBeenCalled();
+    });
+
+    it('el listado del administrador trae el riesgo de cada cliente y el del cliente no', async () => {
+      const riesgo = { score: 0.4, band: 'high' };
+      engine.riesgosDe.mockResolvedValue(new Map([['cust-1', riesgo]]));
+      casesRepo.findAndCount.mockResolvedValue([
+        [conRelaciones(db.casos[0])],
+        1,
+      ]);
+      casesRepo.createQueryBuilder.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+      const admin = await service.listar(DIST, {}, AHORA);
+      expect(admin.data[0].risk).toEqual(riesgo);
+      casesRepo.find.mockResolvedValue([conRelaciones(db.casos[0])]);
+      const [propio] = await service.delCliente('cust-1', DIST, AHORA);
+      expect(propio.risk).toBeUndefined();
     });
   });
 
@@ -775,6 +894,15 @@ describe('CylinderRecoveryCasesService', () => {
           orderStatus: OrderStatus.ON_THE_WAY,
         }),
       ]);
+    });
+
+    it('marca el retiro que aprovecha la hoja y no el de la entrega del propio cliente', async () => {
+      qb.getMany.mockResolvedValue([{ ...aceptada(), routeBatchId: 'hoja-1' }]);
+      const [oportunista] = await service.retirosDelChofer('user-ch', DIST);
+      expect(oportunista.opportunistic).toBe(true);
+      qb.getMany.mockResolvedValue([aceptada()]);
+      const [comun] = await service.retirosDelChofer('user-ch', DIST);
+      expect(comun.opportunistic).toBe(false);
     });
 
     it('no ve los de pedidos ajenos ni los que todavía no aceptó el pedido', async () => {

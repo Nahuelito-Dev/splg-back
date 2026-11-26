@@ -24,6 +24,7 @@ export const ETIQUETAS_ENTIDADES: Readonly<Record<string, string>> = {
   CylinderInspection: 'Inspección de envase',
   CylinderRecoveryCase: 'Caso de recupero de envase',
   CylinderRecoveryNotice: 'Aviso de recupero de envase',
+  CustomerRecoveryScore: 'Puntaje de riesgo de recupero del cliente',
   Delivery: 'Chofer',
   Distributor: 'Distribuidora',
   Employee: 'Legajo de personal',

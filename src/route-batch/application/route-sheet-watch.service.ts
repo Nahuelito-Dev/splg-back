@@ -99,6 +99,7 @@ export class RouteSheetWatchService {
     }
     const etaRecalculated = await this.eta.porReloj(nowMs);
     const notStartedAlerts = await this.sinIniciar(nowMs);
+    this.notifier.hojaEnCurso(null, null);
     return {
       assigned,
       waitExpired,

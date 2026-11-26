@@ -65,6 +65,7 @@ function armar(
     alChofer: jest.fn(),
     pushAlChofer: jest.fn().mockResolvedValue(undefined),
     alPanel: jest.fn(),
+    hojaEnCurso: jest.fn(),
     aLaBandeja: jest.fn((d: string, a: Record<string, unknown>) => {
       events.emit(EVENTO_NOTIFICAR_ADMIN, { d, ...a });
     }),
@@ -211,6 +212,7 @@ describe('RouteSheetWatchService', () => {
         Promise.resolve(id === 'hoja-2'),
       );
       const r = await t.svc.vigilar(Date.parse('2026-11-14T13:00:00Z'));
+      expect(t.notifier.hojaEnCurso).toHaveBeenCalledWith(null, null);
       expect(r).toEqual({
         assigned: 2,
         waitExpired: 0,

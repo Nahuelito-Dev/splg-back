@@ -23,6 +23,16 @@ export interface ParametrosDeRecupero {
   pickupOfferTtlHours: number;
   /** Ventana, en días, en que una entrega programada sirve para ofrecer el retiro. */
   pickupWindowDays: number;
+  /** Porcentaje de `toleranceDays` que rige para cada banda de riesgo del cliente. */
+  toleranceLowRiskPercent: number;
+  toleranceMediumRiskPercent: number;
+  toleranceHighRiskPercent: number;
+  /** Porcentaje de `escalationStepDays` que rige para cada banda de riesgo del cliente. */
+  stepLowRiskPercent: number;
+  stepMediumRiskPercent: number;
+  stepHighRiskPercent: number;
+  /** Radio, en metros, del retiro aprovechando una hoja de ruta en curso. */
+  opportunisticPickupRadiusMeters: number;
   /** Hora (Argentina) en que corre el proceso. */
   runHour: number;
   /** El proceso está encendido para la distribuidora (apagado por omisión). */
@@ -38,6 +48,13 @@ export function parametrosDeRecupero(
     escalationAmountThreshold: v.escalationAmountThreshold,
     pickupOfferTtlHours: v.pickupOfferTtlHours,
     pickupWindowDays: v.pickupWindowDays,
+    toleranceLowRiskPercent: v.toleranceLowRiskPercent,
+    toleranceMediumRiskPercent: v.toleranceMediumRiskPercent,
+    toleranceHighRiskPercent: v.toleranceHighRiskPercent,
+    stepLowRiskPercent: v.stepLowRiskPercent,
+    stepMediumRiskPercent: v.stepMediumRiskPercent,
+    stepHighRiskPercent: v.stepHighRiskPercent,
+    opportunisticPickupRadiusMeters: v.opportunisticPickupRadiusMeters,
     runHour: v.runHour,
     enabled: v.enabled === 1,
   };

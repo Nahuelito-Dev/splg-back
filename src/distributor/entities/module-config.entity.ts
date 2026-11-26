@@ -104,6 +104,13 @@ const RANGOS_DE_LA_RECUPERACION: ReadonlyArray<[string, number, number]> = [
   ['escalationAmountThreshold', 0, 100_000_000],
   ['pickupOfferTtlHours', 1, 720],
   ['pickupWindowDays', 1, 60],
+  ['toleranceLowRiskPercent', 10, 300],
+  ['toleranceMediumRiskPercent', 10, 300],
+  ['toleranceHighRiskPercent', 10, 300],
+  ['stepLowRiskPercent', 10, 300],
+  ['stepMediumRiskPercent', 10, 300],
+  ['stepHighRiskPercent', 10, 300],
+  ['opportunisticPickupRadiusMeters', 50, 2000],
   ['runHour', 0, 23],
   ['enabled', 0, 1],
 ];

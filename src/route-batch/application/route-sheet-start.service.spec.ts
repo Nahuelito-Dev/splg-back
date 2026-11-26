@@ -156,7 +156,11 @@ function armar(
     olvidarChofer: jest.fn().mockResolvedValue(undefined),
     avisarSalida: jest.fn().mockResolvedValue(asignados.length),
   };
-  const notifier = { alChofer: jest.fn(), alPanel: jest.fn() };
+  const notifier = {
+    alChofer: jest.fn(),
+    alPanel: jest.fn(),
+    hojaEnCurso: jest.fn(),
+  };
   const svc = new RouteSheetStartService(
     { query, manager: {} } as unknown as DataSource,
     sheets as unknown as Repository<RouteBatch>,
@@ -225,6 +229,7 @@ describe('RouteSheetStartService.iniciar (Iniciar viaje)', () => {
       'route-sheet:started',
       expect.objectContaining({ assignedOrders: 2 }),
     );
+    expect(t.notifier.hojaEnCurso).toHaveBeenCalledWith(DIST, 'hoja-1');
   });
 
   it('los pedidos que ya no estaban disponibles se informan (la asignación los sacó de la hoja)', async () => {
@@ -246,6 +251,7 @@ describe('RouteSheetStartService.iniciar (Iniciar viaje)', () => {
     });
     expect(t.asignacion.asignarConCerrojoTomado).not.toHaveBeenCalled();
     expect(t.eta.avisarSalida).not.toHaveBeenCalled();
+    expect(t.notifier.hojaEnCurso).not.toHaveBeenCalled();
   });
 
   it('dos inicios a la vez: el segundo espera el cerrojo y ve el viaje iniciado (un solo aviso a los clientes)', async () => {

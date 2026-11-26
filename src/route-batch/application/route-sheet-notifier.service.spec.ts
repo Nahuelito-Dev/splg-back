@@ -4,6 +4,7 @@ import { FcmPort } from '../../firebase/ports/fcm.port';
 import { AdminGateway } from '../../gateways/admin.gateway';
 import { CustomersGateway } from '../../gateways/customers.gateway';
 import { DriversGateway } from '../../gateways/drivers.gateway';
+import { EVENTO_HOJA_EN_CURSO } from '../domain/events/hoja-en-curso.event';
 import { NotificationsService } from '../../notifications/notifications.service';
 import {
   RouteSheetNotifier,
@@ -90,6 +91,19 @@ describe('RouteSheetNotifier', () => {
       { sheetId: 'h1' },
       'd1',
     );
+  });
+
+  it('avisa que hay una hoja en curso, y un emisor que falla no rompe', () => {
+    const { svc, events } = armar();
+    svc.hojaEnCurso('d1', 'h1');
+    expect(events.emit).toHaveBeenCalledWith(EVENTO_HOJA_EN_CURSO, {
+      distributorId: 'd1',
+      batchId: 'h1',
+    });
+    events.emit.mockImplementation(() => {
+      throw new Error('emisor caído');
+    });
+    expect(() => svc.hojaEnCurso(null, null)).not.toThrow();
   });
 
   it('a la bandeja con su clave de deduplicación', () => {

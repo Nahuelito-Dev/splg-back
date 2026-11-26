@@ -581,6 +581,22 @@
       "orderColumn": null
     },
     {
+      "table": "customer_recovery_score",
+      "entity": "CustomerRecoveryScore",
+      "pk": [
+        "score_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "cylinder",
       "entity": "Cylinder",
       "pk": [
@@ -4723,6 +4739,70 @@
       "position": 4
     },
     {
+      "table": "customer_recovery_score",
+      "column": "score_id",
+      "property": "scoreId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "customer_recovery_score",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "customer_recovery_score",
+      "column": "customer_user_id",
+      "property": "customerUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "customer_recovery_score",
+      "column": "delayed_cases",
+      "property": "delayedCases",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "customer_recovery_score",
+      "column": "orders_total",
+      "property": "ordersTotal",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "customer_recovery_score",
+      "column": "score",
+      "property": "score",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "customer_recovery_score",
+      "column": "band",
+      "property": "band",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "customer_recovery_score",
+      "column": "updated_at",
+      "property": "updatedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 7
+    },
+    {
       "table": "cylinder",
       "column": "cylinder_id",
       "property": "cylinderId",
@@ -5028,11 +5108,19 @@
     },
     {
       "table": "cylinder_recovery_notice",
+      "column": "route_batch_id",
+      "property": "routeBatchId",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "cylinder_recovery_notice",
       "column": "responded_at",
       "property": "respondedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 6
+      "position": 7
     },
     {
       "table": "cylinder_recovery_notice",
@@ -5040,7 +5128,7 @@
       "property": "responseNote",
       "secret": false,
       "kind": "text",
-      "position": 7
+      "position": 8
     },
     {
       "table": "cylinder_recovery_notice",
@@ -5048,7 +5136,7 @@
       "property": "expiresAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 8
+      "position": 9
     },
     {
       "table": "delivery",

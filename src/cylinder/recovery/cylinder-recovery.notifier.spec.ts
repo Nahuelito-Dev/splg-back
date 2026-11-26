@@ -62,6 +62,17 @@ describe('CylinderRecoveryNotifier', () => {
       });
       expect(t.body).toContain('2026-11-03');
     });
+
+    it('la oferta que aprovecha la hoja dice que pasamos cerca y que no tiene cargo', () => {
+      const t = textoDelAviso(unCaso(), unaOferta(), {
+        ...ctx,
+        retiroAprovechandoLaHoja: true,
+      });
+      expect(t.title).toBe('¿Devolvés el envase hoy?');
+      expect(t.body).toContain('Hoy pasamos cerca');
+      expect(t.body).toContain('sin cargo');
+      expect(t.body).toContain('SN-001');
+    });
   });
 
   describe('porSocket', () => {

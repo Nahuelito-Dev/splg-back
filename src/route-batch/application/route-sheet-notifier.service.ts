@@ -8,6 +8,10 @@ import { CustomersGateway } from '../../gateways/customers.gateway';
 import { DriversGateway } from '../../gateways/drivers.gateway';
 import { NotificationsService } from '../../notifications/notifications.service';
 import type { EfectivoDeSalida } from '../../order/domain/efectivo-a-cobrar';
+import {
+  EVENTO_HOJA_EN_CURSO,
+  type HojaEnCurso,
+} from '../domain/events/hoja-en-curso.event';
 
 /** Por qué cambió la hoja en curso (lo que la app del chofer le muestra). */
 export type MotivoDeCambio =
@@ -68,6 +72,21 @@ export class RouteSheetNotifier {
     private readonly fcm: FcmPort,
     private readonly events: EventEmitter2,
   ) {}
+
+  /**
+   * Avisa a los demás módulos que hay una hoja en curso (o, sin hoja, que corrió
+   * el seguimiento). No espera a quien escucha ni falla por él.
+   */
+  hojaEnCurso(distributorId: string | null, batchId: string | null): void {
+    const evento: HojaEnCurso = { distributorId, batchId };
+    try {
+      this.events.emit(EVENTO_HOJA_EN_CURSO, evento);
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo avisar la hoja en curso: ${errorMessage(error)}`,
+      );
+    }
+  }
 
   /** Al chofer: la hoja empezó, cambió o se cerró. */
   alChofer(

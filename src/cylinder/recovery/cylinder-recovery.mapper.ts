@@ -12,12 +12,22 @@ import {
   RecoveryMovementDto,
   RecoveryNoticeDto,
   RecoveryPickupDto,
+  RecoveryRiskDto,
 } from './dto/recovery-response.dto';
+
+/** Lo que el caso toma de fuera de sus avisos: el número de cada hoja y el riesgo de cada cliente. */
+export interface ExtrasDelCaso {
+  hojas?: ReadonlyMap<string, number | null>;
+  riesgos?: ReadonlyMap<string, RecoveryRiskDto>;
+}
 
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
 
 export class CylinderRecoveryMapper {
-  static aviso(n: CylinderRecoveryNotice): RecoveryNoticeDto {
+  static aviso(
+    n: CylinderRecoveryNotice,
+    hojas: ReadonlyMap<string, number | null> = new Map(),
+  ): RecoveryNoticeDto {
     return {
       noticeId: n.noticeId,
       step: n.step,
@@ -28,6 +38,11 @@ export class CylinderRecoveryMapper {
       expiresAt: n.expiresAt,
       respondedAt: n.respondedAt,
       responseNote: n.responseNote,
+      routeBatchId: n.routeBatchId ?? null,
+      opportunistic: Boolean(n.routeBatchId),
+      routeSheetNumber: n.routeBatchId
+        ? (hojas.get(n.routeBatchId) ?? null)
+        : null,
     };
   }
 
@@ -35,6 +50,7 @@ export class CylinderRecoveryMapper {
   static retiroVigente(
     avisos: CylinderRecoveryNotice[],
     pedidos: Map<string, OrderRecoveryRef>,
+    hojas: ReadonlyMap<string, number | null> = new Map(),
   ): RecoveryPickupDto | null {
     const oferta = [...avisos]
       .reverse()
@@ -53,6 +69,10 @@ export class CylinderRecoveryMapper {
       scheduledDate: pedido?.scheduledDate ?? null,
       orderStatus: pedido?.status ?? null,
       expiresAt: oferta.expiresAt,
+      opportunistic: Boolean(oferta.routeBatchId),
+      routeSheetNumber: oferta.routeBatchId
+        ? (hojas.get(oferta.routeBatchId) ?? null)
+        : null,
     };
   }
 
@@ -61,6 +81,7 @@ export class CylinderRecoveryMapper {
     avisos: CylinderRecoveryNotice[],
     pedidos: Map<string, OrderRecoveryRef>,
     ahora: Date,
+    extras: ExtrasDelCaso = {},
   ): RecoveryCaseDto {
     const fin = c.closedAt ?? ahora;
     const ultimo = avisos.filter(
@@ -93,9 +114,14 @@ export class CylinderRecoveryMapper {
         product: c.cylinder?.gasCylinder?.type ?? null,
       },
       lastNotice: ultimo.length
-        ? CylinderRecoveryMapper.aviso(ultimo[ultimo.length - 1])
+        ? CylinderRecoveryMapper.aviso(ultimo[ultimo.length - 1], extras.hojas)
         : null,
-      pickup: CylinderRecoveryMapper.retiroVigente(avisos, pedidos),
+      pickup: CylinderRecoveryMapper.retiroVigente(
+        avisos,
+        pedidos,
+        extras.hojas,
+      ),
+      risk: extras.riesgos?.get(c.userId),
     };
   }
 
@@ -117,10 +143,11 @@ export class CylinderRecoveryMapper {
     historial: CylinderMovement[],
     resolvio: { fullName: string | null } | null,
     ahora: Date,
+    extras: ExtrasDelCaso = {},
   ): RecoveryCaseDetailDto {
     return {
-      ...CylinderRecoveryMapper.caso(c, avisos, pedidos, ahora),
-      notices: avisos.map((a) => CylinderRecoveryMapper.aviso(a)),
+      ...CylinderRecoveryMapper.caso(c, avisos, pedidos, ahora, extras),
+      notices: avisos.map((a) => CylinderRecoveryMapper.aviso(a, extras.hojas)),
       history: historial.map((m) => CylinderRecoveryMapper.movimiento(m)),
       resolution:
         c.closedAt && (c.resolvedByUserId || c.resolutionNote)

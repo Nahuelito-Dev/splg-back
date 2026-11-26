@@ -26,6 +26,7 @@ import {
   CylinderRecoveryNotice,
   RecoveryNoticeKind,
 } from '../../src/cylinder/entities/cylinder-recovery-notice.entity';
+import { CustomerRecoveryScore } from '../../src/cylinder/entities/customer-recovery-score.entity';
 import { CylinderRecoveryCasesService } from '../../src/cylinder/recovery/cylinder-recovery-cases.service';
 import { CylinderRecoveryService } from '../../src/cylinder/recovery/cylinder-recovery.service';
 import { RecoveryDecision } from '../../src/cylinder/recovery/dto/recovery-request.dto';
@@ -413,6 +414,7 @@ describe('Recupero de envases (e2e)', () => {
         orders,
         notifier as never,
         apagado as never,
+        ds.getRepository(CustomerRecoveryScore),
       );
       const { service: cylinders } = armarEnvases({
         cylinders: ds.getRepository(Cylinder),

@@ -9,14 +9,18 @@ import { OrderLookupModule } from '../../order/lookup/order-lookup.module';
 import { CylinderModule } from '../cylinder.module';
 import { CylinderRecoveryCase } from '../entities/cylinder-recovery-case.entity';
 import { CylinderRecoveryNotice } from '../entities/cylinder-recovery-notice.entity';
+import { CustomerRecoveryScore } from '../entities/customer-recovery-score.entity';
 import { CylinderRecoveryCasesService } from './cylinder-recovery-cases.service';
 import {
   CylinderRecoveryAdminController,
   CylinderRecoveryCustomerController,
   CylinderRecoveryDriverController,
 } from './cylinder-recovery.controllers';
+import { CylinderRecoveryScoreController } from './cylinder-recovery-v3.controller';
 import { CylinderRecoveryCron } from './cylinder-recovery.cron';
+import { CylinderRecoveryHojaListener } from './cylinder-recovery-hoja.listener';
 import { CylinderRecoveryListener } from './cylinder-recovery.listener';
+import { CylinderRecoveryPickupOpportunityService } from './cylinder-recovery-pickup-opportunity.service';
 import { CylinderRecoveryNotifier } from './cylinder-recovery.notifier';
 import { CylinderRecoveryService } from './cylinder-recovery.service';
 import { CylinderRecoveryAccountService } from './cylinder-recovery-account.service';
@@ -29,7 +33,11 @@ import { CylinderRecoveryAccountService } from './cylinder-recovery-account.serv
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([CylinderRecoveryCase, CylinderRecoveryNotice]),
+    TypeOrmModule.forFeature([
+      CylinderRecoveryCase,
+      CylinderRecoveryNotice,
+      CustomerRecoveryScore,
+    ]),
     CylinderModule,
     DistributorModule,
     OrderLookupModule,
@@ -40,6 +48,7 @@ import { CylinderRecoveryAccountService } from './cylinder-recovery-account.serv
   ],
   controllers: [
     CylinderRecoveryAdminController,
+    CylinderRecoveryScoreController,
     CylinderRecoveryCustomerController,
     CylinderRecoveryDriverController,
   ],
@@ -50,6 +59,8 @@ import { CylinderRecoveryAccountService } from './cylinder-recovery-account.serv
     CylinderRecoveryNotifier,
     CylinderRecoveryCron,
     CylinderRecoveryListener,
+    CylinderRecoveryPickupOpportunityService,
+    CylinderRecoveryHojaListener,
   ],
 })
 export class CylinderRecoveryModule {}

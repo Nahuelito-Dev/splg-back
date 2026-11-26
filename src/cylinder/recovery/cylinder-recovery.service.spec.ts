@@ -13,6 +13,7 @@ import {
   CylinderRecoveryNotice,
   RecoveryNoticeKind,
 } from '../entities/cylinder-recovery-notice.entity';
+import { CustomerRecoveryScore } from '../entities/customer-recovery-score.entity';
 import { CylinderRecoveryNotifier } from './cylinder-recovery.notifier';
 import { CylinderRecoveryService } from './cylinder-recovery.service';
 import {
@@ -20,6 +21,7 @@ import {
   NOTA_CUBIERTO_POR_LA_CUENTA,
 } from './cylinder-recovery-account.service';
 import { parametrosDeRecupero } from './domain/recovery-rules';
+import { RecoveryRiskBand } from './domain/riesgo-de-recupero';
 import {
   AHORA,
   BaseEnMemoria,
@@ -52,11 +54,13 @@ describe('CylinderRecoveryService', () => {
   };
   let processConfig: { obtener: jest.Mock };
   let cuenta: { cubiertos: jest.Mock; sigueCubierto: jest.Mock };
+  let scoresRepo: { find: jest.Mock };
   let service: CylinderRecoveryService;
   const P = parametrosDeRecupero(PARAMETROS);
 
   beforeEach(() => {
     db = new BaseEnMemoria();
+    scoresRepo = { find: jest.fn().mockResolvedValue([]) };
     db.envases = [unEnvase()];
     db.casos = [unCaso()];
     casesRepo = {
@@ -90,6 +94,7 @@ describe('CylinderRecoveryService', () => {
       orders as unknown as OrderLookupService,
       notifier as unknown as CylinderRecoveryNotifier,
       cuenta as unknown as CylinderRecoveryAccountService,
+      scoresRepo as unknown as Repository<CustomerRecoveryScore>,
     );
   });
 
@@ -117,6 +122,44 @@ describe('CylinderRecoveryService', () => {
       );
       expect(r.retenidos.map((e) => e.serial)).toEqual(['VIEJO']);
       expect(r.revisionManual).toEqual([]);
+    });
+
+    it('un cliente de banda alta se reclama antes: la tolerancia se acorta (21 de 30 días)', () => {
+      const a25 = afuera({
+        serial: 'A25',
+        deliveredAt: new Date(AHORA.getTime() - 25 * DIA),
+      });
+      const bandas = new Map([['cust-1', RecoveryRiskBand.HIGH]]);
+      expect(
+        service
+          .clasificar([a25], P, AHORA, bandas)
+          .retenidos.map((e) => e.serial),
+      ).toEqual(['A25']);
+      expect(service.clasificar([a25], P, AHORA).retenidos).toEqual([]);
+      expect(
+        service.clasificar(
+          [a25],
+          P,
+          AHORA,
+          new Map([['cust-1', RecoveryRiskBand.MEDIUM]]),
+        ).retenidos,
+      ).toEqual([]);
+    });
+
+    it('un cliente de banda baja tiene más margen: a los 35 días todavía no se reclama', () => {
+      const a35 = afuera({
+        serial: 'A35',
+        deliveredAt: new Date(AHORA.getTime() - 35 * DIA),
+      });
+      expect(
+        service.clasificar(
+          [a35],
+          P,
+          AHORA,
+          new Map([['cust-1', RecoveryRiskBand.LOW]]),
+        ).retenidos,
+      ).toEqual([]);
+      expect(service.clasificar([a35], P, AHORA).retenidos).toHaveLength(1);
     });
 
     it('si no se sabe en poder de quién o desde cuándo, va a revisión manual y no ingresa', () => {
@@ -626,6 +669,18 @@ describe('CylinderRecoveryService', () => {
         );
       });
 
+      it('el vencimiento del escalón usa el plazo de la banda del cliente', async () => {
+        await service.procesarCaso(
+          'case-1',
+          P,
+          AHORA,
+          new Map([['cust-1', RecoveryRiskBand.HIGH]]),
+        );
+        expect(db.casos[0].stepDueAt).toEqual(
+          new Date(AHORA.getTime() + 5 * DIA),
+        );
+      });
+
       it('dos pasadas seguidas no repiten el aviso (idempotente)', async () => {
         await procesar();
         const segunda = await procesar();
@@ -875,6 +930,115 @@ describe('CylinderRecoveryService', () => {
       db.casos = [];
       expect(await service.cerrarPorDevolucion(DIST, 'cyl-1', AHORA)).toBe(
         false,
+      );
+    });
+  });
+
+  describe('puntaje de riesgo (M5a)', () => {
+    it('recalcula con casos demorados y pedidos entregados, sin contar los cubiertos por la cuenta', async () => {
+      casesRepo.manager.query.mockResolvedValue([
+        { customerId: 'cust-1', delayed: 5, orders: 10 },
+      ]);
+      // 1ª consulta: las filas; 2ª: el upsert
+      casesRepo.manager.query
+        .mockResolvedValueOnce([
+          { customerId: 'cust-1', delayed: 5, orders: 10 },
+        ])
+        .mockResolvedValueOnce([1]);
+      expect(await service.recalcularPuntajes(DIST, AHORA)).toBe(1);
+      const [sql, params] = casesRepo.manager.query.mock.calls[0] as [
+        string,
+        unknown[],
+      ];
+      expect(sql).toContain("o.status::text = 'delivered'");
+      expect(sql).toContain('resolution_note IS DISTINCT FROM $2');
+      expect(params).toEqual([DIST, NOTA_CUBIERTO_POR_LA_CUENTA]);
+      const [, upsert] = casesRepo.manager.query.mock.calls[1] as [
+        string,
+        unknown[],
+      ];
+      expect(upsert[1]).toEqual(['cust-1']);
+      expect(upsert[4]).toEqual([0.3444]);
+      expect(upsert[5]).toEqual(['high']);
+    });
+
+    it('sin casos no escribe nada', async () => {
+      casesRepo.manager.query.mockResolvedValue([]);
+      expect(await service.recalcularPuntajes(DIST, AHORA)).toBe(0);
+      expect(casesRepo.manager.query).toHaveBeenCalledTimes(1);
+    });
+
+    it('si falla no rompe la corrida: devuelve 0', async () => {
+      casesRepo.manager.query.mockRejectedValue(new Error('base caída'));
+      expect(await service.recalcularPuntajes(DIST, AHORA)).toBe(0);
+    });
+
+    it('riesgosDe da el neutro (banda media) al cliente sin fila y el guardado a quien la tiene', async () => {
+      scoresRepo.find.mockResolvedValue([
+        {
+          customerUserId: 'cust-1',
+          score: 0.4,
+          band: RecoveryRiskBand.HIGH,
+          delayedCases: 4,
+          ordersTotal: 8,
+          updatedAt: AHORA,
+        },
+      ]);
+      const r = await service.riesgosDe(DIST, ['cust-1', 'nuevo', 'nuevo']);
+      expect(r.get('cust-1')).toEqual(
+        expect.objectContaining({ band: 'high', neutral: false, score: 0.4 }),
+      );
+      expect(r.get('nuevo')).toEqual({
+        score: 0.15,
+        band: 'medium',
+        delayedCases: 0,
+        ordersTotal: 0,
+        neutral: true,
+        updatedAt: null,
+      });
+      expect((await service.puntajeDe(DIST, 'nuevo')).neutral).toBe(true);
+    });
+
+    it('bandasDe devuelve la banda de cada cliente con fila', async () => {
+      scoresRepo.find.mockResolvedValue([
+        { customerUserId: 'a', band: RecoveryRiskBand.LOW },
+      ]);
+      expect((await service.bandasDe(DIST)).get('a')).toBe('low');
+    });
+
+    it('ejecutar recalcula antes de clasificar y usa las bandas', async () => {
+      const recalcular = jest
+        .spyOn(service, 'recalcularPuntajes')
+        .mockResolvedValue(0);
+      const clasificar = jest.spyOn(service, 'clasificar');
+      scoresRepo.find.mockResolvedValue([
+        { customerUserId: 'cust-1', band: RecoveryRiskBand.HIGH },
+      ]);
+      casesRepo.find.mockResolvedValue([]);
+      jest
+        .spyOn(service, 'envasesAReclamar')
+        .mockResolvedValue({ afuera: [], cubiertos: null });
+      await service.ejecutar(DIST, AHORA);
+      expect(recalcular).toHaveBeenCalledWith(DIST, AHORA);
+      expect(clasificar).toHaveBeenCalledWith(
+        [],
+        expect.anything(),
+        AHORA,
+        new Map([['cust-1', RecoveryRiskBand.HIGH]]),
+      );
+    });
+
+    it('numerosDeHojas consulta sólo las hojas de la distribuidora y no consulta sin ids', async () => {
+      expect((await service.numerosDeHojas(DIST, [])).size).toBe(0);
+      expect(casesRepo.manager.query).not.toHaveBeenCalled();
+      casesRepo.manager.query.mockResolvedValue([
+        { batchId: 'h1', number: 12 },
+      ]);
+      const r = await service.numerosDeHojas(DIST, ['h1']);
+      expect(r.get('h1')).toBe(12);
+      expect(casesRepo.manager.query).toHaveBeenCalledWith(
+        expect.stringContaining('distributor_id = $2'),
+        [['h1'], DIST],
       );
     });
   });

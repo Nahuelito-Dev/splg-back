@@ -16,6 +16,7 @@ import {
 import { DeliveryService } from '../../delivery/delivery.service';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
 import { OrderStatus } from '../../order/entities/order.entity';
+import { clienteDeLaDistribuidora } from '../../common/tenancy/pertenencia';
 import { User } from '../../users/entities/user.entity';
 import { CylinderService } from '../cylinder.service';
 import { Cylinder, CylinderState } from '../entities/cylinder.entity';
@@ -30,10 +31,14 @@ import {
   CylinderRecoveryNotice,
   RecoveryNoticeKind,
 } from '../entities/cylinder-recovery-notice.entity';
-import { CylinderRecoveryMapper } from './cylinder-recovery.mapper';
+import {
+  CylinderRecoveryMapper,
+  ExtrasDelCaso,
+} from './cylinder-recovery.mapper';
 import { CylinderRecoveryService } from './cylinder-recovery.service';
 import { CylinderRecoveryAccountService } from './cylinder-recovery-account.service';
 import { choferPuedeRetirar } from './domain/recovery-rules';
+import { ajustarPorBanda } from './domain/riesgo-de-recupero';
 import {
   QueryRecoveryCasesDto,
   RecoveryDecision,
@@ -44,6 +49,7 @@ import {
   RecoveryCaseDetailDto,
   RecoveryCaseDto,
   RecoveryCasePageDto,
+  RecoveryCustomerScoreDto,
   RecoveryReportDto,
 } from './dto/recovery-response.dto';
 
@@ -102,7 +108,7 @@ export class CylinderRecoveryCasesService {
       skip: q.offset ?? 0,
     });
     return {
-      data: await this.armar(filas, distributorId, ahora),
+      data: await this.armar(filas, distributorId, ahora, true),
       total,
       counts: await this.contarPorEstado(distributorId),
     };
@@ -122,6 +128,7 @@ export class CylinderRecoveryCasesService {
     const avisos = await this.avisosDe([caso.caseId]);
     const lista = avisos.get(caso.caseId) ?? [];
     const pedidos = await this.pedidosDe(lista, distributorId);
+    const extras = await this.extrasDe([caso], lista, distributorId, true);
     const historial = await this.cylinders.getHistory(
       caso.cylinderId,
       distributorId,
@@ -140,6 +147,7 @@ export class CylinderRecoveryCasesService {
       historial,
       resolvio ? { fullName: resolvio.fullName ?? null } : null,
       ahora,
+      extras,
     );
   }
 
@@ -248,7 +256,7 @@ export class CylinderRecoveryCasesService {
       withDeleted: true,
       order: { exhaustedAt: 'DESC' },
     });
-    const todos = await this.armar(filas, distributorId, ahora);
+    const todos = await this.armar(filas, distributorId, ahora, true);
     const lost = todos.filter((c) => c.status === RecoveryCaseStatus.LOST);
     const escalated = todos.filter(
       (c) => c.status === RecoveryCaseStatus.ESCALATED,
@@ -275,6 +283,35 @@ export class CylinderRecoveryCasesService {
         escalatedAmount: suma(escalated),
         manualReviewCount: revisionManual.length,
       },
+    };
+  }
+
+  /** El puntaje de riesgo de un cliente de la distribuidora y los plazos que le rigen por su banda. */
+  async puntajeDelCliente(
+    customerId: string,
+    distributorId: string,
+  ): Promise<RecoveryCustomerScoreDto> {
+    // La misma pertenencia que el resto del sistema: le compró o la empresa lo
+    // dio de alta, y no está dado de baja.
+    const filas: unknown[] = await this.cases.manager.query(
+      `SELECT 1 FROM "user" u WHERE u.user_id = $1 AND ${clienteDeLaDistribuidora(
+        'u.user_id',
+      ).replace(/:distributorId/g, '$2')}`,
+      [customerId, distributorId],
+    );
+    if (filas.length === 0) {
+      throw new NotFoundException('Cliente no encontrado');
+    }
+    const riesgo = await this.engine.puntajeDe(distributorId, customerId);
+    const p = ajustarPorBanda(
+      await this.engine.parametros(distributorId),
+      riesgo.band,
+    );
+    return {
+      customerId,
+      ...riesgo,
+      toleranceDays: p.toleranceDays,
+      escalationStepDays: p.escalationStepDays,
     };
   }
 
@@ -408,9 +445,12 @@ export class CylinderRecoveryCasesService {
           distributorId,
         );
         const pedido = pedidos.get(oferta.orderId as string);
+        // En el retiro aprovechando la hoja el pedido es de una parada vecina.
+        const esDelCliente =
+          Boolean(oferta.routeBatchId) || pedido?.customerId === customerId;
         if (
           !pedido ||
-          pedido.customerId !== customerId ||
+          !esDelCliente ||
           !PEDIDO_QUE_ADMITE_RETIRO.has(pedido.status)
         ) {
           throw new ConflictException(
@@ -484,6 +524,7 @@ export class CylinderRecoveryCasesService {
           depositAmount: caso.depositAmount,
           customerName: caso.user?.fullName ?? null,
           customerPhone: caso.user?.phoneNumber ?? null,
+          opportunistic: Boolean(o.routeBatchId),
         },
       ];
     });
@@ -627,22 +668,43 @@ export class CylinderRecoveryCasesService {
     );
   }
 
+  /** El número de cada hoja de las ofertas y, para el administrador, el riesgo de cada cliente. */
+  private async extrasDe(
+    casos: CylinderRecoveryCase[],
+    avisos: CylinderRecoveryNotice[],
+    distributorId: string,
+    conRiesgo: boolean,
+  ): Promise<ExtrasDelCaso> {
+    const hojas = await this.engine.numerosDeHojas(distributorId, [
+      ...new Set(
+        avisos.flatMap((a) => (a.routeBatchId ? [a.routeBatchId] : [])),
+      ),
+    ]);
+    if (!conRiesgo) return { hojas };
+    const riesgos = await this.engine.riesgosDe(
+      distributorId,
+      casos.map((c) => c.userId),
+    );
+    return { hojas, riesgos };
+  }
+
   private async armar(
     casos: CylinderRecoveryCase[],
     distributorId: string,
     ahora: Date,
+    conRiesgo = false,
   ): Promise<RecoveryCaseDto[]> {
     const avisos = await this.avisosDe(casos.map((c) => c.caseId));
-    const pedidos = await this.pedidosDe(
-      [...avisos.values()].flat(),
-      distributorId,
-    );
+    const todos = [...avisos.values()].flat();
+    const pedidos = await this.pedidosDe(todos, distributorId);
+    const extras = await this.extrasDe(casos, todos, distributorId, conRiesgo);
     return casos.map((c) =>
       CylinderRecoveryMapper.caso(
         c,
         avisos.get(c.caseId) ?? [],
         pedidos,
         ahora,
+        extras,
       ),
     );
   }
