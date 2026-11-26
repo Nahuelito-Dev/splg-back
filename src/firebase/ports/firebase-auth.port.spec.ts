@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, Logger } from '@nestjs/common';
 import { auth } from 'firebase-admin';
 import { FirebaseAuthPort } from './firebase-auth.port';
 
@@ -8,6 +8,7 @@ class PuertoDePrueba extends FirebaseAuthPort {
   getUserByEmail = jest.fn();
   deleteUser = jest.fn();
   updateUser = jest.fn();
+  revokeRefreshTokens = jest.fn();
   generatePasswordResetLink = jest.fn();
 }
 
@@ -21,7 +22,7 @@ describe('FirebaseAuthPort.createUserSafe', () => {
   it.each([
     [
       'auth/invalid-password',
-      'La contraseña es muy débil: usá al menos 6 caracteres',
+      'La contraseña es muy débil: usá al menos 8 caracteres, una mayúscula, una minúscula y un número',
     ],
     ['auth/email-already-exists', 'Ese correo ya está registrado'],
     ['auth/phone-number-already-exists', 'El teléfono ya está en uso'],
@@ -63,5 +64,28 @@ describe('FirebaseAuthPort.createUserSafe', () => {
     await expect(puerto.createUserSafe({})).rejects.toThrow(
       'No se pudo crear la cuenta',
     );
+  });
+});
+
+describe('FirebaseAuthPort.revokeRefreshTokensSafe', () => {
+  it('revoca las sesiones de la cuenta', async () => {
+    const puerto = new PuertoDePrueba();
+    puerto.revokeRefreshTokens.mockResolvedValue(undefined);
+
+    await puerto.revokeRefreshTokensSafe('uid-1', new Logger('test'));
+
+    expect(puerto.revokeRefreshTokens).toHaveBeenCalledWith('uid-1');
+  });
+
+  it('si Firebase falla lo registra y no lanza', async () => {
+    const puerto = new PuertoDePrueba();
+    puerto.revokeRefreshTokens.mockRejectedValue(new Error('caído'));
+    const logger = new Logger('test');
+    const error = jest.spyOn(logger, 'error').mockImplementation();
+
+    await expect(
+      puerto.revokeRefreshTokensSafe('uid-1', logger),
+    ).resolves.toBeUndefined();
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('uid-1'));
   });
 });

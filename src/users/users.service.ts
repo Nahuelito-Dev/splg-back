@@ -335,6 +335,13 @@ export class UsersService {
       if (updateUserDto.blocked === true) {
         this.avisarAccesoRevocado(user.userId, 'bloqueo');
       }
+      // Bloquear o cambiar la clave de otro cierra sus sesiones abiertas.
+      if (user.firebaseUid && (updateUserDto.blocked === true || password)) {
+        await this.firebaseAuth.revokeRefreshTokensSafe(
+          user.firebaseUid,
+          this.logger,
+        );
+      }
 
       return user;
     } catch (error) {
@@ -614,6 +621,9 @@ export class UsersService {
     userId: string,
     firebaseUid: string,
   ): Promise<void> {
+    // Sin refresh tokens vigentes, aunque la deshabilitación falle la cuenta
+    // no renueva su sesión.
+    await this.firebaseAuth.revokeRefreshTokensSafe(firebaseUid, this.logger);
     for (let intento = 1; intento <= INTENTOS_DESHABILITAR_CUENTA; intento++) {
       try {
         await this.firebaseAuth.updateUser(firebaseUid, { disabled: true });
@@ -746,6 +756,24 @@ export class UsersService {
   }
 
   /**
+   * Revoca las sesiones de Firebase de un usuario por su id (el egreso de un
+   * empleado lo bloquea dentro de su propia transacción y no conoce el uid).
+   * Sin cuenta de acceso no hace nada; si Firebase falla se registra.
+   */
+  async revocarSesionesDe(userId: string): Promise<void> {
+    const user = await this.userRepository.findOne({
+      where: { userId },
+      select: { userId: true, firebaseUid: true },
+    });
+    if (user?.firebaseUid) {
+      await this.firebaseAuth.revokeRefreshTokensSafe(
+        user.firebaseUid,
+        this.logger,
+      );
+    }
+  }
+
+  /**
    * Corta en el momento las conexiones de tiempo real del usuario. Se llama
    * con el bloqueo o la baja ya confirmados: si la transacción se revirtiera,
    * el usuario quedaría desconectado sin motivo.
@@ -784,7 +812,15 @@ export class UsersService {
       await manager.save(actual);
     });
     user.blocked = shouldBlock;
-    if (shouldBlock) this.avisarAccesoRevocado(user.userId, 'bloqueo');
+    if (shouldBlock) {
+      this.avisarAccesoRevocado(user.userId, 'bloqueo');
+      if (user.firebaseUid) {
+        await this.firebaseAuth.revokeRefreshTokensSafe(
+          user.firebaseUid,
+          this.logger,
+        );
+      }
+    }
 
     return {
       id: user.userId,

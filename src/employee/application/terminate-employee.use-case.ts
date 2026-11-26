@@ -172,6 +172,7 @@ export class TerminateEmployeeUseCase {
 
     if (usuarioBloqueado) {
       this.users.avisarAccesoRevocado(usuarioBloqueado, 'bloqueo');
+      await this.users.revocarSesionesDe(usuarioBloqueado);
     }
     // Con el egreso confirmado sale del radar de despacho (Redis no es transaccional).
     if (userIdDelChofer) {

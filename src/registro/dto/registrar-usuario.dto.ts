@@ -16,6 +16,7 @@ import { DeclareConsumptionDto } from '../../repurchase/dto/declare-consumption.
 import { LegajoDeChoferDto } from './legajo-de-chofer.dto';
 import { ROLES_REGISTRABLES } from '../politica-de-registro';
 import type { RolRegistrable } from '../politica-de-registro';
+import { EsContrasenaSegura } from '../../common/validation/contrasena';
 
 /**
  * Alta desde la puerta pública (`POST /auth/registro`): siempre un cliente.
@@ -27,10 +28,15 @@ export class RegistrarClienteDto {
   @IsEmail()
   email!: string;
 
-  // Firebase exige al menos 6 caracteres.
-  @ApiProperty({ example: 'Test1234', minLength: 6 })
+  // Política: 8+ caracteres, una mayúscula, una minúscula y un número.
+  @ApiProperty({
+    example: 'Ejemplo2026x',
+    minLength: 8,
+    description:
+      'De 8 a 128 caracteres, con una mayúscula, una minúscula y un número; no puede ser una contraseña común',
+  })
   @IsString()
-  @MinLength(6)
+  @EsContrasenaSegura()
   password!: string;
 
   @ApiProperty({ example: 'Ana Pérez' })

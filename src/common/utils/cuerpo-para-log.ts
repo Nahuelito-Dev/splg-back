@@ -1,21 +1,40 @@
 /**
  * Campos que nunca van al log de requests (morgan), en cualquier nivel del
- * cuerpo y sin distinguir mayúsculas. Incluye los datos de un tercero que se
- * cargan al indicar quién recibe un pedido (CU-128) y el detalle de la
+ * cuerpo y sin distinguir mayúsculas. Se enmascara por subcadena de la clave:
+ * `idToken`, `refreshToken`, `apiKey`, `newPassword` o `Authorization` salen
+ * tapados sin tener que listarlos uno por uno. Incluye los datos de un tercero
+ * que se cargan al indicar quién recibe un pedido (CU-128) y el detalle de la
  * documentación del personal.
  */
-const ENMASCARADOS = new Set([
+const FRAGMENTOS_SENSIBLES = [
   'password',
-  'passwordconfirmation',
+  'passwd',
+  'clave',
+  'contrasena',
+  'contraseña',
   'token',
-  'access_token',
+  'secret',
+  'key',
+  'authorization',
+  'cookie',
+  'cbu',
   'creditcard',
+  'cardnumber',
+  'cvv',
   'receivername',
   'receiverdocument',
   'receiverrelationship',
-  // Detalle de la documentación del personal (psicofísico, ART).
-  'details',
-]);
+];
+
+/** Claves enteras (no por subcadena): el detalle de la documentación del personal (psicofísico, ART). */
+const CLAVES_EXACTAS = new Set(['details', 'pin', 'cvc', 'otp']);
+
+function esSensible(clave: string): boolean {
+  const k = clave.toLowerCase();
+  return (
+    CLAVES_EXACTAS.has(k) || FRAGMENTOS_SENSIBLES.some((f) => k.includes(f))
+  );
+}
 
 const MASCARA = '******';
 
@@ -27,11 +46,7 @@ function enmascarar(valor: unknown, profundidad: number): unknown {
     return Object.fromEntries(
       Object.entries(valor).map(([clave, v]) => [
         clave,
-        ENMASCARADOS.has(clave.toLowerCase())
-          ? v
-            ? MASCARA
-            : v
-          : enmascarar(v, profundidad + 1),
+        esSensible(clave) ? (v ? MASCARA : v) : enmascarar(v, profundidad + 1),
       ]),
     );
   }
@@ -45,5 +60,24 @@ export function cuerpoParaLog(cuerpo: unknown): string {
     return JSON.stringify(enmascarar(cuerpo, 0));
   } catch {
     return '{}';
+  }
+}
+
+/**
+ * La URL para el log, con los valores de los parámetros sensibles de la query
+ * enmascarados (`?token=...`, `?apiKey=...`): la misma regla que el cuerpo.
+ */
+export function urlParaLog(url: string | undefined): string {
+  if (!url) return '-';
+  const i = url.indexOf('?');
+  if (i === -1) return url;
+  try {
+    const params = new URLSearchParams(url.slice(i + 1));
+    for (const clave of [...new Set(params.keys())]) {
+      if (esSensible(clave)) params.set(clave, MASCARA);
+    }
+    return `${url.slice(0, i)}?${params.toString()}`;
+  } catch {
+    return url.slice(0, i);
   }
 }

@@ -18,6 +18,7 @@ import {
   NotFoundDomainError,
 } from '../errors/domain.error';
 import { conCodigo } from '../errors/con-codigo';
+import { urlParaLog } from '../utils/cuerpo-para-log';
 import { soloLecturaDeSoporte } from '../errors/soporte';
 import {
   codigoSqlDelError,
@@ -96,7 +97,7 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     const requestId =
       request?.requestId ?? (typeof header === 'string' ? header : '-');
     const method = request?.method ?? '-';
-    const path = request?.originalUrl ?? request?.url ?? '-';
+    const path = urlParaLog(request?.originalUrl ?? request?.url);
     const duration = request?.startTime
       ? Date.now() - request.startTime
       : undefined;
@@ -105,8 +106,13 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     // http-errors) no se loguea como 5xx. El mensaje y el stack son los originales.
     const traducida = traducirExcepcion(exception);
     const status = traducida.getStatus();
-    const message =
+    const urlCruda = request?.originalUrl ?? request?.url;
+    const textoDelError =
       exception instanceof Error ? exception.message : 'Internal server error';
+    // El 404 de Nest («Cannot GET /ruta?token=...») trae la URL cruda en el texto.
+    const message = urlCruda
+      ? textoDelError.split(urlCruda).join(path)
+      : textoDelError;
 
     const line = `[${requestId}] ${method} ${path} ${status} ${duration ?? '-'}ms — ${message}${detalle}`;
 

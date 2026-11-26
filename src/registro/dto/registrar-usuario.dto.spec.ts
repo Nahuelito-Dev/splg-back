@@ -4,7 +4,7 @@ import { RegistrarClienteDto } from './registrar-usuario.dto';
 
 const base = {
   email: 'ana@correo.com',
-  password: 'Test1234',
+  password: 'Ejemplo2026x',
   full_name: 'Ana Pérez',
   phone_number: '+5493764000000',
 };
@@ -43,5 +43,22 @@ describe('RegistrarClienteDto · consumo declarado (CU-143)', () => {
     await expect(
       errores({ consumption: { cylinderTypeId: 'x', quantityPerMonth: 1 } }),
     ).resolves.toEqual(['consumption']);
+  });
+});
+
+describe('RegistrarClienteDto · política de contraseña', () => {
+  it.each([
+    'Abcde12',
+    'abcdef12',
+    'Abcdefgh',
+    'ABCDEF12',
+    'Test1234',
+    `A1${'x'.repeat(127)}`,
+  ])('rechaza %s con 400 sobre password', async (password) => {
+    await expect(errores({ password })).resolves.toEqual(['password']);
+  });
+
+  it('acepta espacios y caracteres cualquiera', async () => {
+    await expect(errores({ password: 'Mi clave ñ#9 ok' })).resolves.toEqual([]);
   });
 });

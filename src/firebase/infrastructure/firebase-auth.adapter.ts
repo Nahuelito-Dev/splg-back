@@ -34,6 +34,10 @@ export class FirebaseAuthAdapter extends FirebaseAuthPort {
     return this.adminApp.auth().updateUser(uid, props);
   }
 
+  revokeRefreshTokens(uid: string): Promise<void> {
+    return this.adminApp.auth().revokeRefreshTokens(uid);
+  }
+
   generatePasswordResetLink(
     email: string,
     actionCodeSettings?: auth.ActionCodeSettings,

@@ -31,7 +31,7 @@ describe('RegistroService', () => {
     over: Partial<RegistrarUsuarioDto> = {},
   ): RegistrarUsuarioDto => ({
     email: 'ana@correo.com',
-    password: 'Test1234',
+    password: 'Ejemplo2026x',
     full_name: 'Ana',
     phone_number: '+5493764000000',
     rol: RoleType.CUSTOMER,

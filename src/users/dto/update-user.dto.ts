@@ -6,6 +6,7 @@ import {
   Matches,
   MinLength,
 } from 'class-validator';
+import { EsContrasenaSegura } from '../../common/validation/contrasena';
 
 /**
  * Lo que se puede cambiar de un usuario por `PATCH /users/:id`. El correo no:
@@ -34,13 +35,13 @@ export class UpdateUserDto {
   blocked?: boolean;
 
   @ApiPropertyOptional({
-    minLength: 6,
+    minLength: 8,
     description:
-      'Sólo administradores: contraseña nueva, se cambia en el proveedor de ' +
+      'Sólo administradores: contraseña nueva (de 8 a 128 caracteres, con una mayúscula, una minúscula y un número; no puede ser común), se cambia en el proveedor de ' +
       'identidad (H-75)',
   })
   @IsOptional()
   @IsString()
-  @MinLength(6)
+  @EsContrasenaSegura()
   password?: string;
 }
